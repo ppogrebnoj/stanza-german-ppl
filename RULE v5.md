@@ -48,7 +48,6 @@
  "rejected":[{"variant":"","violations":["NO-CUT: det(4)->NOUN(5)"]}],
  "seam_classes_status":{"C1":"verified","C2":"verified","C3":"verified","C4":"verified"}}
 ```
-Поля пауз в ТЗ отсутствуют.
 
 ## Инфраструктура цикла (отдельно от правила)
 - Промт для LLM: **PROMPT.md** (v5.1).
