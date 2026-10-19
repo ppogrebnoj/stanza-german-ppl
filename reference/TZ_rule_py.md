@@ -161,8 +161,39 @@
 - `recommended` — только ранг 1 (один вариант). `admissible` — остальные валидные. `rejected` — с `violations`.
 - `text` блока = исходный текст токенов (включая знаки); `toks` = list id; `seams` = классы, по которым сделан этот блок.
 
-## 9. Тесты / верификация
-- **`self_test()`** — правило воспроизводит все verified-кейсы `CORPUS/verified.jsonl` (accepted=true). **Критерий pass:** `[b.text for b in recommended] == case["blocks"]` (строгое совпадение по порядку и количеству; текст нормализовать: trim + collapse whitespace). Вывод — только pass/fail по каждому кейсу.
+### check(): API для цикла «разбивка → правило» (soft match)
+`rule.py --check "<sentence>" --blocks "block1" "block2" ... [--config reference/config.json]`
+- **Совпадение (soft):** `match=true`, если human blocks == `recommended[0]` **ИЛИ** human ∈ `admissible`. Сопоставление — строгое по тексту блоков (нормализация: trim + collapse whitespace), порядок и количество совпадают.
+- `human_rank` — 1 (строгого) / N (в admissible, ниже rank1) / null.
+- Диагноз строится **из тех же данных**, что в пайплайне (§5: S, NO-CUT, min_merge) — отдельной логики нет.
+```json
+{
+  "match": false,
+  "human_rank": null,
+  "rule_version": "v3",
+  "recommended": [...],
+  "admissible": [...],
+  "diagnosis": {
+    "cuts": [
+      {"pos": 4, "between": "es | weil", "status": "missing",
+       "features": {"deprel": "mark", "xpos": "KOUS"}},
+      {"pos": 7, "between": "müde | ist", "status": "forbidden",
+       "rule": "nocut[4]: cop"}
+    ],
+    "effects": {
+      "min_merge": ["блок X сжался в root-блок (head_root)"],
+      "cap": ["блок = 9 lex > cap"]
+    }
+  }
+}
+```
+- `match=true` → `diagnosis=null`, `human_rank` ∈ {1, N}.
+- **`missing`** = human-рез не в S: нет C-класса под него. Показываются Stanza-фичи токена на месте реза (LLM решает — новый класс или исключение; corpus проверять перед решением).
+- **`forbidden`** = рез заперт NO-CUT/P2; `rule` = индекс правила в config.
+- **`effects.min_merge/cap`** = почему human-блоки не совпадают с рангом (сжаты/отброшены).
+```
+- **`self_test()`** — правило воспроизводит все verified-кейсы `CORPUS/verified.jsonl` (accepted=true). **Критерий pass (soft match):** human blocks == `recommended[0]` ИЛИ human ∈ `admissible` (согласно §8 check); текст нормализовать: trim + collapse whitespace; порядок и количество блоков совпадают. Вывод — только pass/fail по каждому кейсу.
+- **check()** — 3 corpus cases → match=true; 1 «сломанный» кейс (рез внутри NO-CUT) → match=false, diagnosis status=forbidden верно.
 - **Determinism check** — один input → один output (sha256, §6).
 - **Config completeness** — все правила RULE.md в config; если нет → fail.
 - **New case verification** — новый ground-truth-кейс: rule.py воспроизводит или gap.
@@ -170,12 +201,13 @@
 
 ## 10. Acceptance-гейты / Definition of Done
 Выход допустим только когда **все** условия выполнены:
-1. `rule.py` существует, запускается (`python reference/rule.py "…"`), выводит §8 JSON.
-2. `self_test()` = **3/3 pass** по текущему `CORPUS/verified.jsonl` (3 verified-кейса).
-3. **Determinism check** passes (sha256 identical).
-4. **Config completeness** passes.
-5. Запуск без кэша (чистый) даёт тот же результат — детерминизм подтверждён.
-Дополнительно: PROLOG §Критерии выхода в ТЗ (4 условия) — для будущего v8+; сейчас только пункты 1–5.
+1. `rule.py` существует, запускается (`python reference/rule.py "…"`, **и** `--check ... --blocks ...`), выводит §8 JSON.
+2. `self_test()` = **3/3 pass** по текущему `CORPUS/verified.jsonl` (soft match).
+3. **check()**: 3 corpus cases → match=true; 1 «сломанный» кейс (рез внутри NO-CUT) → match=false, diagnosis status=forbidden верно.
+4. **Determinism check** passes (sha256 identical).
+5. **Config completeness** passes.
+6. Запуск без кэша (чистый) даёт тот же результат — детерминизм подтверждён.
+Дополнительно: PROLOG §Критерии выхода в ТЗ (4 условия) — для будущего v8+; сейчас только пункты 1–6.
 
 ## 11. Environment / Run
 - **Python:** 3.11; **dependency:** `stanza==1.15.0`. German depparse model — в кэше MCP (offline), НЕ скачивать.
@@ -197,13 +229,15 @@ reference/
 - **Min:** блок <3 → merge (детерминированный алгоритм по config).
 - **Empty blocks** — не допускаются.
 
-## 13. Workflow v{n+1}
+## 13. Workflow v{n+1} — цикл check→delta→match
 1. Человек даёт ground-truth-кейс (по PROMPT, может быть пакетом).
-2. LLM: parse, seam-разбор, delta, RULE.md + config.json (патч), регресс.
-3. **rule.py:** патчим `config.json` (добавляем C-class / меняем NO-CUT); rule.py не трогаем.
-4. rule.py: `self_test()` → 100% regression.
-5. CORPUS: новый verified-кейс.
-6. `LOG/iterations` (таблица + история), GAPS; git commit + tag v{n+1}.
+2. **rule.py --check** sentence+blocks → match? diagnosis?
+   - **match=true** (soft: recommended rank1 или admissible) → шаг 5.
+3. **match=false** → LLM готовит **минимальную дельту** по facts из diagnosis (missing-рез → новый C-класс/исключение; forbidden → исключение в NO-CUT; effects → min_merge/cap), патчит `config.json`; rule.py не трогаем.
+4. Повтор: **rule.py --check** + `self_test()`. **Max 5 попыток**: после match — step 5; после 5 без match → report человеку (diagnosis, текущий config, варианты).
+5. **Regression:** `self_test()` → 100% pass по всему корпусу.
+6. Человек подтверждает разбивку → CORPUS: новый verified-кейс; `LOG/iterations` (строка + история), GAPS (GAP→resolved); git commit + tag v{n+1}.
+7. config до commit — черновик; при неудаче в цикле откатывается.
 
 ## 14. Ground-truth appendix (3 verified-кейса — эталон для self_test)
 > Разбор по реальному Stanza (v1.15.0). rule.py должен давать ровно эти `recommended`-блоки.
