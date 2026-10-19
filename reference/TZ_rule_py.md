@@ -51,9 +51,9 @@
 ## 4. Схема конфига (`config/v{n}.json`)
 ```json
 {
-  "version": "v7",
-  "rule_version": "v7.0",
-  "rule_file": "RULE v7.md",
+  "version": "v3",
+  "rule_version": "v3.0",
+  "rule_file": "RULE v3.md",
   "min": 3,
   "pref": [3, 5],
   "cap": 7,
@@ -62,13 +62,13 @@
     {"class_id": "C1", "status": "verified"},
     {"class_id": "C2", "status": "verified"},
     {"class_id": "C3", "status": "verified"},
-    {"class_id": "C4", "status": "verified"},
-    {"class_id": "C5", "status": "untested"}
+    {"class_id": "C4", "status": "verified", "after":{"root_xpos":["VAFIN","VVFIN"]},"next_token":{"deprel":["advmod","cc"],"xpos_or_lemma":["KON","denn","dann","so"]}},
+    {"class_id": "C5", "status": "verified"}
   ],
   "nocut": [
     {"deprel": ["det","det:poss","amod","nummod","compound","flat","appos"], "to": "NOUN"},
     {"deprel": ["case"], "with": ["pobj","obl"]},
-    {"deprel": ["cc","conj"], "xpos": "TRUNC"},
+    {"nouns_xpos":"TRUNC","atomic_chain":true},
     {"mwt": true},
     {"deprel": ["aux","aux:pass","cop"]},
     {"root_verb": ["VAFIN","VVFIN","VVPP"], "with_aux": true},
@@ -80,7 +80,7 @@
   }
 }
 ```
-**V7:** C5 добавлен; NO-CUT = `aux/aux:pass/cop` + root↔aux; P1 = last_token.
+**v3:** C5 added; NO-CUT = `aux/aux:pass/cop` + root↔aux + NOUN xpos==TRUNC (chain atomic); C4 = VVFIN+advmod/cc (xpos==KON OR lemma∈{denn,dann,so}); P1 = last_token; min-merge deterministic.
 
 ## 5. Пайплайн (детерминированный)
 1. `parse` → токены.
@@ -136,7 +136,7 @@
 reference/
 ├── rule.py          # статичный интерпретатор (создаётся в отдельной дельте)
 ├── config/
-│   └── v7.json      # конфиг v7 (создаётся в отдельной дельте)
+│   └── v3.json      # конфиг v3 (создаётся в отдельной дельте)
 ├── cache/           # parse-кэш
 └── TZ_rule_py.md    # это ТЗ
 ```
@@ -164,8 +164,8 @@ reference/
 6. LOG, GAPS, CHANGELOG.
 
 ## 15. Текущее состояние
-- **RULE v7.md** — актуальное правило.
-- **config/v7.json** — не создан (отдельная дельта).
+- **RULE v3.md** — актуальное правило.
+- **config/v3.json** — не создан (отдельная дельта, sync: C4 condition, TRUNC NO-CUT, min-merge)
 - **rule.py** — не создан (отдельная дельта).
 - **TZ_rule_py.md** — это ТЗ.
 
