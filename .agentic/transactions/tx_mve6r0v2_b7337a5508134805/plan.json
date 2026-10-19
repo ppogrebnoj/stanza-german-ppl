@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "id": "tx_mve6r0v2_b7337a5508134805",
+  "status": "applied",
+  "createdAt": "2026-10-18T18:55:27.532Z",
+  "updatedAt": "2026-10-18T18:55:27.552Z",
+  "operationHash": "2b2ee99297a94c69edb9624998986d0a1a6c6f8f23f39b29013586bf3ece62f6",
+  "operations": [
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\LOG\\iterations.md",
+      "search": "Текущая базовая версия — **v5**.",
+      "replacement": "Текущая базовая версия — **v7**.",
+      "expectedMatches": 1
+    },
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\LOG\\iterations.md",
+      "search": "| 1 | —    | v6.0       | §7 cap: блок 6–7 слов допустим при границах C1–C4 и без NO-CUT внутри; «union of units» отменено; §5 C4: набор = xpos=KON ∪ {denn,dann,so} | 1 | 1/1 pass | done   |\n\n(новая строка добавляется после каждой дельты; N = последняя зафиксированная)",
+      "replacement": "| 1 | —    | v6.0       | §7 cap: блок 6–7 слов допустим при границах C1–C4 и без NO-CUT внутри; «union of units» отменено; §5 C4: набор = xpos=KON ∪ {denn,dann,so} | 1 | 1/1 pass | done   |\n| 2 | —    | v7.0       | G1 P1→последний токен; G2 NO-CUT=aux/aux:pass/cop; G3 NO-CUT root↔aux; G4 C5 (deprel=mark, xpos=KOUS); G5 C3=цепочка целиком | 0 | 1/1 pass | done   |\n\n(новая строка добавляется после каждой дельты; N = последняя зафиксированная)",
+      "expectedMatches": 1
+    }
+  ],
+  "files": [
+    {
+      "path": "LOG/iterations.md",
+      "before": {
+        "exists": true,
+        "sha256": "62b1fe078a0d57da90d31f09e2abd6f7d01b4f11f5cc06178790922cf9d77ad0",
+        "bytes": 952,
+        "snapshotPath": ".agentic/transactions/tx_mve6r0v2_b7337a5508134805/snapshots/c676ab066f383324a8539261-before.txt"
+      },
+      "after": {
+        "exists": true,
+        "sha256": "1967ef68a6322c680674627257cb73ef8633275ee571c94739b450ea0068d714",
+        "bytes": 1163,
+        "snapshotPath": ".agentic/transactions/tx_mve6r0v2_b7337a5508134805/snapshots/c676ab066f383324a8539261-after.txt"
+      },
+      "addedLines": 2,
+      "removedLines": 1
+    }
+  ],
+  "directories": [],
+  "destructive": false,
+  "requiresReview": false,
+  "addedLines": 2,
+  "removedLines": 1,
+  "diffPath": ".agentic/transactions/tx_mve6r0v2_b7337a5508134805/changes.diff",
+  "reviewPath": ".agentic/transactions/tx_mve6r0v2_b7337a5508134805/review.md",
+  "diffSha256": "58c0029cbd2c5f796fbe533e75bf651629f412ebc05e76b85caa11b36afe32db",
+  "diffBytes": 1392,
+  "summary": "Applied 1 file change(s) (+2/-1).",
+  "appliedAt": "2026-10-18T18:55:27.552Z"
+}

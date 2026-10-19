@@ -1,0 +1,9 @@
+[master (root-commit) 36b5556] RULE v5: infrastructure of rule refinement cycle (plan plan_mv9gz5nh_8f3798a6d3654dbd)
+ 7 files changed, 204 insertions(+)
+ create mode 100644 CHANGELOG.md
+ create mode 100644 CORPUS/verified.jsonl
+ create mode 100644 GAPS/registry.md
+ create mode 100644 LOG/iterations.md
+ create mode 100644 PROMPT.md
+ create mode 100644 PROTOCOL.md
+ create mode 100644 RULE v5.md

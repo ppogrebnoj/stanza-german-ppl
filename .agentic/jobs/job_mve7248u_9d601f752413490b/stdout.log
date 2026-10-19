@@ -1,0 +1,4 @@
+[master 9fe10f1] RULE v7: формализация 6 дыр (G1-G5) + PROMPT v5.2 + LOG/GAPS/CHANGELOG; rule.py выведен (step 4 пропущен)\n\n- RULE v7: P1->последний токен; NO-CUT aux/aux:pass/cop + root-aux; C5 (mark/KOUS); C3=цепочка целиком\n- PROMPT v5.2: база RULE v7, детерминированный шаг D по CORPUS (без rule.py), min=3/pref=[3,5]/cap=7, C1..C5\n- LOG/iterations.md: N=2, v7.0; sync базы v5->v7\n- GAPS/registry.md: G1-G5 resolved\n- CHANGELOG.md: v7.0\n\nplan_mve6aesn_2d463ba0caab4f21"
+ 8 files changed, 153 insertions(+), 10 deletions(-)
+ create mode 100644 RULE v6.md
+ create mode 100644 RULE v7.md

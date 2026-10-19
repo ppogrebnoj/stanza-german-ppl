@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "tx_mve6hnav_76867d3c2fbe4d14",
+  "status": "applied",
+  "createdAt": "2026-10-18T18:48:10.057Z",
+  "updatedAt": "2026-10-18T18:48:10.076Z",
+  "operationHash": "48ce056055b37d6b04e7b4968c49bf8c6369fcde1795c66927f8448a0e6a6103",
+  "operations": [
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\RULE v7.md",
+      "search": "## Референс-реализация\nДетерминированный референс правила — `reference/rule.py` (запуск: `python reference/rule.py`). Регресс по CORPUS/verified.jsonl выполняется скриптом, а не LLM. Расхождение скрипта с текстом правила = баг правила (человек решает).\n\n## Инфраструктура цикла (отдельно от правила)",
+      "replacement": "## Инфраструктура цикла (отдельно от правила)",
+      "expectedMatches": 1
+    }
+  ],
+  "files": [
+    {
+      "path": "RULE v7.md",
+      "before": {
+        "exists": true,
+        "sha256": "990bf2f1514d4b28b253f7ae46d46af6c285469eed782e25ca974b09289a2d7c",
+        "bytes": 7037,
+        "snapshotPath": ".agentic/transactions/tx_mve6hnav_76867d3c2fbe4d14/snapshots/d8969355ee9f712ea830ce30-before.txt"
+      },
+      "after": {
+        "exists": true,
+        "sha256": "f746fdb9c0f5b44f0415b4cbc7c5af685ab5cdad23eae90c5a8b6870166ef878",
+        "bytes": 6638,
+        "snapshotPath": ".agentic/transactions/tx_mve6hnav_76867d3c2fbe4d14/snapshots/d8969355ee9f712ea830ce30-after.txt"
+      },
+      "addedLines": 0,
+      "removedLines": 3
+    }
+  ],
+  "directories": [],
+  "destructive": false,
+  "requiresReview": false,
+  "addedLines": 0,
+  "removedLines": 3,
+  "diffPath": ".agentic/transactions/tx_mve6hnav_76867d3c2fbe4d14/changes.diff",
+  "reviewPath": ".agentic/transactions/tx_mve6hnav_76867d3c2fbe4d14/review.md",
+  "diffSha256": "b7b031a5e5f955e5148556bdca6f8152383c7d11e6c29a0a81040c1f33f82700",
+  "diffBytes": 788,
+  "summary": "Applied 1 file change(s) (+0/-3).",
+  "appliedAt": "2026-10-18T18:48:10.076Z"
+}

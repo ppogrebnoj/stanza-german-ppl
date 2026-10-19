@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/CORPUS/verified.jsonl
+@@ -1,0 +1,2 @@
++{"id":"schema-example","sentence":"","blocks":[],"accepted":false,"comment":"schema template: blocks = [текст_блок1, текст_блок2,...]; accepted=true = verified ground truth; schema-example не входит в регресс"}
++
+
+--- /dev/null
++++ b/GAPS/registry.md
+@@ -1,0 +1,10 @@
++# Реестр GAP — типы разбивок, не покрытые правилом RULE v{N}.md
++
++Каждый GAP формулируется **только** через Stanza-признаки (deprel/xpos/lemma/is_mwt). Статусы: open → resolved.
++
++| gap_id | Stanza-признак | Пример (id токенов) | Статус | Решение |
++|---|---|---|---|---|
++| | | | | |
++
++(пусто на v5.0; заполняется в шаге D каждой итерации)
++

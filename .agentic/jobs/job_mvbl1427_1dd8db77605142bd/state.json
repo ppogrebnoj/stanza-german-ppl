@@ -1,0 +1,41 @@
+{
+  "id": "job_mvbl1427_1dd8db77605142bd",
+  "specHash": "e33cecb542ab21ac96f4565543b50033dfc2f816886f49a598382915ab3b4b14",
+  "status": "failed",
+  "executable": "python",
+  "args": [
+    "E:\\KI_WORK\\MCP-stanza-german-RULE\\reference\\rule.py"
+  ],
+  "cwd": ".",
+  "resolvedExecutable": "C:\\Users\\BIGTER\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+  "startedAt": "2026-10-16T23:11:54.322Z",
+  "timedOut": false,
+  "stdoutPreview": "FAIL iter1-umfassen-heizung\r\n  rank1: ['Meine Dienstleistungen umfassen nicht nur', 'die Arbeit an Heizungsanlagen ,', 'sondern auch die komplette Installation', 'von Wasser - und Abwassersystemen .']\r\n  human : ['Meine Dienstleistungen umfassen', 'nicht nur die Arbeit an Heizungsanlagen,', 'sondern auch die komplette Installation', 'von Wasser- und Abwassersystemen.']\r\nCTRL Er hat das Buch gelesen. seams: [2, 6] rank1: ['Er hat das Buch gelesen .']\r\nCTRL Er wird das Buch gelesen haben. seams: [2, 7] rank1: ['Er wird das Buch gelesen haben .']\r\nCTRL ",
+  "stderrPreview": "Traceback (most recent call last):\r\n  File \"E:\\KI_WORK\\MCP-stanza-german-RULE\\reference\\rule.py\", line 191, in <module>\r\n    sys.exit(check())\r\n             ^^^^^^^\r\n  File \"E:\\KI_WORK\\MCP-stanza-german-RULE\\reference\\rule.py\", line 186, in check\r\n    print(\"CTRL\", s, \"seams:\", S, \"rank1:\", render(scored[0][3], w) if scored else \"��� ��������\")\r\n  File \"C:\\Users\\BIGTER\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\encodings\\cp1251.py\", line 19, in encode\r\n    return codecs.charmap_encode(input,self.errors,encoding_table)[0]\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\nUnicodeEncodeError: 'charmap' codec can't encode character '\\xe4' in position 39: character maps to <undefined>\r\n",
+  "stdoutBytes": 556,
+  "stderrBytes": 710,
+  "stdoutCapturedBytes": 556,
+  "stderrCapturedBytes": 710,
+  "stdoutTruncated": false,
+  "stderrTruncated": false,
+  "artifacts": [
+    {
+      "kind": "command_output",
+      "path": ".agentic/jobs/job_mvbl1427_1dd8db77605142bd/stdout.log",
+      "sha256": "493c3f41008ed0a131a85bf94ae9367c63ac8631d30c2cbddeabff8246f45644",
+      "bytes": 556,
+      "description": "stdout for command job job_mvbl1427_1dd8db77605142bd"
+    },
+    {
+      "kind": "command_output",
+      "path": ".agentic/jobs/job_mvbl1427_1dd8db77605142bd/stderr.log",
+      "sha256": "871fa339c3c4572855d4cb9672ade225dcae6908054b42f5f6d018caebf9f750",
+      "bytes": 710,
+      "description": "stderr for command job job_mvbl1427_1dd8db77605142bd"
+    }
+  ],
+  "finishedAt": "2026-10-16T23:11:54.398Z",
+  "durationMs": 76,
+  "exitCode": 1,
+  "signal": null
+}

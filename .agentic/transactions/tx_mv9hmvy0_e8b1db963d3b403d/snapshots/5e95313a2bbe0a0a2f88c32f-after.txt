@@ -1,0 +1,1 @@
+{"id":"schema-example","sentence":"","blocks":[],"accepted":false,"comment":"schema template: blocks = [текст_блок1, текст_блок2,...]; accepted=true = verified ground truth; schema-example не входит в регресс"}

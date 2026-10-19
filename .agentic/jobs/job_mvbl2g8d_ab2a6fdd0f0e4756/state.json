@@ -1,0 +1,41 @@
+{
+  "id": "job_mvbl2g8d_ab2a6fdd0f0e4756",
+  "specHash": "e33cecb542ab21ac96f4565543b50033dfc2f816886f49a598382915ab3b4b14",
+  "status": "failed",
+  "executable": "python",
+  "args": [
+    "E:\\KI_WORK\\MCP-stanza-german-RULE\\reference\\rule.py"
+  ],
+  "cwd": ".",
+  "resolvedExecutable": "C:\\Users\\BIGTER\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+  "startedAt": "2026-10-16T23:12:56.752Z",
+  "timedOut": false,
+  "stdoutPreview": "FAIL iter1-umfassen-heizung\r\n  rank1: []\r\n  human : ['Meine Dienstleistungen umfassen', 'nicht nur die Arbeit an Heizungsanlagen,', 'sondern auch die komplette Installation', 'von Wasser- und Abwassersystemen.']\r\nCTRL Er hat das Buch gelesen. seams: [2, 6] rank1: ['Er hat das Buch gelesen.']\r\nCTRL Er wird das Buch gelesen haben. seams: [2, 7] rank1: ['Er wird das Buch gelesen haben.']\r\nCTRL Weil er das Buch gelesen hat, kam er später. seams: [1, 8, 9, 10, 11] rank1: ['Weil er das Buch gelesen hat,', 'kam er später.']\r\nCTRL Er kommt nicht, weil er müde ist. seams: [2, 3, 5, 9] rank1: ['Er kommt nicht,', 'weil er müde ist.']\r\nregression: 0 / 1\r\n",
+  "stderrPreview": "",
+  "stdoutBytes": 655,
+  "stderrBytes": 0,
+  "stdoutCapturedBytes": 655,
+  "stderrCapturedBytes": 0,
+  "stdoutTruncated": false,
+  "stderrTruncated": false,
+  "artifacts": [
+    {
+      "kind": "command_output",
+      "path": ".agentic/jobs/job_mvbl2g8d_ab2a6fdd0f0e4756/stdout.log",
+      "sha256": "611789ad61c152d2fb831b2152fead3953b3d55026dc3a5973df7aae75845bbb",
+      "bytes": 655,
+      "description": "stdout for command job job_mvbl2g8d_ab2a6fdd0f0e4756"
+    },
+    {
+      "kind": "command_output",
+      "path": ".agentic/jobs/job_mvbl2g8d_ab2a6fdd0f0e4756/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "description": "stderr for command job job_mvbl2g8d_ab2a6fdd0f0e4756"
+    }
+  ],
+  "finishedAt": "2026-10-16T23:12:56.818Z",
+  "durationMs": 66,
+  "exitCode": 1,
+  "signal": null
+}

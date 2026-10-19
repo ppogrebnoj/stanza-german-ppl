@@ -1,0 +1,41 @@
+{
+  "id": "job_mvblfinx_bc79e2ae2bf24fc9",
+  "specHash": "e33cecb542ab21ac96f4565543b50033dfc2f816886f49a598382915ab3b4b14",
+  "status": "failed",
+  "executable": "python",
+  "args": [
+    "E:\\KI_WORK\\MCP-stanza-german-RULE\\reference\\rule.py"
+  ],
+  "cwd": ".",
+  "resolvedExecutable": "C:\\Users\\BIGTER\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+  "startedAt": "2026-10-16T23:23:06.433Z",
+  "timedOut": false,
+  "stdoutPreview": "FAIL iter1-umfassen-heizung\r\n  rank1: ['Meine Dienstleistungen umfassen nicht nur', 'die Arbeit an Heizungsanlagen,', 'sondern auch die komplette Installation', 'von Wasser- und Abwassersystemen.']\r\n  human : ['Meine Dienstleistungen umfassen', 'nicht nur die Arbeit an Heizungsanlagen,', 'sondern auch die komplette Installation', 'von Wasser- und Abwassersystemen.']\r\nCTRL Er hat das Buch gelesen. seams: [2] rank1: ['Er hat das Buch gelesen.']\r\nCTRL Er wird das Buch gelesen haben. seams: [2] rank1: ['Er wird das Buch gelesen haben.']\r\nCTRL Weil er das Buch gelesen hat, kam er später. seams: [1, 8, 9, 10] rank1: ['Weil er das Buch gelesen hat,', 'kam er später.']\r\nCTRL Er kommt nicht, weil er müde ist. seams: [2, 3, 5, 8] rank1: ['Er kommt nicht,', 'weil er müde ist.']\r\nregression: 0 / 1\r\n",
+  "stderrPreview": "",
+  "stdoutBytes": 802,
+  "stderrBytes": 0,
+  "stdoutCapturedBytes": 802,
+  "stderrCapturedBytes": 0,
+  "stdoutTruncated": false,
+  "stderrTruncated": false,
+  "artifacts": [
+    {
+      "kind": "command_output",
+      "path": ".agentic/jobs/job_mvblfinx_bc79e2ae2bf24fc9/stdout.log",
+      "sha256": "6500141aa917c4a7be840416a4c040879665d6eb51b0b55b9d2cbb2caeaf1e6b",
+      "bytes": 802,
+      "description": "stdout for command job job_mvblfinx_bc79e2ae2bf24fc9"
+    },
+    {
+      "kind": "command_output",
+      "path": ".agentic/jobs/job_mvblfinx_bc79e2ae2bf24fc9/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "description": "stderr for command job job_mvblfinx_bc79e2ae2bf24fc9"
+    }
+  ],
+  "finishedAt": "2026-10-16T23:23:06.487Z",
+  "durationMs": 54,
+  "exitCode": 1,
+  "signal": null
+}

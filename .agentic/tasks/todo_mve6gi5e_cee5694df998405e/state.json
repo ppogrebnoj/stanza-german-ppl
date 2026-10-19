@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "id": "todo_mve6gi5e_cee5694df998405e",
+  "title": "Завершение RULE v7: PROMPT v5.2 + LOG/GAPS/CHANGELOG",
+  "objective": "План plan_mve6aesn_2d463ba0caab4f21: убрать отсылку к rule.py из RULE v7.md; PROMPT v5.2 (база v7, шаг D детерм., min/pref/cap, C1..C5); LOG v7.0 + sync; GAPS G1-G5 resolved; CHANGELOG v7.0",
+  "status": "archived",
+  "createdAt": "2026-10-18T18:47:16.706Z",
+  "updatedAt": "2026-10-18T19:02:30.166Z",
+  "items": [
+    {
+      "id": "item_mve6gi5f_9cb2ff853a0540f5",
+      "text": "RULE v7.md: удалить §«Референс-реализация», поправить «Инфраструктура» на v7 без rule.py",
+      "status": "completed",
+      "priority": "normal",
+      "dependsOn": [],
+      "evidence": [
+        "tx_mve6hnav_76867d3c2fbe4d14 applied: §«Референс-реализация» удалено из RULE v7.md",
+        "«Инфраструктура» v7-совместима, rule.py не упоминается"
+      ],
+      "createdAt": "2026-10-18T18:47:16.707Z",
+      "updatedAt": "2026-10-18T18:50:49.861Z",
+      "completedAt": "2026-10-18T18:50:49.861Z"
+    },
+    {
+      "id": "item_mve6gi5f_f4cf7a6256c44cd6",
+      "text": "PROMPT.md v5.2: база RULE v7, шаг D детерм., min/pref/cap, §5 C1..C5",
+      "status": "completed",
+      "priority": "normal",
+      "dependsOn": [],
+      "evidence": [
+        "tx_mve6mpgf_094c67ac58ef43ad applied: PROMPT.md v5.2 (версия, база RULE v7, шаг D детерминированный + min/pref/cap, §2/§5 C1..C5)"
+      ],
+      "createdAt": "2026-10-18T18:47:16.707Z",
+      "updatedAt": "2026-10-18T18:54:15.422Z",
+      "completedAt": "2026-10-18T18:54:15.422Z"
+    },
+    {
+      "id": "item_mve6gi5f_a8cc3853ed1d470a",
+      "text": "LOG/iterations.md: строка v7.0 + sync базы v5→v7",
+      "status": "completed",
+      "priority": "normal",
+      "dependsOn": [],
+      "evidence": [
+        "tx_mve6r0v2_b7337a5508134805 applied: LOG/iterations.md — строка v7.0 (G1–G5) + sync базы v5→v7"
+      ],
+      "createdAt": "2026-10-18T18:47:16.707Z",
+      "updatedAt": "2026-10-18T18:55:59.492Z",
+      "completedAt": "2026-10-18T18:55:59.492Z"
+    },
+    {
+      "id": "item_mve6gi5f_d7d04c547c094016",
+      "text": "GAPS/registry.md: G1..G5 resolved",
+      "status": "completed",
+      "priority": "normal",
+      "dependsOn": [],
+      "evidence": [
+        "tx_mve6v8m6_79a9e4068ed0401f applied: GAPS/registry.md — G1..G5 registered, status resolved"
+      ],
+      "createdAt": "2026-10-18T18:47:16.707Z",
+      "updatedAt": "2026-10-18T18:59:14.478Z",
+      "completedAt": "2026-10-18T18:59:14.478Z"
+    },
+    {
+      "id": "item_mve6gi5f_2f7212f67db44cc1",
+      "text": "CHANGELOG.md: запись v7.0",
+      "status": "completed",
+      "priority": "normal",
+      "dependsOn": [],
+      "evidence": [
+        "tx_mve6y6cq_d0bf480dba33472e applied: CHANGELOG.md — запись v7.0 (G1–G5 + PROMPT v5.2)"
+      ],
+      "createdAt": "2026-10-18T18:47:16.707Z",
+      "updatedAt": "2026-10-18T19:01:41.280Z",
+      "completedAt": "2026-10-18T19:01:41.280Z"
+    }
+  ],
+  "notes": [],
+  "decisions": [],
+  "checkpoints": [
+    {
+      "id": "checkpoint_mve6kfz6_245573025f1d4b99",
+      "createdAt": "2026-10-18T18:50:20.514Z",
+      "summary": "Шаг 1 (RULE v7.md) — §Референс-реализация удалён, tx_mve6hnav_76867d3c2fbe4d14 applied; «Инфраструктура» v7-совместима, без rule.py.",
+      "decisions": [],
+      "blockers": [],
+      "next": []
+    },
+    {
+      "id": "checkpoint_mve6owup_ba77f50319154c76",
+      "createdAt": "2026-10-18T18:53:49.009Z",
+      "summary": "Шаг 2 (PROMPT v5.2) — версия/база v7/детерминированный шаг D/min-pref-cap/C1..C5, tx_mve6mpgf_094c67ac58ef43ad applied.",
+      "decisions": [],
+      "blockers": [],
+      "next": []
+    }
+  ],
+  "completedAt": "2026-10-18T19:01:41.280Z",
+  "archivedAt": "2026-10-18T19:02:30.166Z"
+}

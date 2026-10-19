@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "E:\KI_WORK\MCP-stanza-german-RULE\reference\rule.py", line 190, in <module>
+    raise System.exit(check())
+          ^^^^^^
+NameError: name 'System' is not defined

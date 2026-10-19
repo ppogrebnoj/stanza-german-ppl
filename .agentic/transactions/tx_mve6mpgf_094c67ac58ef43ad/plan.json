@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "id": "tx_mve6mpgf_094c67ac58ef43ad",
+  "status": "applied",
+  "createdAt": "2026-10-18T18:52:06.125Z",
+  "updatedAt": "2026-10-18T18:52:06.141Z",
+  "operationHash": "3b5f8596e41504bc7fec4c786f793fc6c93008ac47d9b22bdda590b016b788ec",
+  "operations": [
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\PROMPT.md",
+      "search": "# Промт для LLM (доработка правила) v5.1",
+      "replacement": "# Промт для LLM (доработка правила) v5.2",
+      "expectedMatches": 1
+    },
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\PROMPT.md",
+      "search": "- **RULE v{N}.md** — текущая версия правила (отдельный файл на версию в корне). Базовая: RULE v5.md. Следующая: RULE v6.md…",
+      "replacement": "- **RULE v{N}.md** — текущая версия правила (отдельный файл на версию в корне). Базовая: RULE v7.md. Следующая: RULE v8.md…",
+      "expectedMatches": 1
+    },
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\PROMPT.md",
+      "search": "D. Регресс по хранимому корпусу CORPUS/verified.jsonl: прогнать RULE v{n+1}, перечислить конфликты и разрешение.",
+      "replacement": "D. Регресс по CORPUS/verified.jsonl — **детерминированным** прогоном правила (схема: parse → seam-множество C1..C5 → минус NO-CUT/P2 → min-слияние → cap → ранжирование → recommended); для каждого verified-кейса: ожидаемое (human blocks) vs фактическое (recommended); перечислить конфликты и разрешение. Параметры: min=3, pref=[3,5], cap=7. Референс-реализация поддерживается отдельно; при расхождении LLM с правилом — баг правила, человек решает.",
+      "expectedMatches": 1
+    },
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\PROMPT.md",
+      "search": "2) Seam-разбор всех вариантов человека (id + классы C1..C4/P1..P2 + lex_words каждого блока).",
+      "replacement": "2) Seam-разбор всех вариантов человека (id + классы C1..C5/P1..P2 + lex_words каждого блока).",
+      "expectedMatches": 1
+    },
+    {
+      "type": "replace",
+      "path": "E:\\KI_WORK\\MCP-stanza-german-RULE\\PROMPT.md",
+      "search": "5) RULE v{n+1} целиком (таблица NO-CUT, C1..Cn, P1..P2, параметры min/pref/cap, детерминированный отбор).",
+      "replacement": "5) RULE v{n+1} целиком (таблица NO-CUT, C1..C5, P1..P2, параметры min=3, pref=[3,5], cap=7, детерминированный отбор).",
+      "expectedMatches": 1
+    }
+  ],
+  "files": [
+    {
+      "path": "PROMPT.md",
+      "before": {
+        "exists": true,
+        "sha256": "a379a286ae5fb50caaf63a26aa3646ab243e555edff8338e9bcc3f5fdc507711",
+        "bytes": 4799,
+        "snapshotPath": ".agentic/transactions/tx_mve6mpgf_094c67ac58ef43ad/snapshots/93f277324bed04c85a561677-before.txt"
+      },
+      "after": {
+        "exists": true,
+        "sha256": "177216738c966710489e46caa481f8bf7c8d9ee98c16a40b66cafd87e03c025d",
+        "bytes": 5337,
+        "snapshotPath": ".agentic/transactions/tx_mve6mpgf_094c67ac58ef43ad/snapshots/93f277324bed04c85a561677-after.txt"
+      },
+      "addedLines": 5,
+      "removedLines": 5
+    }
+  ],
+  "directories": [],
+  "destructive": false,
+  "requiresReview": false,
+  "addedLines": 5,
+  "removedLines": 5,
+  "diffPath": ".agentic/transactions/tx_mve6mpgf_094c67ac58ef43ad/changes.diff",
+  "reviewPath": ".agentic/transactions/tx_mve6mpgf_094c67ac58ef43ad/review.md",
+  "diffSha256": "e17f5795f610cc223024eddcd07f03fef676ec62e412cd562319250481738a69",
+  "diffBytes": 4473,
+  "summary": "Applied 1 file change(s) (+5/-5).",
+  "appliedAt": "2026-10-18T18:52:06.141Z"
+}
