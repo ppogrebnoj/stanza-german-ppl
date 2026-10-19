@@ -1,3 +1,0 @@
-[master a8d1c1e] reference/TZ_rule_py.md: ТЗ на проектирование rule.py (интерпретатор + config)\n\n18 разделов: цель; архитектура 2 слога; вход/каш; модель данных;\nsхема конфига v7; пайплайн; детерминизм; версионирование/синк с RULE v{n}.md;\nвыход JSON; тесты; гейты PROTOCOL; layout; non-goals; edge cases;\nworkflow v{n+1}; приоритеты; план B.\n\nrule.py = статичный интерпретатор (не версируется) + config/v{n}.json = данные\n(правится при v{n+1}). Step 2 (указатель в RULE v7.md) пропущен по требованию.\n\nplan_mve9apk1_860a727d91624e67
- 1 file changed, 184 insertions(+)
- create mode 100644 reference/TZ_rule_py.md

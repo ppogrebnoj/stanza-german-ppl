@@ -1,6 +1,0 @@
-FAIL iter1-umfassen-heizung
-  rank1: ['Meine Dienstleistungen umfassen nicht nur', 'die Arbeit an Heizungsanlagen ,', 'sondern auch die komplette Installation', 'von Wasser - und Abwassersystemen .']
-  human : ['Meine Dienstleistungen umfassen', 'nicht nur die Arbeit an Heizungsanlagen,', 'sondern auch die komplette Installation', 'von Wasser- und Abwassersystemen.']
-CTRL Er hat das Buch gelesen. seams: [2, 6] rank1: ['Er hat das Buch gelesen .']
-CTRL Er wird das Buch gelesen haben. seams: [2, 7] rank1: ['Er wird das Buch gelesen haben .']
-CTRL 
