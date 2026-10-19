@@ -30,4 +30,11 @@
 - C5: тестовый кейс «Ich weiß es, weil er müde ist.» — mark/KOUS в середине; rank1 = единственный valid.
 - C4: тестовый кейс «Er kam dann nach Hause.» — VVFIN+advmod/lemma; left block 2 lex <3 → min-merge; final rank1 = 1 block.
 - Уточнения (без изменения intent'а): C4 logic (`xpos==KON` OR `lemma∈{denn,dann,so}`); TRUNC NO-CUT (NOUN xpos==TRUNC → chain атомарна); min-merge (детерминированный алгоритм).
-- LOG/iterations.md: N=3; GAPS: C4/C5 → verified; PROTOCOL критерий №2 усилен (all G resolved + all seam classes verified).
+- LOG/iterations.md: N=3; GAPS: C4/C5 → verified; PROLOG criterion #2 strengthened (all G resolved + all seam classes verified).
+
+## v3.y — Simplification (no rule changes, convention only)
+- Rule consolidation: individual files per version (RULE v1..v3.md) → single **RULE.md**; versions v1..v3 → git tags.
+- New file **reference/config.json** (single, unnumbered) — machine version of the rule; internal `"version":"v3"`.
+- PROMPT v1.3: section 5 = delta (config patch + only changed sections), not whole file; external files → see PROLOG §files cycle.
+- PROLOG: files cycle + gates (input format moved to PROMPT); versioning: single RULE.md + git tags, config.json unnumbered.
+- GAPS: table of seam class verification removed (duplicates); CORPUS: schema-example → separate file **schema.jsonl**; reference/TZ_rule_py: trimmed (output JSON / gates / non-goals → references; current state and priorities moved to .agentic/MEMORY).

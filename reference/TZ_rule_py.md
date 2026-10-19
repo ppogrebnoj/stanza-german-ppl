@@ -1,13 +1,13 @@
-# ТЗ на проектирование rule.py — детерминированный референс-интерпретатор правила RULE v{n}.md
+# ТЗ на проектирование rule.py — детерминированный референс-интерпретатор правила RULE.md
 
 ## 0. Суть и цель
-**rule.py** — детерминированный референс-интерпретатор, формально реализующий правило `RULE v{n}.md`.
-- **Вход:** немецкое предложение + версия правила (v{n}) / путь к config.
+**rule.py** — детерминированный референс-интерпретатор, формально реализующий актуальное правило `RULE.md` (v3) + его машинульную версию `reference/config.json`.
+- **Вход:** немецкое предложение + config.
 - **Выход:** разбиение `recommended` / `admissible` / `rejected` по данным Stanza (JSON, §9 RULE).
 
 **Цель:** объективная, воспроизводимая и 100%-детерминированная проверка правила по `CORPUS/verified.jsonl` и верификация нового ground-truth-кейса.
 
-**Ключевой принцип:** *правило = данные (конфиг), интерпретатор = код (статичный).* При новой версии правится только конфиг — не весь rule.py.
+**Ключевой принцип:** *правило = данные (конфиг), интерпретатор = код (статичный).* При новой версии патчится только config — не rule.py.
 
 ## 1. Архитектура: два слоя
 ### 1.1 Слой 1 — статичный интерпретатор (`rule.py`)
@@ -17,29 +17,27 @@
 - `seams` — seam-множество: **каждый C-класс = отдельная чистая функция** `c1..cN(tokens, config)` → набор позиций реза.
 - `nocut` — рёбра NO-CUT по §4 RULE (из конфига).
 - `punct_glue` — P1/P2 по §6 RULE (из конфига).
-- `min_merge` — слияние по min по §7 RULE.
+- `min_merge` — слияние по min по §7 RULE (детерминированный алгоритм из конфига).
 - `cap_check` — проверка cap.
 - `rank` — ранжирование по §8 RULE (**критерии статичны**, не в конфиге).
 - `render` — нормализация/вывод.
 
-### 1.2 Слой 2 — конфиг правила (`config/v{n}.json`)
-Содержит «что» конкретной версии — **единственный изменяемый элемент при новой версии**.
+### 1.2 Слой 2 — конфиг правила (`reference/config.json`)
+Содержит «что» актуальной версии — **единственный изменяемый элемент при новой версии**. Единый файл (без номера); версия — внутреннее поле `"version"`; история — git commit + git tag v{n+1}.
 - list C-seam classes (C1..Cn) с условиями (Stanza-поля).
 - list NO-CUT edges (условия deprel).
 - P1/P2 config (terminal set, last-token rule).
-- `min` / `pref` / `cap`.
+- `min` / `pref` / `cap`, min_merge.
 - `seam_classes_status` (verified / untested).
-- `version` / `rule_version` / `rule_file`.
+- `version`.
 
-**При v{n+1}: правим JSON — не трогаем rule.py.**
+**При v{n+1}: патчим JSON — не трогаем rule.py.**
 
 ## 2. Вход / парсинг + кэш
-- **Ввод:** текст предложения + версия правила.
+- **Ввод:** текст предложения + config.
 - **Парсинг:** Stanza depparse + constituency (Stanza 1.15.0).
-- **Кэш** — по hash текста: `{text_hash → parse_result}`.
-  - При повторных запусках читаем из кэша.
-  - **Детерминированность:** один текст → один parse → один результат.
-  - Кэш — не «кэш», а **факт**: если Stanza вернул X, это X; не пересчитываем.
+- **Кэш** — по hash текста: `{text_hash → parse_result}`. При повторных запусках читаем из кэша.
+- **Детерминированность:** один текст → один parse → один результат. Кэш — не «кэш», а **факт**: если Stanza вернул X, это X; не пересчитываем.
 - **Формат кэша:** JSONL (`text_hash → parse_json`).
 
 ## 3. Модель данных
@@ -48,22 +46,21 @@
 - `Variant`: `{blocks, rank, admissible, violations:[]}`.
 - `lex_count(блока)` = токенов с `upos ≠ PUNCT`; MWT = 1.
 
-## 4. Схема конфига (`config/v{n}.json`)
+## 4. Схема конфига (`reference/config.json`, v3)
 ```json
 {
   "version": "v3",
-  "rule_version": "v3.0",
-  "rule_file": "RULE v3.md",
+  "rule_file": "RULE.md",
   "min": 3,
   "pref": [3, 5],
   "cap": 7,
   "terminal_set": [".", "?", "!"],
   "seams": [
     {"class_id": "C1", "status": "verified"},
-    {"class_id": "C2", "status": "verified"},
-    {"class_id": "C3", "status": "verified"},
+    {"class_id": "C2", "status": "verified", "condition":{"deprel":["cc"]}},
+    {"class_id": "C3", "status": "verified", "condition":{"chain":["case","nmod","appos"],"head":"NOUN","scope":"whole_chain","min_left_lex":3,"min_right_lex":3}},
     {"class_id": "C4", "status": "verified", "after":{"root_xpos":["VAFIN","VVFIN"]},"next_token":{"deprel":["advmod","cc"],"xpos_or_lemma":["KON","denn","dann","so"]}},
-    {"class_id": "C5", "status": "verified"}
+    {"class_id": "C5", "status": "verified", "condition":{"deprel":["mark"],"xpos":"KOUS","min_left_lex":3,"min_right_lex":3}}
   ],
   "nocut": [
     {"deprel": ["det","det:poss","amod","nummod","compound","flat","appos"], "to": "NOUN"},
@@ -74,13 +71,10 @@
     {"root_verb": ["VAFIN","VVFIN","VVPP"], "with_aux": true},
     {"pair": ["ADV","PART"], "lemma_corr": true}
   ],
-  "punct": {
-    "P1": "last_token",
-    "P2": "prev_block"
-  }
+  "punct": {"P1":"last_token","P2":"prev_block"}
 }
 ```
-**v3:** C5 added; NO-CUT = `aux/aux:pass/cop` + root↔aux + NOUN xpos==TRUNC (chain atomic); C4 = VVFIN+advmod/cc (xpos==KON OR lemma∈{denn,dann,so}); P1 = last_token; min-merge deterministic.
+**v3:** C5 verified; NO-CUT = `aux/aux:pass/cop` + root↔aux + NOUN xpos==TRUNC (chain atomic); C4 = VVFIN+advmod/cc (xpos==KON OR lemma∈{denn,dann,so}); P1 = last_token; min-merge deterministic.
 
 ## 5. Пайплайн (детерминированный)
 1. `parse` → токены.
@@ -94,91 +88,52 @@
 
 ## 6. Детерминизм
 - Один input → один output (**hash-верифицируемо**).
-- Нет случайности, нет LLM-опinions.
-- **Детерминированность:** один текст + версия Stanza + один config → один результат.
-- Кэш: есть → читаем; нет → парсим (Stanza 1.15.0).
+- Нет случайности, нет LLM-opinions.
+- Детерминированность: один текст + версия Stanza + одно содержимое config → один результат (config = git-commit + внутреннее поле версии; rule.py читает только текущий config).
 
-## 7. Версионирование / синк с RULE v{n}.md
+## 7. Версионирование / синк с RULE.md
 - **rule.py** — статичный, **не версируется**.
-- **config/v{n}.json** — одна версия на RULE v{n}.md.
-- **Синхронизация:** при v{n+1} правим `config/v{n+1}.json`; rule.py не трогаем.
-- **Верификация синхронности:** config «полный» — все правила RULE v{n}.md в config; если нет → тест fail.
+- **config.json** — единый файл (без номера), внутреннее `"version"` = версия правила.
+- **Синхронизация:** при v{n+1} патчим `config.json` + обновляем соответствующие § в `RULE.md`; git commit + tag v{n+1}. rule.py не трогаем.
+- **Верификация синхронности:** config «полный» — все правила RULE.md в config; если нет → тест fail.
 
-## 8. Выход JSON (совпадает с §9 RULE)
-```json
-{
-  "language": "de",
-  "rule_version": "vN",
-  "recommended": [{"n":1,"text":"","lex_words":3,"toks":[1,2,3],"seams":["C1"]}],
-  "admissible": [...],
-  "rejected": [{"variant":"","violations":["NO-CUT: det(4)->NOUN(5)"]}],
-  "seam_classes_status": {"C1":"verified","C2":"verified","C3":"verified","C4":"verified","C5":"untested"}
-}
-```
+## 8. Выход JSON
+Формат — §9 актуального правила `RULE.md` (и машиночитаемый блок итога PROMPT). Не дублируем: единый источник формата.
 
 ## 9. Тесты / верификация
-- **`self_test()`** — правило воспроизводит все verified-кейсы `CORPUS/verified.jsonl` (accepted=true).
+- **`self_test()`** — правило воспроизводит все verified-кейсы `CORPUS/verified.jsonl` (accepted=true); вывод — только pass/fail по каждому кейсу.
 - **Determinism check** — один input → один output (hash).
-- **Config completeness** — все правила RULE v{n}.md в config; если нет → fail.
+- **Config completeness** — все правила RULE.md в config; если нет → fail.
 - **New case verification** — новый ground-truth-кейс: rule.py воспроизводит или gap.
 - **Regression 100%** — все verified-кейсы без конфликтов.
 
-## 10. Acceptance-гейты (PROTOCOL.md)
-| # | Критерий |
-|---|----------|
-| 1 | ≥20 verified-кейсов в `CORPUS/verified.jsonl` |
-| 2 | Реестр GAP пуст / all resolved (`GAPS/registry.md`) |
-| 3 | Последние 3 итерации — только уточнения (без новых C-class, без изменения NO-CUT/P1/P2) |
-| 4 | Регресс 100% — все verified-кейсы воспроизводятся без конфликтов |
+## 10. Acceptance-гейты (PROTOCOL)
+См. PROLOG §Критерии выхода в ТЗ для программирования (4 условия). Дополнительно: config completeness (§9) — технический гейт синхронности RULE.md ↔ config.json.
 
 ## 11. Layout
 ```
 reference/
-├── rule.py          # статичный интерпретатор (создаётся в отдельной дельте)
-├── config/
-│   └── v3.json      # конфиг v3 (создаётся в отдельной дельте)
+├── rule.py          # статичный интерпретатор (создаётся отдельной дельтой)
+├── config.json      # текущий конфиг (патчится при каждой дельте; без номера)
 ├── cache/           # parse-кэш
 └── TZ_rule_py.md    # это ТЗ
 ```
 
-## 12. Non-goals
-- Не делаем LLM-опinions в rule.py.
-- Не делаем «семантику» — только Stanza-поля.
-- Не делаем «паузы».
-- Не делаем «внешние знания».
-- Не переписываем rule.py при новой версии (правим только config).
-
-## 13. Edge cases
+## 12. Edge cases
 - **MWT** (`is_mwt=true`, children>1) — atomic, неделим.
 - **Punctuation:** P1 = last token; P2 = non-terminal → prev block.
 - **Cap:** блок 6–7 слов допустим только если все seams legal и нет NO-CUT внутри.
-- **Min:** блок <3 → merge.
+- **Min:** блок <3 → merge (детерминированный алгоритм по config).
 - **Empty blocks** — не допускаются.
 
-## 14. Workflow v{n+1}
-1. Человек даёт ground-truth-кейс (по PROMPT.md).
-2. LLM: parse, seam-разбор, delta, RULE v{n+1}, регресс.
-3. **rule.py:** правим `config/v{n+1}.json` (добавляем C-class / меняем NO-CUT).
+## 13. Workflow v{n+1}
+1. Человек даёт ground-truth-кейс (по PROMPT).
+2. LLM: parse, seam-разбор, delta, RULE.md + config.json (патч), регресс.
+3. **rule.py:** патчим `config.json` (добавляем C-class / меняем NO-CUT); rule.py не трогаем.
 4. rule.py: `self_test()` → 100% regression.
 5. CORPUS: новый verified-кейс.
-6. LOG, GAPS, CHANGELOG.
+6. LOG, GAPS, CHANGELOG; git commit + tag v{n+1}.
 
-## 15. Текущее состояние
-- **RULE v3.md** — актуальное правило.
-- **config/v3.json** — не создан (отдельная дельта, sync: C4 condition, TRUNC NO-CUT, min-merge)
-- **rule.py** — не создан (отдельная дельта).
-- **TZ_rule_py.md** — это ТЗ.
-
-## 16. Приоритеты / этапы
-- **P0:** статичный интерпретатор + config-схема + детерминизм.
-- **P1:** `self_test()` + regression check + config completeness.
-- **P2:** cache + new case verification.
-- **P3:** CI-интеграция (если понадобится).
-
-## 17. План B (отказ от конфига)
-Если не использовать config:
-- rule.py с встроенными правилами (функции C1..Cn внутри кода).
-- При v{n+1} правим rule.py (не только config).
-- Минус: сложнее читать как ТЗ; выше риск.
-
-**Данное ТЗ использует подход A (config) как основной.**
+## 14. План B (отказ от конфига)
+Если не использовать config: rule.py с встроенными правилами (функции C1..Cn внутри кода). При v{n+1} правим rule.py (не только config). Минус: сложнее читать как ТЗ; выше риск.
+**Данное ТЗ использует подход A (config, единый файл) как основной.**

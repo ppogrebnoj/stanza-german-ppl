@@ -1,0 +1,81 @@
+{
+  "version": "v3",
+  "rule_file": "RULE.md",
+  "min": 3,
+  "pref": [3, 5],
+  "cap": 7,
+  "terminal_set": [".", "?", "!"],
+  "min_merge": {
+    "prefer": "head_root",
+    "else": "fewer_lex_words",
+    "tie": "left"
+  },
+  "seams": [
+    {
+      "class_id": "C1",
+      "status": "verified",
+      "condition": null,
+      "note": "boundary of adjacent units by start_id (structural, derived in build_units)"
+    },
+    {
+      "class_id": "C2",
+      "status": "verified",
+      "condition": {"deprel": ["cc"]}
+    },
+    {
+      "class_id": "C3",
+      "status": "verified",
+      "condition": {
+        "chain": ["case", "nmod", "appos"],
+        "head": "NOUN",
+        "scope": "whole_chain",
+        "min_left_lex": 3,
+        "min_right_lex": 3
+      },
+      "note": "cut before the whole PP chain (ADP + its dependents), not before its first word"
+    },
+    {
+      "class_id": "C4",
+      "status": "verified",
+      "condition": {
+        "after": {"root_xpos": ["VAFIN", "VVFIN"]},
+        "next_token": {
+          "deprel": ["advmod", "cc"],
+          "xpos_or_lemma": ["KON", "denn", "dann", "so"]
+        }
+      },
+      "note": "fixed set; PTKNEG (e.g. 'nicht') not included"
+    },
+    {
+      "class_id": "C5",
+      "status": "verified",
+      "condition": {
+        "deprel": ["mark"],
+        "xpos": "KOUS",
+        "min_left_lex": 3,
+        "min_right_lex": 3
+      },
+      "note": "subordinate clauses: '..., weil er muede ist', 'Weil ..., kam ...' (iter 3)"
+    }
+  ],
+  "nocut": [
+    {"deprel": ["det", "det:poss", "amod", "nummod", "compound", "flat", "appos"], "to": "NOUN"},
+    {"deprel": ["case"], "with": ["pobj", "obl"]},
+    {"nouns_xpos": "TRUNC", "atomic_chain": true},
+    {"mwt": true},
+    {"deprel": ["aux", "aux:pass", "cop"]},
+    {"root_verb": ["VAFIN", "VVFIN", "VVPP"], "with_aux": true},
+    {"pair": ["ADV", "PART"], "lemma_corr": true}
+  ],
+  "punct": {
+    "P1": "last_token",
+    "P2": "prev_block"
+  },
+  "seam_classes_status": {
+    "C1": "verified",
+    "C2": "verified",
+    "C3": "verified",
+    "C4": "verified",
+    "C5": "verified"
+  }
+}

@@ -1,7 +1,7 @@
-# Реестр GAP — типы разбивок, не покрытые правилом RULE v{N}.md
+# Реестр GAP — типы разбивок, не покрытые правилом RULE.md
 
 Каждый GAP формулируется **только** через Stanza-признаки (deprel/xpos/lemma/is_mwt). Статусы: open → resolved.
-
+«Resolved» = существует соответствующая clause правила; различие «resolved» vs «verified» — см. PROLOG §Критерии выхода.
 | gap_id | Stanza-признак | Пример (id токенов) | Статус | Решение |
 |---|---|---|---|---|
 | G1 | P1 | — (перфект/модальные: root=VVPP, aux=VAFIN после объектных блоков) | resolved | v3 §6: P1 → блок, содержащий последний токен предложения |
@@ -16,14 +16,4 @@
 - Итерация 2 (v3.0): G1–G5 registered, status resolved (формализованы дельтами §4/§5/§6 v3).
 - Итерация 3: C4/C5 verified (test case); правило без изменения.
 
-## Верификация seam-классов (в отличие от «resolved»)
-«Resolved» в таблице выше = **существует** соответствующая clause правила (закрыт тип дыры). «Verified» = класс воспроизводит хотя бы один verified-кейс из `CORPUS/verified.jsonl`. Все G1–G5 closed, но это **не то же**, что все seam-классы verified: критерий №2 выхода (все G resolved) — необходимое, а не достаточное.
 
-| class | feature | status (в RULE v3 §9) | нужен test case? | итерация |
-|---|---|---|---|---|
-| C1 | unit-boundary | verified | нет | — |
-| C2 | cc-seam | verified | нет | — |
-| C3 | case/nmod/appos chain | verified | нет | — |
-| C4 | VVFIN + (KON/denn/dann/so) | verified | нет | iter 3 |
-| C5 | mark/KOUS subordinate | verified | нет | iter 3 |
-**Note:** все seam-классы (C1–C5) теперь verified — правило полностью протестировано. Критерий №2 выхода PROTOCOL выполнен.
