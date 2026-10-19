@@ -20,7 +20,7 @@
 3. **Ноль регресса** — новая версия правила воспроизводит все ранее verified-кейсы `CORPUS/verified.jsonl`; конфликты разрешаются явным решением (запись в `GAPS/registry.md`).
 
 ## Итерация
-После вердикта человек: принимает / корректирует разбивку → LLM пишет дельту, обновляет `RULE.md` и `config.json`, `CORPUS/verified.jsonl`, `GAPS/registry.md`, `LOG/iterations.md`, `CHANGELOG.md`; **git commit + tag v{n+1}** после каждой дельты.
+После вердикта человек: принимает / корректирует разбивку → LLM пишет дельту, обновляет `RULE.md` и `config.json`, `CORPUS/verified.jsonl`, `GAPS/registry.md`, `LOG/iterations.md` (таблица + история); **git commit + tag v{n+1}** после каждой дельты.
 
 ## Версионирование
 - Правило — единый файл: **RULE.md** (версия в шапке). История: git-теги (v1..vN) + LOG/iterations. Отдельных файлов на версии нет.
