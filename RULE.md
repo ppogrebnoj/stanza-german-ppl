@@ -59,6 +59,6 @@
 - Хранимый корпус verified-разбиений: **CORPUS/verified.jsonl** (схема-пример отдельно: CORPUS/schema.jsonl).
 - Реестр GAP: **GAPS/registry.md**.
 - Лог итераций: **LOG/iterations.md**.
-- Единый changelog: **CHANGELOG.md**.
+- Единый log + changelog: **LOG/iterations.md** (секции 1 и 2).
 - Детерминированный референс-интерпретатор: **reference/rule.py + self_test()** (отдельная дельта, по reference/TZ_rule_py.md).
 - Версионирование правила: единый RULE.md; версии — git-теги v1..vN + LOG/iterations.md (см. PROTOCOL §Вёрсионирование)..

@@ -9,4 +9,4 @@
 1. Продолжение цикла итераций: человек даёт ground-truth — LLM по PROMPT.md (дельта = патч config.json + обновлённые § RULE.md, не весь файл).
 2. Реализация `reference/rule.py` + `self_test()` по reference/TZ_rule_py.md (P0: статичный интерпретатор; P1: self_test + regression; после этого шаг D в PROMPT — прогон скриптом, регресс без чтения корпуса).
 
-**Файлы цикла:** RULE.md / PROMPT.md / PROTOCOL (файлы + гейты) / CORPUS (verified.jsonl + schema.jsonl) / GAPS/registry.md / LOG/iterations.md / CHANGELOG.md.
+**Файлы цикла:** RULE.md / PROMPT.md / PROTOCOL (файлы + гейты) / CORPUS (verified.jsonl + schema.jsonl) / GAPS/registry.md / LOG/iterations.md (лог + changelog)

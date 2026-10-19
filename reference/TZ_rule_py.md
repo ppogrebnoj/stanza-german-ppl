@@ -132,7 +132,7 @@ reference/
 3. **rule.py:** патчим `config.json` (добавляем C-class / меняем NO-CUT); rule.py не трогаем.
 4. rule.py: `self_test()` → 100% regression.
 5. CORPUS: новый verified-кейс.
-6. LOG, GAPS, CHANGELOG; git commit + tag v{n+1}.
+6. `LOG/iterations` (таблица + история), GAPS; git commit + tag v{n+1}.
 
 ## 14. План B (отказ от конфига)
 Если не использовать config: rule.py с встроенными правилами (функции C1..Cn внутри кода). При v{n+1} правим rule.py (не только config). Минус: сложнее читать как ТЗ; выше риск.
