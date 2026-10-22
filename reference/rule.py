@@ -785,6 +785,11 @@ def determinism_cli(sentence):
             shutil.rmtree(tmpdir, ignore_errors=True)
         except Exception:
             pass
+    # always clean the temp dir (may be empty after a successful move-back)
+    try:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    except Exception:
+        pass
 
     ok = (h_on == h_off)
     import sys as _sys
