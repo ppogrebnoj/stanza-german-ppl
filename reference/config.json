@@ -6,7 +6,7 @@
   "cap": 7,
   "terminal_set": [".", "?", "!"],
   "min_merge": {
-    "prefer": "head_root",
+    "prefer": "root_block",
     "else": "fewer_lex_words",
     "tie": "left"
   },
@@ -59,17 +59,17 @@
     }
   ],
   "nocut": [
-    {"deprel": ["det", "det:poss", "amod", "nummod", "compound", "flat", "appos"], "to": "NOUN"},
-    {"deprel": ["case"], "with": ["pobj", "obl"]},
-    {"nouns_xpos": "TRUNC", "atomic_chain": true},
-    {"mwt": true},
-    {"deprel": ["aux", "aux:pass", "cop"]},
-    {"root_verb": ["VAFIN", "VVFIN", "VVPP"], "with_aux": true},
-    {"pair": ["ADV", "PART"], "lemma_corr": true}
+    {"id": "det_to_noun", "deprel": ["det","det:poss","amod","nummod","compound","flat","appos"], "to": "NOUN"},
+    {"id": "case_obl", "deprel": ["case"], "with": ["pobj","obl"]},
+    {"id": "trunc_atomic_chain", "nouns_xpos": "TRUNC", "atomic_chain": true},
+    {"id": "mwt", "mwt": true},
+    {"id": "aux_cop", "deprel": ["aux","aux:pass","cop"]},
+    {"id": "root_aux", "root_verb": ["VAFIN","VVFIN","VVPP"], "deprel": ["aux","aux:pass"]},
+    {"id": "adv_part_pair", "pair": ["ADV","PART"], "lemma_corr": true}
   ],
   "punct": {
-    "P1": "last_token",
-    "P2": "prev_block"
+    "P1": "attach_terminal_to_last_lexical_block",
+    "P2": "attach_nonterminal_to_previous_block"
   },
   "seam_classes_status": {
     "C1": "verified",

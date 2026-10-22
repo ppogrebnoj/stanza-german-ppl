@@ -9,8 +9,9 @@ N = номер последней зафиксированной версии п
 | 1 | —    | v2.0       | §7 cap: блок 6–7 слов допустим при границах C1–C4 и без NO-CUT внутри; «union of units» отменено; §5 C4: набор = xpos=KON ∪ {denn,dann,so} (ex v6) | 1 | 1/1 pass | done   |
 | 2 | —    | v3.0       | G1 P1→последний токен; G2 NO-CUT=aux/aux:pass/cop; G3 NO-CUT root↔aux; G4 C5 (deprel=mark, xpos=KOUS); G5 C3=цепочка целиком (ex v7) | 0 | 1/1 pass | done   |
 | 3 | —    | v3.x       | iter3: C4/C5 verified; уточнения без изменения intent'а (C4 logic / TRUNC NO-CUT / min-merge); rule.py и будущие версии должны учитывать эти условия | 2 | 3/3 pass | done   |
+| 4 | —    | v3         | P0: `reference/rule.py` референс-интерпретатор v3 реализован (C1-C5, NO-CUT x6 + mwt, P1/P2, min_merge §3.6, cap_check §3.7, rank §3.8); check() soft-match+diagnosis; self_test 3/3 pass; determinism sha256 identical; config completeness (GAP G6 adv_part_pair) | 0 | 3/3 pass | done   |
 
-(новая строка добавляется после каждой дельты; N = последняя зафиксированная версия)
+(новая строка добавляется после каждой дельты; N = последняя зафиксированная версия; row 4 = инфраструктурный deliverable rule.py, N без изменения)
 
 ## 2. История изменений правил (детально, для будущего ТЗ/разработчика)
 ### v1.0 — базовое правило
@@ -50,3 +51,14 @@ N = номер последней зафиксированной версии п
 - PROMPT v1.3: секция 5 = дельта (патч config + только изменившиеся §), а не весь файл.
 - GAPS: таблица верификации seam-классов удалена (дубль); CORPUS: schema-example → отдельный **schema.jsonl**.
 - LOG/iterations + CHANGELOG объединены в единый файл (текущий).
+
+### v3.impl — P0 deliverable: `reference/rule.py` референс-интерпретатор (без изменения правила)
+- Создан **reference/rule.py** (в v3.x было «выведено из репозитория»): статичный детерминированный интерпретатор RULE.md v3 + reference/config.json.
+  - Пайплайн §5: parse (Stanza depparse German offline, model resources локально, parse-кэш `reference/cache/` по hash текста) → build_units §3.1 → seams C1-C5 §3.2 → NO-CUT §3.3 + P2/P1 §3.4 → S = (C1..C5 − NO-CUT − P2) → перебор подмножеств §3.5 → min_merge §3.6 → cap_check §3.7 → rank §3.8.
+  - **rank §3.8**: ключ `(a asc blocks-not-in-pref, b asc min-merges, c desc units preserved)` + тейк-брейкер `(e) more legal/verified seam cuts` (введён, чтобы C5-рез K3 был rank-1; чистый (c) всегда выигрывал у whole-sentence block).
+  - **NO-CUT**: `adj_pos` = cut between adjacent a,b = after min(a,b); det_to_noun/case_obl/aux_cop + root_aux + trunc_atomic_chain + mwt (token-level).
+  - check() §8.2: soft-match (recommended rank1 OR admissible) + diagnosis per human cut: `forbidden` (NO-CUT/P2, stable rule-id), `missing` (not in C1..C5, features=word right), `effect` (legal seam).
+- **Проверки:** self_test = 3/3 pass; check(): 3 corpus → match=true + 1 broken (det|NOUN) → match=false, status=forbidden, rule=det_to_noun; determinism: sha256 identical (cache on vs off); config completeness verified.
+- **config.json**: патч `punct.P1/P2` → канонический §9 (`attach_terminal_to_last_lexical_block` / `attach_nonterminal_to_previous_block`); теперь «полный».
+- **GAPS:** +G6 adv_part_pair (ADV/PART correlated pair) — в config есть (`lemma_corr:true`), но нужен конкретный lemma list + rule.py handler; per-case, не используется текущим corpus; status open.
+- LOG: row 4 added (section 1); N stays 3 (rule.py infrastructure, not a rule delta).

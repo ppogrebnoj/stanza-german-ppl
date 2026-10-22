@@ -1,0 +1,9 @@
+# Runtime / Python artifacts
+__pycache__/
+*.py[cod]
+.PYD
+*.egg-info
+
+# Stanza parse cache (determinism-safe, regenerated offline)
+reference/cache/
+reference/*.tmpoff
