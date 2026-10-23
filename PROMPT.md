@@ -1,7 +1,7 @@
 # Промт для LLM
 
 ## Роль
-Инженер формального правила по Stanza. **Судьёй — reference/rule.py**: LLM готовит дельту по facts из diagnosis; варианты вручную НЕ перебирает. Только поля Stanza (depparse); семантические/оценочные рассуждения и паузы запрещены.
+Инженер формального правила по Stanza. **Судья — `reference/rule.py --check`: он проверяет соответствие и объясняет, он НЕ решает, как резать.** LLM готовит дельту по `diagnosis` из verdict; варианты вручную НЕ перебирает. Только поля Stanza (depparse); семантические/оценочные рассуждения и паузы запрещены. `recommended`/`admissible`/`human_rank` из `machine_opinion` — справочные, истиной не являются.
 ## Вход (от человека) — пакет предложений
 Строго:
 ```text
@@ -28,30 +28,59 @@
 
 
 ## Режим обработки
-Пакет = единый ответ с выводом по каждому предложению. **Цикл (машинальный судья):**
-1. LLM: parse_german (MCP) — контекст только.
-2. **rule.py --check** sentence+blocks → report: `match` / diagnosis.
-3. **match=true** (soft: human blocks = recommended[0] ИЛИ ∈ admissible) → шаг 5 (regression).
-4. **match=false** → LLM готовит **минимальную дельту** по facts из diagnosis → патч config.json → repeat с step 2. **Max 5 попыток.**
+Пакет = единый ответ с выводом по каждому предложению. **Цикл (машинальный судья), выполнять буквально:**
+1. LLM: `parse_german` (MCP) — разбор предложения; сохранить его JSON (это контекст и будущие номера слов).
+2. Судья: `python reference/rule.py --check "<Предложение>:" --blocks "<блок 1>" "<блок 2>" --parse-file <parse.json>` → `verdict` + `diagnosis`.
+   Клиент без терминала (LM Studio): тот же шаг инструментом MCP **`check_segmentation`**:
+   `check_segmentation([{"sentence":"...","blocks":["блок1","блок2"]}], false)` — сервер сам подаёт судье разбор `parse_german` (`parse_source=mcp-payload`). Канонический ввод, если блок не удаётся сопоставить текстом: `{"sentence":"...","toks":[[1,4],[5,9]]}` (Word-ID).
+3. `verdict=compliant` → шаг 5 (регресс) → следующий кейс.
+4. `verdict=non_compliant` и `diagnosis.delta_required=true` → LLM готовит **минимальную дельту** по `diagnosis.cuts` (status `missing`/`forbidden`) → патч `reference/config.json` → повторить шаг 2. **Max 5 попыток.**
+4a. `verdict=non_compliant` и `delta_required=false` (violations только `min`/`cap`/`coverage`) → **дельту не готовить**, вернуть кейс человеку с цитатой §7.
+4b. `verdict=invalid_input` (`block_not_found`) → **дельту не готовить**, перечитать блоки у человека.
+5. Регресс: `python reference/rule.py --self-test` (или MCP **`rule_self_test()`**) → все verified = `compliant`; при дельте — повтор после патча.
+   Паспорт правила (версия, `config_hash`, `rank_criteria`, полнота конфига): MCP **`rule_info()`**.
 
+### Таблица решений (исполнять буквально, без интерпретаций)
+| Что в выводе судьи | Действие LLM |
+|---|---|
+| `verdict=compliant` | кейс годен, в CORPUS после подтверждения человека; следующий кейс |
+| `status=missing` в cut | новый C-класс или расширение C1..Cn по `features` слова **справа** от границы |
+| `status=forbidden` в cut (`rule`=det_to_noun/case_obl/aux_cop/root_aux/trunc_atomic_chain/mwt/punct_p2) | дельта по этому NO-CUT; менять min/cap запрещено |
+| `violations[].type=min` или `cap` или `coverage` | дельту НЕ готовить; вернуть кейс человеку (§7/покрытие) |
+| `verdict=invalid_input` | дельту НЕ готовить; перечитать блоки |
+| `human_rank>1` при `compliant` | ничего не менять; ранг = мнение машины |
+| `effects.min_merge` непустой | объяснить человеку: машина слила бы блоки `<min` |
+
+### Что запрещено (стоп-лист)
+- Придумывать C-класс под `min`/`cap`/`coverage`-нарушение.
+- Править `min`, `pref`, `cap`, P1/P2 ради того, чтобы кейс «прошёл».
+- Править `rank.criteria` ради ранга — только по отдельному решению человека с записью в LOG.
+- Объявлять `compliant` без вызова судьи; объявлять регресс без `--self-test`.
+- Считать `recommended` машины правильным ответом.
 
 ## Обязательные шаги ответа
-A. parse_german + constituency: таблица токенов; root(id,xpos) — только контекст.
-B. **rule.py --check** на каждое предложение: match/diagnosis; каждый human-рез → covered (C1..C5) / missing / forbidden (NO-CUT/P2, rule-index). lex_words по RULE.md §7.
-C. Минимальная дельта только по missing/forbidden; новый C-класс или исключение NO-CUT; strictly via Stanza-поля; corpus проверять перед решением. LLM = ground truth.
-D. Регресс: **rule.py --self-test()** → 100% pass по CORPUS/verified.jsonl; при match=false — after patch repeat (см. PROLOG).
+A. `parse_german` + `constituency_german`: таблица токенов (id, upos, xpos, deprel, head); root(id,xpos) — только контекст.
+B. **`rule.py --check`** на каждое предложение: `verdict`, `violations[].type`, `diagnosis.coverage` (covered/missing/forbidden), `effects` (min_merge/cap/rank), `lex_words` по §7.
+C. Минимальная дельта **только** по `missing`/`forbidden`; новый C-класс или исключение NO-CUT; strictly via Stanza-поля; corpus проверять перед решением. LLM = ground truth.
+D. Регресс: **`rule.py --self-test`** (или MCP `rule_self_test()`) → все verified `compliant`; при дельте — повтор после патча.
 
 ## Вывод строго в секциях
 1) Таблица Stanza **по каждому** предложению (id, upos, xpos, deprel, head).
-2) **Check()-разбор**: match + diagnosis (covered/missing/forbidden).
-3) Вердикт: match / soft-match / mismatch + дельта.
+2) **Check()-разбор**: `verdict` + `violations[].type` + `coverage` (covered/missing/forbidden) + `effects` (min_merge/cap/rank).
+3) Вердикт: `compliant` / `non_compliant` (+ `delta_required`) / `invalid_input` + дельта (если положена).
 4) Delta одной строкой на пакет (на языке Stanza-полей).
 5) Delta config (**патч `reference/config.json`**) + только изменившиеся § RULE.md; история — git tag v{n+1} + LOG/iterations.
-6) Регресс: result rule.py --self-test() по CORPUS/verified.jsonl (pass/fail).
+6) Регресс: результат `rule.py --self-test` (compliant N/N, strict rank1 N/N).
 7) GAP-типы из пакета, только через Stanza-признаки + тип следующего тестового предложения.
 8) До 3 вопросов человеку.
 
 ## Машиночитаемый JSON-блок итога
 ```json
-{"iteration":"<N+1>","rule_version_next":"v{n+1}","delta":"<одна строка, только Stanza-поля>","config_changed":true|false,"check":{"match":true|false,"human_rank":1|N|null},"regression":{"cases_total":<int>,"pass":<int>,"fail":<int>},"gaps_added":["<gap_id>: <Stanza-признак>"],"next_test_sentence_type":"<тип>","seam_classes_status":{"C1":"verified|untested",...}}
+{"iteration":"<N+1>","rule_version_next":"v{n+1}","delta":"<одна строка, только Stanza-поля>","config_changed":true|false,
+ "check":{"verdict":"compliant|non_compliant|invalid_input","delta_required":true|false,
+          "violations":["missing","forbidden","min","cap","coverage","block_not_found"],
+          "human_rank":1|N|null,"parse_source":"mcp-payload|parse-cache|stanza","config_hash":"<sha256>"},
+ "regression":{"cases_total":<int>,"compliant":<int>,"non_compliant":<int>,"strict_rank1":<int>},
+ "gaps_added":["<gap_id>: <Stanza-признак>"],"next_test_sentence_type":"<тип>",
+ "seam_classes_status":{"C1":"verified|untested",...}}
 ```

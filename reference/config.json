@@ -10,6 +10,18 @@
     "else": "fewer_lex_words",
     "tie": "left"
   },
+  "rank": {
+    "criteria": [
+      { "criterion": "blocks_not_in_pref", "direction": "asc" },
+      { "criterion": "min_merges", "direction": "asc" },
+      { "criterion": "cuts_count", "direction": "desc" },
+      { "criterion": "units_preserved", "direction": "desc" },
+      { "criterion": "cut_positions", "direction": "asc" }
+    ],
+    "note": "Критерии ранжирования = ДАННЫЕ правила (SPEC §3.8 + amendment: состав и направления — в config, не в коде). В verdict-судье НЕ участвуют: ранг — мнение машины. cuts_count:desc (больше легальных швов = лучше) включён решением человека и стоит ПЕРЕД units_preserved: без него pure SPEC (a,b,c,d) даёт strict rank1 2/3 (K3 = rank 2), с ним — 3/3; compliant 3/3 в обоих случаях."
+  },
+  "max_seam_positions": 12,
+  "max_admissible": 5,
   "seams": [
     {
       "class_id": "C1",

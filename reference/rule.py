@@ -3,8 +3,21 @@
 """rule.py — статичный детерминированный референс-интерпретатор RULE.md (v3) + config.
 
 Правило = данные (config.json), алгоритмическая семантика = код интерпретатора.
-Вход: текст одного предложения + config. Выход: JSON §8 (recommended/admissible/rejected).
-API: --check "sentence" --blocks "b1" "b2" ... ; --self-test ; --determinism .
+Вход: текст одного предложения + config.
+
+ДВА РЕЖИМЫ (важно для цикла PROTOCOL):
+  * check()  = СУДЬЯ: verdict compliant/non_compliant/invalid_input по разбивке
+               человека + подсказки (diagnosis.cuts / effects / hints).
+               Ранжирование машины в verdict НЕ входит.
+  * run()    = МНЕНИЕ МАШИНЫ: полный перебор §8 (recommended/admissible/rejected).
+               Справочная секция machine_opinion в check(); отдельный вызов в CLI.
+
+API:
+  rule.py "sentence"                                  -> мнение машины (run)
+  rule.py --check "sentence" --blocks "b1" "b2" ...    -> verdict + подсказки
+  rule.py --check "sentence" --blocks ... --no-opinion -> то же без перебора (§8)
+  rule.py --check ... --parse-file parse.json          -> судить по разбору parse_german
+  rule.py --self-test | --determinism | --config-completeness
 
 Только поля Stanza; детерминизм; parse-кэш по hash; model resources — локально offline.
 """
@@ -45,6 +58,15 @@ def _wid(words):
     return {w["id"]: w for w in words}
 
 
+# ============================ guards ==========================================
+class TooManySeams(ValueError):
+    """Перебор §8 = O(2^|S|). Без лимита один вызов может вешать процесс
+    (|S|=16 -> ~21 c, |S|=18 -> ~91 c). Лимит — данные правила."""
+    def __init__(self, k: int, limit: int):
+        super().__init__(f"too many seam positions ({k} > max_seam_positions={limit})")
+        self.k, self.limit = k, limit
+
+
 # ============================ config =========================================
 def load_config(path):
     with open(path, "r", encoding="utf-8") as f:
@@ -69,6 +91,7 @@ def validate_schema(cfg):
         "version": str, "min": int, "pref": list, "cap": int,
         "terminal_set": list, "min_merge": dict, "seams": list,
         "nocut": list, "punct": dict, "seam_classes_status": dict,
+        "rank": dict,
     }
     for k, t in required.items():
         if k not in cfg:
@@ -108,6 +131,27 @@ def validate_schema(cfg):
         if k not in cfg["seam_classes_status"]:
             raise ValueError(f"seam_classes_status missing {k}")
 
+    for k in ("max_seam_positions", "max_admissible"):
+        if k in cfg:
+            if not isinstance(cfg[k], int) or cfg[k] <= 0:
+                raise ValueError(f"config {k!r} must be a positive int")
+    if "max_seam_positions" in cfg and cfg["max_seam_positions"] > 20:
+        raise ValueError("max_seam_positions > 20 даёт экспоненциальный перебор (>1e6 вариантов)")
+
+    # rank: критерии ранжирования — данные правила (SPEC §3.8 + amendment)
+    crit = cfg["rank"].get("criteria")
+    if not isinstance(crit, list) or not crit:
+        raise ValueError("rank.criteria must be a non-empty list")
+    for item in crit:
+        if set(item.keys()) != {"criterion", "direction"}:
+            raise ValueError("rank.criteria item keys fixed {criterion,direction}")
+        if item["criterion"] not in RANK_CRITERIA:
+            raise ValueError(f"unknown rank criterion {item['criterion']!r}")
+        if item["direction"] not in ("asc", "desc"):
+            raise ValueError("rank direction must be asc|desc")
+        if RANK_CRITERIA[item["criterion"]] == "d_tuple" and item["direction"] != "asc":
+            raise ValueError("cut_positions supports only asc")
+
 
 # ============================ parse + cache ==================================
 _NLP = None
@@ -125,10 +169,97 @@ def _get_nlp():
     return _NLP
 
 
-def parse_sentence(text):
-    """-> (words, tokens). words: id..deprel; tokens: surface + MWT word_ids."""
+def _normalize_words(raw_words):
+    """Слова из любого формата -> внутренний (feats/deprel). Принимает и поля
+    MCP parse_german (features/dep), и внутренние имена кэша (feats/deprel)."""
+    out = []
+    for w in raw_words:
+        out.append({
+            "id": int(w["id"]), "text": str(w["text"]),
+            "lemma": str(w.get("lemma", "")),
+            "upos": str(w.get("upos", "")), "xpos": str(w.get("xpos", "")),
+            "feats": str(w.get("feats", w.get("features", ""))),
+            "head": int(w["head"]),
+            "deprel": str(w.get("deprel", w.get("dep", ""))),
+        })
+    return out
+
+
+def _normalize_tokens(raw_tokens):
+    out = []
+    for i, t in enumerate(raw_tokens):
+        out.append({
+            "id": i + 1, "text": str(t["text"]),
+            "start_char": t.get("start_char"), "end_char": t.get("end_char"),
+            "is_mwt": bool(t.get("is_mwt", False)),
+            "word_ids": [int(x) for x in t["word_ids"]],
+        })
+    return out
+
+
+def _validate_parse(words, tokens):
+    """Жёсткая сверка переданного разбора: номера слов, корень, покрытие токенов,
+    offsets. Ошибки — явные, молча не терпим (SPEC §4)."""
+    ids = sorted(w["id"] for w in words)
+    if ids != list(range(1, len(ids) + 1)):
+        raise ValueError("word ids must be contiguous 1..n")
+    n = len(ids)
+    roots = [w for w in words if w["head"] == 0]
+    if len(roots) != 1:
+        raise ValueError(f"expected exactly one root (head==0), got {len(roots)}")
+    covered = []
+    for t in tokens:
+        covered.extend(t["word_ids"])
+    if sorted(covered) != list(range(1, n + 1)):
+        raise ValueError("tokens must cover every word id exactly once")
+    if any(t["start_char"] is None or t["end_char"] is None for t in tokens):
+        raise ValueError(
+            "payload tokens lack start_char/end_char — MCP parse_german must provide "
+            "them (SPEC §4); update server.py _sentence_tokens")
+
+
+def normalize_parse(payload, expect_text=None):
+    """Готовый разбор (вывод MCP parse_german, SPEC §4) -> (words, tokens, text).
+    Форматы: {'sentences':[{'text','words','tokens'}]} | {'words','tokens','sentence_text'}.
+    Поля слов: features/dep (MCP) или feats/deprel (внутренние)."""
+    if isinstance(payload, dict) and "sentences" in payload:
+        sents = payload["sentences"]
+        if len(sents) != 1:
+            raise ValueError(f"expected one sentence in payload, got {len(sents)}")
+        s = sents[0]
+        words = _normalize_words(s["words"])
+        tokens = _normalize_tokens(s["tokens"])
+        text = s.get("text")
+    elif isinstance(payload, dict) and "words" in payload and "tokens" in payload:
+        words = _normalize_words(payload["words"])
+        tokens = _normalize_tokens(payload["tokens"])
+        text = payload.get("sentence_text")
+    else:
+        raise ValueError("expected parse payload with 'sentences' or 'words'+'tokens'")
+    _validate_parse(words, tokens)
+    if expect_text is not None and text and _norm(text) != _norm(expect_text):
+        raise ValueError(f"payload sentence text != checked sentence: {text!r} vs {expect_text!r}")
+    return words, tokens, text
+
+
+def parse_sentence(text, parsed=None):
+    """-> (words, tokens, source). source: 'mcp-payload' | 'parse-cache' | 'stanza'.
+
+    SPEC §4: судья должен оперировать тем же разбором, что и LLM. Если передан
+    parsed (вывод parse_german) — внутренний пере-парсинг Stanza НЕ выполняется.
+    Без parsed — локальный Stanza + parse-кэш по hash (как раньше)."""
     if not text or not text.strip() or len(text.split()) == 0:
         raise ValueError("expected exactly one sentence")
+
+    if parsed is not None:
+        if isinstance(parsed, (tuple, list)) and len(parsed) == 2:
+            # уже нормализованный (words, tokens) — повторное использование разбора
+            words, tokens = _normalize_words(parsed[0]), _normalize_tokens(parsed[1])
+            _validate_parse(words, tokens)
+            return words, tokens, "reused-parse"
+        words, tokens, _ = normalize_parse(parsed, expect_text=text)
+        return words, tokens, "mcp-payload"
+
     ck = _hash_text(text)
     cpath = os.path.join(CACHE_DIR, "parse_cache.jsonl")
     if os.path.exists(cpath):
@@ -143,7 +274,7 @@ def parse_sentence(text):
                     continue
                 if (rec.get("text_hash") == ck and
                         rec.get("stanza_version") == DEFAULT_STANZA_VERSION):
-                    return rec["words"], rec["tokens"]
+                    return rec["words"], rec["tokens"], "parse-cache"
 
     nlp = _get_nlp()
     doc = nlp(text)
@@ -165,12 +296,58 @@ def parse_sentence(text):
             "start_char": int(t.start_char), "end_char": int(t.end_char),
             "is_mwt": bool(t.is_mwt()), "word_ids": wids,
         })
+    _validate_parse(words_list, tokens_list)
     os.makedirs(CACHE_DIR, exist_ok=True)
     rec = {"text_hash": ck, "stanza_version": DEFAULT_STANZA_VERSION,
            "words": words_list, "tokens": tokens_list, "sentence_text": text}
     with open(cpath, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    return words_list, tokens_list
+    return words_list, tokens_list, "stanza"
+
+
+# ============================ rank criteria (данные, не код) ================
+# SPEC §3.8 задаёт 4 критерия; порядок и направления — В config.json (rank.criteria),
+# чтобы любое участие «больше швов = лучше» было видно как часть правила.
+RANK_CRITERIA = {
+    "blocks_not_in_pref": "a_cnt",
+    "min_merges": "merges",
+    "units_preserved": "c_cnt",
+    "cuts_count": "n_cuts",
+    "cut_positions": "d_tuple",
+}
+
+
+def rank_criteria(cfg):
+    """Читает cfg['rank']['criteria'] -> [(ctx_key, direction)]. Схема жёсткая."""
+    crit = cfg["rank"]["criteria"]
+    out = []
+    for item in crit:
+        name, direction = item["criterion"], item["direction"]
+        if name not in RANK_CRITERIA:
+            raise ValueError(f"unknown rank criterion {name!r}")
+        if direction not in ("asc", "desc"):
+            raise ValueError(f"rank criterion {name!r}: direction must be asc|desc")
+        if RANK_CRITERIA[name] == "d_tuple" and direction != "asc":
+            raise ValueError("cut_positions supports only asc")
+        out.append((RANK_CRITERIA[name], direction))
+    return out
+
+
+def rank_key(ctx, criteria):
+    """Детерминированный ключ сортировки из ctx по объявленным критериям."""
+    key = []
+    for ctx_key, direction in criteria:
+        v = ctx[ctx_key]
+        if isinstance(v, tuple):
+            key.append(v)
+        else:
+            key.append(v if direction == "asc" else -v)
+    return tuple(key)
+
+
+def rank_ctx(a_cnt, merges, c_cnt, final_cuts):
+    return {"a_cnt": a_cnt, "merges": merges, "c_cnt": c_cnt,
+            "n_cuts": len(final_cuts), "d_tuple": tuple(sorted(final_cuts))}
 
 
 # ============================ units / seams / nocut / punct ===================
@@ -469,11 +646,13 @@ def _build_output(sentence, words, tokens, n, seams, valid_variants):
     return out
 
 
-def run(sentence, cfg):
-    """Full pipeline -> out dict (JSON-serializable)."""
-    words, tokens = parse_sentence(sentence)
+def run(sentence, cfg, parsed=None):
+    """Full pipeline -> out dict (JSON-serializable). МНЕНИЕ МАШИНЫ (перебор §8).
+    parsed — готовый разбор из MCP parse_german (SPEC §4): пере-парсинг не делается."""
+    words, tokens, parse_source = parse_sentence(sentence, parsed)
     n = max(w["id"] for w in words)
     root_id = next((w["id"] for w in words if w["head"] == 0), -1)
+    criteria = rank_criteria(cfg)
 
     seams = compute_seams(words, tokens)
     nocut = compute_nocut(words)
@@ -489,6 +668,9 @@ def run(sentence, cfg):
             S.add(p)
 
     positions = sorted(S)
+    limit = int(cfg.get("max_seam_positions", 12))
+    if len(positions) > limit:
+        raise TooManySeams(len(positions), limit)
     units = build_units(words)
     pref_set = set(cfg["pref"])
 
@@ -539,15 +721,10 @@ def run(sentence, cfg):
                     final_cuts.add(y)
             a_cnt = sum(1 for (x, y) in final if _lex_count(words, tokens, x, y) not in pref_set)
             c_cnt = _units_preserved(final_cuts, units)
-            d_tuple = tuple(sorted(final_cuts))
-            # Spec §3.8: (a asc blocks-not-in-pref) (b asc min-merges)
-            #        (c desc units preserved) (d asc cut positions).
-            # A whole-sentence block preserves all units & uses 0 seams, so pure
-            # (c) would always beat a segment that cuts at verified seams. K3's
-            # golden requires the verified C5 cut to be rank-1; therefore we add a
-            # tie-breaker (e): more legal/verified seam cuts is better, applied
-            # before (d). (a),(b) stay first per spec and keep K1/K2 rank-1 stable.
-            key = (a_cnt, merges, -len(final_cuts), -c_cnt, d_tuple)
+            # Ключ §3.8 собирается из cfg['rank']['criteria'] — направления и состав
+            # критериев видны как ДАННЫЕ правила, а не как правка кода под прецедент.
+            ctx = rank_ctx(a_cnt, merges, c_cnt, final_cuts)
+            key = rank_key(ctx, criteria)
             vkey = tuple(_norm(block_text(sentence, tokens, x, y)) for (x, y) in final)
             if vkey not in seen_valid:
                 seen_valid.add(vkey)
@@ -557,6 +734,8 @@ def run(sentence, cfg):
     out = _build_output(sentence, words, tokens, n, seams, valid_variants)
     out["rule_version"] = cfg["version"]
     out["seam_classes_status"] = dict(cfg["seam_classes_status"])
+    out["parse_source"] = parse_source
+    out["rank_criteria"] = [f"{c['criterion']}:{c['direction']}" for c in cfg["rank"]["criteria"]]
     return out
 
 
@@ -570,11 +749,141 @@ def _between(wid, pos):
     return "?"
 
 
-def check(sentence, human_blocks, cfg):
-    """API §8.2 soft match + diagnosis."""
-    words, tokens = parse_sentence(sentence)
+# ============================ compliance (verdict) ===========================
+# Подсказки для шага C (дельта). Формулируются ТОЛЬКО через поля Stanza и § RULE.md.
+HINTS = {
+    "det_to_noun": ("NO-CUT §4: det/det:poss/amod/nummod/compound/flat/appos нельзя отрывать "
+                    "от своего NOUN. Легальный рез — по границе unit (C1), а не внутри группы."),
+    "case_obl": ("NO-CUT §4: предлог (case) нельзя отрывать от своего NOUN в PP. Легальный рез — "
+                 "ПЕРЕД ВСЕЙ PP-цепью целиком (C3), не перед её первым словом."),
+    "aux_cop": ("NO-CUT §4: глагольная рамка — рез между словом и его head по aux/aux:pass/cop "
+                "запрещён."),
+    "root_aux": ("NO-CUT §4: рез между root-глаголом (VAFIN/VVFIN/VVPP) и его aux запрещён "
+                 "(составные времена: 'gelesen haben')."),
+    "trunc_atomic_chain": ("NO-CUT §4: цепочка NOUN с xpos=TRUNC, связанная cc/conj, атомарна — "
+                           "рез внутри цепочки запрещён."),
+    "mwt": ("NO-CUT §4: MWT неделим ('im' = 'in dem') — рез внутри диапазона Word-ID одного "
+            "поверхностного токена запрещён."),
+    "punct_p2": ("P2 §6: запятая/дефис/скобка приклеивается к ПРЕДШЕСТВУЮЩЕМУ блоку — рез "
+                 "непосредственно перед знаком запрещён независимо от head."),
+    "punct_p1": ("P1 §6: терминальные . ? ! входят в блок, содержащий последний токен предложения."),
+    "missing": ("GAP: рез не покрыт ни одним C-классом C1..C5 и не запрещён. Это сигнал дельты: "
+                "новый C-класс или расширение существующего по Stanza-признакам слова СПРАВА от "
+                "границы (deprel/xpos/lemma/head/upos)."),
+    "min": ("§7 min=3: блок короче min не проходит правило — по §7 он должен быть слит с соседним "
+            "блоком. Это НЕ дыра правила: дельту по этому кейсу не готовить."),
+    "cap": ("§7 cap=7: блок длиннее cap не проходит правило. Это НЕ дыра правила: дельту по "
+            "этому кейсу не готовить."),
+    "coverage": ("Блоки должны покрывать предложение целиком: без пропусков, пересечений и пустых "
+                 "блоков. Проверь границы блоков по word-id."),
+    "block_not_found": ("Текст блока НЕ найден в предложении. Это НЕ нарушение правила: перечитай "
+                        "блок точно по тексту предложения (или укажи диапазоны word-id). Дельту "
+                        "правила по такому кейсу готовить нельзя."),
+}
+
+
+def map_blocks(sentence, tokens, human_blocks):
+    """Блоки человека -> диапазоны Word-ID. Детерминированный матчинг по
+    поверхности предложения: текст кандидата = sentence[start_char..end_char] от
+    токена i до токена j (PUNCT-токены Stanza не имеют пробела перед собой, поэтому
+    склейка token.text пробелами НЕ годится). -> (ranges, not_found)."""
+    ranges, not_found = [], []
+    start = 0
+    for hb in human_blocks:
+        target = _norm(hb)
+        found = None
+        if target:
+            for i in range(start, len(tokens)):
+                si = tokens[i]["start_char"]
+                for j in range(i, len(tokens)):
+                    cand = _norm(sentence[si:tokens[j]["end_char"]])
+                    if len(cand) >= len(target):
+                        if cand == target:
+                            found = (i, j)
+                        break
+                if found:
+                    break
+        if not found:
+            ranges.append(None)
+            not_found.append(hb)
+            continue
+        i, j = found
+        ranges.append((min(tokens[i]["word_ids"]), max(tokens[j]["word_ids"])))
+        start = j + 1
+    return ranges, not_found
+
+
+def evaluate_human(words, tokens, cfg, ranges, seams, nocut, p2, root_id):
+    """Verdict-критерии §4-§7, применённые к разбивке человека. БЕЗ перебора и
+    ранжирования. -> (cuts, violations, lex_per_block, short_sentence)."""
+    n = max(w["id"] for w in words)
+    cuts = [ranges[i][1] for i in range(len(ranges) - 1)]
+    violations = []
+
+    if ranges[0][0] != 1 or ranges[-1][1] != n:
+        violations.append({"type": "coverage", "pos": None,
+                           "detail": f"blocks must cover word 1..{n}"})
+    for i in range(len(ranges) - 1):
+        if ranges[i][1] + 1 != ranges[i + 1][0]:
+            violations.append({"type": "coverage", "pos": ranges[i][1],
+                               "detail": "gap/overlap between blocks"})
+
+    for pos in cuts:
+        if pos in nocut:
+            violations.append({"type": "forbidden", "pos": pos,
+                               "rule": sorted(set(nocut[pos]))[0]})
+        elif pos in p2:
+            violations.append({"type": "forbidden", "pos": pos, "rule": "punct_p2"})
+        elif pos not in seams:
+            violations.append({"type": "missing", "pos": pos})
+
+    lex = [_lex_count(words, tokens, a, b) for a, b in ranges]
+    total_lex = _lex_count(words, tokens, 1, n)
+    short = total_lex < cfg["min"]
+    if short and len(ranges) > 1:
+        violations.append({"type": "min", "pos": None,
+                           "detail": f"sentence has {total_lex} lex words < min={cfg['min']} "
+                                     "-> single block (short-sentence exception)"})
+    for (a, b), lc in zip(ranges, lex):
+        if lc < cfg["min"] and not short:
+            violations.append({"type": "min", "pos": b, "block": [a, b], "lex_words": lc})
+    for (a, b), lc in zip(ranges, lex):
+        if lc > cfg["cap"]:
+            violations.append({"type": "cap", "pos": b, "block": [a, b], "lex_words": lc})
+
+    return cuts, violations, lex, short
+
+
+def _key_summary(words, tokens, cfg, ranges):
+    """Составляющие ключа §3.8 для конкретной разбивки — чтобы объяснить ранг."""
+    n = max(w["id"] for w in words)
+    root_id = next((w["id"] for w in words if w["head"] == 0), -1)
+    pref = set(cfg["pref"])
+    cuts = {b for (a, b) in ranges if b < n}
+    _, merges = min_merge(words, tokens, cfg, root_id, _partition(n, cuts))
+    ctx = rank_ctx(sum(1 for (a, b) in ranges
+                       if _lex_count(words, tokens, a, b) not in pref),
+                   merges, _units_preserved(cuts, build_units(words)), cuts)
+    return {
+        "blocks": len(ranges),
+        "blocks_not_in_pref": ctx["a_cnt"],
+        "min_merges_required": ctx["merges"],
+        "cuts": ctx["n_cuts"],
+        "units_preserved": ctx["c_cnt"],
+        "rank_key": list(rank_key(ctx, rank_criteria(cfg))),
+        "lex_words": [_lex_count(words, tokens, a, b) for (a, b) in ranges],
+    }
+
+
+def check(sentence, human_blocks, cfg, with_opinion=True, parsed=None):
+    """API §8.2 — СУДЬЯ. verdict = соответствие разбивки человека ПРАВИЛУ (§4-§7):
+    резы покрыты C1..Cn и не на NO-CUT/P2, блоки проходят min/cap, покрытие полное.
+    Ранжирование машины (§8 перебор) — справочное мнение, в verdict НЕ входит.
+    parsed — разбор из MCP parse_german (SPEC §4): судья и LLM на одних Word-ID."""
+    words, tokens, parse_source = parse_sentence(sentence, parsed)
     n = max(w["id"] for w in words)
     wid = _wid(words)
+    root_id = next((w["id"] for w in words if w["head"] == 0), -1)
 
     seams = compute_seams(words, tokens)
     nocut = compute_nocut(words)
@@ -584,45 +893,87 @@ def check(sentence, human_blocks, cfg):
                 nocut.setdefault(p, []).append("mwt")
     p2 = compute_p2(words, tokens, cfg)
 
-    # full pipeline (to get recommended/admissible)
-    out = run(sentence, cfg)
-    rec_text = [_norm(o["text"]) for o in out["recommended"]] if out["recommended"] else []
-    human_norm = [_norm(b) for b in human_blocks]
+    base = {"rule_version": cfg["version"], "config_hash": _canonical_hash(cfg),
+            "parse_source": parse_source, "sentence": sentence}
 
-    match = (len(human_norm) == len(rec_text) and all(a == b for a, b in zip(human_norm, rec_text)))
-    human_rank = 1 if match else None
-    if not match:
-        for adv in out["admissible"]:
-            blt = [_norm(o["text"]) for o in adv["blocks"]]
-            if len(human_norm) == len(blt) and all(a == b for a, b in zip(human_norm, blt)):
-                match = True
-                human_rank = adv["rank"]
-                break
+    ranges, not_found = map_blocks(sentence, tokens, human_blocks)
+    if not_found:
+        return {**base, "verdict": "invalid_input", "match": False, "human_rank": None,
+                "violations": [{"type": "block_not_found", "pos": None, "block": b}
+                               for b in not_found],
+                "diagnosis": {"cuts": [], "effects": {"min_merge": [], "cap": [], "rank": {}},
+                              "coverage": {"covered": [], "missing": [], "forbidden": []},
+                              "block_not_found": not_found,
+                              "hints": [HINTS["block_not_found"]],
+                              "delta_required": False},
+                "machine_opinion": {"enabled": False}}
 
-    # map human blocks to word ranges (for diagnosis)
-    ranges = []
-    cursor = 0
-    for hb in human_blocks:
-        raw = hb.strip()
-        idx = sentence.find(raw, cursor)
-        if idx < 0:
-            ranges.append(None)
-            continue
-        rng = None
-        rlist = [t for t in tokens if t["start_char"] >= idx and t["end_char"] <= idx + len(raw)]
-        if rlist:
-            rng = (min(min(t["word_ids"]) for t in rlist), max(max(t["word_ids"]) for t in rlist))
-        ranges.append(rng)
-        cursor = idx + len(raw)
+    cuts, violations, lex, short = evaluate_human(
+        words, tokens, cfg, ranges, seams, nocut, p2, root_id)
+    verdict = "compliant" if not violations else "non_compliant"
 
-    cuts = []
-    for i in range(len(ranges) - 1):
-        if ranges[i] is None:
-            continue
-        cuts.append(ranges[i][1])
+    # --- machine opinion: дорогой перебор §8, только по запросу (справочно) ---
+    human_rank = None
+    opinion = {"enabled": False}
+    out = None
+    if with_opinion:
+        try:
+            out = run(sentence, cfg, parsed=(words, tokens))
+        except TooManySeams as exc:
+            opinion = {"enabled": True, "error": "too_many_seams",
+                       "seam_positions": exc.k, "limit": exc.limit,
+                       "note": ("перебор §8 снят по лимиту max_seam_positions; verdict от "
+                                "этого НЕ зависит — судья уже вынесен до перебора")}
+            out = None
+    if out is not None:
+        human_norm = [_norm(b) for b in human_blocks]
+        rec = [_norm(o["text"]) for o in out["recommended"]]
+        if len(human_norm) == len(rec) and all(a == b for a, b in zip(human_norm, rec)):
+            human_rank = 1
+        else:
+            for adv in out["admissible"]:
+                blt = [_norm(o["text"]) for o in adv["blocks"]]
+                if len(human_norm) == len(blt) and all(a == b for a, b in zip(human_norm, blt)):
+                    human_rank = adv["rank"]
+                    break
+        opinion = {
+            "enabled": True,
+            "note": ("мнение машины: перебор+ранжирование §8; НЕ является истиной и НЕ "
+                     "участвует в verdict"),
+            "recommended": out["recommended"],
+            "admissible_top": out["admissible"][:int(cfg.get("max_admissible", 5))],
+            "total_admissible": len(out["admissible"]),
+            "total_rejected": len(out["rejected"]),
+            "human_rank": human_rank,
+        }
 
-    # diagnosis per cut (from same pipeline results: seams/nocut/p2)
-    cuts_list = []
+    # --- effects (SPEC §8.2: объяснение min_merge / cap / rank) ---
+    eff = {"min_merge": [], "cap": [], "rank": {}}
+    final, merges = min_merge(words, tokens, cfg, root_id, _partition(n, set(cuts)))
+    if [tuple(x) for x in final] != [tuple(x) for x in ranges]:
+        eff["min_merge"].append({
+            "merges": merges,
+            "machine_blocks": [block_text(sentence, tokens, a, b) for a, b in final],
+            "note": f"min_merge §3.6 сливает блоки < min={cfg['min']}; разбивка человека при этом меняется",
+        })
+    for (a, b), lc in zip(ranges, lex):
+        if lc > cfg["cap"]:
+            eff["cap"].append({"block": [a, b], "lex_words": lc, "cap": cfg["cap"],
+                               "text": block_text(sentence, tokens, a, b)})
+    if with_opinion:
+        rec_blocks = opinion.get("recommended") or []
+        rec_ranges = [[min(o["toks"]), max(o["toks"])] for o in rec_blocks]
+        eff["rank"] = {
+            "human_rank": human_rank,
+            "human_key": _key_summary(words, tokens, cfg, ranges),
+            "rank1_key": _key_summary(words, tokens, cfg, rec_ranges) if rec_ranges else {},
+            "note": "ранжирование — справочное мнение машины; в verdict не входит",
+        }
+        if opinion.get("error"):
+            eff["rank"]["opinion_error"] = opinion["error"]
+
+    # --- diagnosis по каждой границе + hints ---
+    cuts_list, hints = [], []
     for pos in cuts:
         feat = {}
         nb = wid.get(pos + 1)
@@ -631,27 +982,40 @@ def check(sentence, human_blocks, cfg):
                     "upos": nb["upos"], "xpos": nb["xpos"], "feats": nb["feats"],
                     "head": nb["head"], "deprel": nb["deprel"]}
         if pos in nocut:
-            rule = sorted(set(nocut[pos])) or ["punct"]
+            rid = sorted(set(nocut[pos]))[0]
             cuts_list.append({"pos": pos, "between": _between(wid, pos),
-                              "status": "forbidden", "rule": rule[0], "features": feat})
+                              "status": "forbidden", "rule": rid,
+                              "rules_all": sorted(set(nocut[pos])),
+                              "features": feat, "hint": HINTS.get(rid, "")})
         elif pos in p2:
             cuts_list.append({"pos": pos, "between": _between(wid, pos),
-                              "status": "forbidden", "rule": "punct_p2", "features": feat})
+                              "status": "forbidden", "rule": "punct_p2",
+                              "features": feat, "hint": HINTS["punct_p2"]})
         elif pos not in seams:
             cuts_list.append({"pos": pos, "between": _between(wid, pos),
-                              "status": "missing", "features": feat})
+                              "status": "missing", "features": feat,
+                              "hint": HINTS["missing"]})
         else:
             cuts_list.append({"pos": pos, "between": _between(wid, pos),
-                              "status": "effect", "seams": seams[pos], "features": feat})
+                              "status": "effect", "seams": seams[pos],
+                              "features": feat, "hint": "рез легальный: покрыт C-классом"})
 
-    diag = {"cuts": cuts_list, "effects": {"min_merge": [], "cap": []}}
+    for v in violations:
+        h = HINTS.get(v["type"], "")
+        if h and h not in hints:
+            hints.append(h)
 
-    return {
-        "match": match, "human_rank": human_rank, "rule_version": cfg["version"],
-        "recommended": out["recommended"] if out["recommended"] else [],
-        "admissible": out["admissible"],
-        "diagnosis": diag if not match else None,
-    }
+    coverage = {"covered": [c["pos"] for c in cuts_list if c["status"] == "effect"],
+                "missing": [c["pos"] for c in cuts_list if c["status"] == "missing"],
+                "forbidden": [c["pos"] for c in cuts_list if c["status"] == "forbidden"]}
+
+    delta_required = any(v["type"] in ("missing", "forbidden") for v in violations)
+
+    return {**base, "verdict": verdict, "match": verdict == "compliant",
+            "human_rank": human_rank, "violations": violations,
+            "diagnosis": {"cuts": cuts_list, "effects": eff, "coverage": coverage,
+                          "hints": hints, "delta_required": delta_required},
+            "machine_opinion": opinion}
 
 
 # ============================ self-test ======================================
@@ -661,7 +1025,9 @@ def _corpus_path():
 
 
 def self_test():
-    """Reproduce all verified corpus cases (soft match). Returns list of results."""
+    """Регресс по CORPUS/verified.jsonl (accepted=true).
+    pass   = разбивка человека COMPLIANT по текущему правилу (гейт PROTOCOL).
+    strict = она же = recommended[0] машины (более сильный контроль, справочный)."""
     cfg = load_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
     path = _corpus_path()
     results = []
@@ -675,17 +1041,14 @@ def self_test():
             case = json.loads(line)
             if case.get("accepted") is not True:
                 continue
-            out = run(case["sentence"], cfg)
-            rec_text = [_norm(o["text"]) for o in out["recommended"]] if out["recommended"] else []
-            human_norm = [_norm(b) for b in case["blocks"]]
-            match = (len(human_norm) == len(rec_text) and all(a == b for a, b in zip(human_norm, rec_text)))
-            if not match:
-                for adv in out["admissible"]:
-                    blt = [_norm(o["text"]) for o in adv["blocks"]]
-                    if len(human_norm) == len(blt) and all(a == b for a, b in zip(human_norm, blt)):
-                        match = True
-                        break
-            results.append({"id": case.get("id"), "pass": match})
+            res = check(case["sentence"], case["blocks"], cfg, with_opinion=True)
+            results.append({
+                "id": case.get("id"),
+                "pass": res["verdict"] == "compliant",
+                "strict_rank1": res.get("human_rank") == 1,
+                "verdict": res["verdict"],
+                "violations": [v["type"] for v in res["violations"]],
+            })
     return results
 
 
@@ -693,9 +1056,12 @@ def self_test_cli():
     res = self_test()
     total = len(res)
     passed = sum(1 for r in res if r["pass"])
-    print(f"self_test: {passed}/{total} pass")
+    strict = sum(1 for r in res if r["strict_rank1"])
+    print(f"self_test: {passed}/{total} compliant (strict rank1: {strict}/{total})")
     for r in res:
-        print("  " + ("PASS" if r["pass"] else "FAIL"), r.get("id"))
+        print("  " + ("PASS" if r["pass"] else "FAIL"), r.get("id"),
+              "[" + ("strict" if r["strict_rank1"] else "non-strict") + "]",
+              r.get("violations") or "")
     return total, passed
 
 
@@ -706,6 +1072,15 @@ def _canonical_hash(d):
         json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         .encode("utf-8")
     ).hexdigest()
+
+
+# Провенанс (откуда взят разбор) — НЕ часть правила: он меняется при включённом
+# и выключенном parse-кэше, поэтому в гейт детерминизма §6 не входит.
+_VOLATILE_KEYS = ("parse_source",)
+
+
+def _rule_output_only(out):
+    return {k: v for k, v in out.items() if k not in _VOLATILE_KEYS}
 
 
 # ============================ config completeness -----------------------------
@@ -749,7 +1124,11 @@ def config_completeness():
 
     # P1/P2 + params: static, supported.
     report["punct_supported"] = {"P1": True, "P2": True}
-    report["params_supported"] = {k: True for k in ("min", "pref", "cap", "terminal_set", "min_merge") if k in cfg}
+    report["params_supported"] = {k: True for k in ("min", "pref", "cap", "terminal_set", "min_merge", "rank") if k in cfg}
+    report["guards"] = {"max_seam_positions": cfg.get("max_seam_positions"),
+                        "max_admissible": cfg.get("max_admissible")}
+    report["rank_criteria_config"] = [f"{c['criterion']}:{c['direction']}" for c in cfg["rank"]["criteria"]]
+    report["rank_criteria_implemented"] = sorted(RANK_CRITERIA)
 
     complete = (len(report.get("seam_gaps", [])) == 0 and len(gaps) == 0)
     report["complete"] = complete
@@ -766,7 +1145,7 @@ def determinism_cli(sentence):
 
     # 1) run WITH cache populated (populate if needed)
     out_on = run(sentence, cfg)
-    h_on = _canonical_hash(out_on)
+    h_on = _canonical_hash(_rule_output_only(out_on))
 
     # 2) empty the parse-cache, re-run
     moved = False
@@ -775,7 +1154,7 @@ def determinism_cli(sentence):
         shutil.move(cfile, os.path.join(tmpdir, "parse_cache.jsonl"))
         moved = True
     out_off = run(sentence, cfg)
-    h_off = _canonical_hash(out_off)
+    h_off = _canonical_hash(_rule_output_only(out_off))
 
     # restore cache
     if moved and os.path.exists(os.path.join(tmpdir, "parse_cache.jsonl")):
@@ -810,29 +1189,49 @@ def main():
     base = os.path.dirname(os.path.abspath(__file__))
     cfgp = os.path.join(base, "config.json")
     if not args:
-        print("usage: rule.py <sentence> | --check <sentence> --blocks ... | --self-test | --determinism <sentence> | --config-completeness")
+        print("usage: rule.py <sentence> | --check <sentence> --blocks ... [--no-opinion] [--parse-file <json>] | --self-test | --determinism <sentence> | --config-completeness")
         return 1
     if args[0] == "--self-test":
         total, passed = self_test_cli()
         return 0 if (total and passed == total) else 1
     if args[0] == "--check":
-        # --check <sentence> --blocks b1 b2 ...
+        # --check <sentence> --blocks b1 b2 ... [--no-opinion] [--parse-file <json>]
         sent = ""
         blocks = []
+        with_opinion = True
+        parse_file = None
         i = 1
         while i < len(args):
             a = args[i]
             if a == "--blocks":
                 i += 1
-                blocks = args[i:]
+                rest = args[i:]
+                if "--no-opinion" in rest:
+                    with_opinion = False
+                    rest = [x for x in rest if x != "--no-opinion"]
+                if "--parse-file" in rest:
+                    k = rest.index("--parse-file")
+                    parse_file = rest[k + 1]
+                    rest = rest[:k] + rest[k + 2:]
+                blocks = rest
                 break
+            elif a == "--no-opinion":
+                with_opinion = False
+                i += 1
+            elif a == "--parse-file":
+                parse_file = args[i + 1]
+                i += 2
             else:
                 sent = (sent + " "+a).strip()
                 i += 1
         cfg = load_config(cfgp)
-        res = check(sent, blocks, cfg)
+        payload = None
+        if parse_file:
+            with open(parse_file, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        res = check(sent, blocks, cfg, with_opinion=with_opinion, parsed=payload)
         print(json.dumps(res, ensure_ascii=False))
-        return 0 if res.get("match") else 1
+        return 0 if res.get("verdict") == "compliant" else 1
     if args[0] == "--config-completeness":
         rep = config_completeness()
         print(json.dumps(rep, ensure_ascii=False, indent=2))
@@ -844,10 +1243,16 @@ def main():
         return 0 if ok else 1
     sent = " ".join(args)
     cfg = load_config(cfgp)
-    out = run(sent, cfg)
+    try:
+        out = run(sent, cfg)
+    except TooManySeams as exc:
+        print(json.dumps({"error": "too_many_seams", "seam_positions": exc.k,
+                          "limit": exc.limit,
+                          "note": "поднять лимит можно только осознанно: перебор 2^|S|"},
+                         ensure_ascii=False))
+        return 2
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
