@@ -206,42 +206,100 @@ def _sentence_tokens(doc, s) -> list[dict]:
     return tokens
 
 
-def _parse_german_impl(text: str) -> dict:
-    """Синтаксический анализ немецкого текста (Stanza). Возвращает предложения: слова с леммой, UPOS/XPOS, features и зависимостями head/dep; MWT-поля is_mwt (bool) и mwt_id (диапазон Word-ID [a,b] для MWT); parallel list tokens (поверхностные токены с word_ids). Пример: parse_german("Der schneller Braunhund jagt die kleine Katze.")"""
+def _texts_arg(text):
+    """Нормализация входного текста инструментов анализа: str | list[str] |
+    JSON-строка списка '["...","..."]' -> список предложений. Один вызов на
+    весь пакет предложений."""
+    if isinstance(text, (list, tuple)):
+        return [str(t) for t in text]
+    if isinstance(text, str):
+        s = text.strip()
+        if s.startswith("["):
+            try:
+                arr = json.loads(s)
+                if isinstance(arr, list) and arr and all(isinstance(x, str) for x in arr):
+                    return arr
+            except Exception:  # noqa: BLE001 — обычное предложение со скобкой
+                pass
+        return [text]
+    raise ValueError("text: str | list[str] | JSON-строка списка строк")
+
+
+def _parse_german_impl(text) -> dict:
+    """Синтаксический анализ немецкого текста (Stanza). Возвращает предложения: слова с леммой, UPOS/XPOS, features и зависимостями head/dep; MWT-поля is_mwt (bool) и mwt_id (диапазон Word-ID [a,b] для MWT); parallel list tokens (поверхностные токены с word_ids). Пакет: text = list[str] или JSON-строка списка — все предложения за один вызов; у предложения поле item (номер входного текста, 1-based). Пример: parse_german(["S1.", "S2."])"""
     pipe = get_pipeline()
-    doc = pipe(text)
     sentences = []
-    for i, s in enumerate(doc.sentences):
-        sentences.append({
-            "id": i + 1,
-            "text": s.text,
-            "words": _sentence_words(doc, s),
-            "tokens": _sentence_tokens(doc, s),
-        })
-    return {"language": LANGUAGE, "sentences": sentences}
+    for k, t in enumerate(_texts_arg(text)):
+        doc = pipe(t)
+        for s in doc.sentences:
+            sentences.append({
+                "id": len(sentences) + 1,
+                "item": k + 1,
+                "text": s.text,
+                "words": _sentence_words(doc, s),
+                "tokens": _sentence_tokens(doc, s),
+            })
+    return {"language": LANGUAGE, "count": len(sentences), "sentences": sentences}
 
 
 @mcp.tool()
-def parse_german(text: str) -> dict:
+def parse_german(text: str | list[str]) -> dict:
     return _run_tool("parse_german", lambda: _parse_german_impl(text))
 
-def _constituency_german_impl(text: str) -> dict:
-    """Фразовое дерево Penn Treebank (скобочная запись) по предложениям немецкого текста."""
+def _constituency_german_impl(text) -> dict:
+    """Фразовое дерево Penn Treebank (скобочная запись) по предложениям немецкого текста. Пакет: text = list[str] или JSON-строка списка — все предложения за один вызов; поле item — номер входного текста. Пример: constituency_german(["S1.", "S2."])"""
     pipe = get_pipeline()
-    doc = pipe(text)
-    return {
-        "language": LANGUAGE,
-        "sentences": [
-            {"id": i + 1, "text": s.text, "tree": str(s.constituency)}
-            for i, s in enumerate(doc.sentences)
-        ],
-    }
+    out = []
+    for k, t in enumerate(_texts_arg(text)):
+        doc = pipe(t)
+        for s in doc.sentences:
+            tree = s.constituency
+            out.append({
+                "id": len(out) + 1,
+                "item": k + 1,
+                "text": s.text,
+                "tree": str(tree) if tree is not None else None,
+            })
+    res = {"language": LANGUAGE, "count": len(out), "sentences": out}
+    if any(x["tree"] is None for x in out):
+        res["note"] = "constituency недоступен: загружено ядро процессоров без constituency"
+    return res
+
 
 
 
 @mcp.tool()
-def constituency_german(text: str) -> dict:
+def constituency_german(text: str | list[str]) -> dict:
     return _run_tool("constituency_german", lambda: _constituency_german_impl(text))
+
+def _analyze_german_impl(text) -> dict:
+    """parse_german + constituency_german ОДНИМ вызовом для всего пакета:
+    text = str | list[str] | JSON-строка списка. На каждое предложение:
+    words/tokens (полный разбор) + tree (Penn Treebank). Пример:
+    analyze_german(["S1.", "S2.", "S3."])"""
+    pipe = get_pipeline()
+    out = []
+    for k, t in enumerate(_texts_arg(text)):
+        doc = pipe(t)
+        for s in doc.sentences:
+            tree = s.constituency
+            out.append({
+                "id": len(out) + 1,
+                "item": k + 1,
+                "text": s.text,
+                "words": _sentence_words(doc, s),
+                "tokens": _sentence_tokens(doc, s),
+                "tree": str(tree) if tree is not None else None,
+            })
+    res = {"language": LANGUAGE, "count": len(out), "sentences": out}
+    if any(x["tree"] is None for x in out):
+        res["note"] = "constituency недоступен: загружено ядро процессоров без constituency"
+    return res
+
+
+@mcp.tool()
+def analyze_german(text: str | list[str]) -> dict:
+    return _run_tool("analyze_german", lambda: _analyze_german_impl(text))
 
 def _calc_pause_impl(texts: str | list[str], chars_per_sec: float = DEFAULT_CHARS_PER_SEC) -> dict:
     """Пауза в секундах: ceil(символы / chars_per_sec), 10/4->3c. Пакетно (list): items + total, тот же ceil. Скорость - симв./сек: по умолч. 4; переопределяется аргументом chars_per_sec или env STANZA_CHARS_PER_SEC. Пример: calc_pause(["..."], chars_per_sec=5)"""
@@ -436,6 +494,10 @@ def _check_segmentation_impl(items: dict | list[dict] | str,
     Пример: check_segmentation({"sentence":"Ich weiß es, weil er müde ist.",
     "blocks":["Ich weiß es,","weil er müde ist."]})"""
     get_rule()
+    if isinstance(items, str):
+        s = items.strip()
+        if s.startswith("{") or s.startswith("["):
+            items = json.loads(s)  # JSON-строка пакета/объекта — принимаем как данные
     lst = [items] if isinstance(items, (dict, str)) else list(items)
     lst = [i if isinstance(i, dict) else {"sentence": i} for i in lst]
     results = [_check_one(i, with_opinion) for i in lst]

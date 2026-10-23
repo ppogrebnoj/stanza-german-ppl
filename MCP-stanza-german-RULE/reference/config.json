@@ -1,5 +1,5 @@
 {
-  "version": "v3",
+  "version": "v4",
   "rule_file": "RULE.md",
   "min": 3,
   "pref": [3, 5],
@@ -44,7 +44,7 @@
         "min_left_lex": 3,
         "min_right_lex": 3
       },
-      "note": "cut before the whole PP chain (ADP + its dependents), not before its first word"
+      "note": "cut before the whole PP chain (ADP + its dependents), not before its first word; v4 bugfix: anchor = case-ADP subtree (PUNCT исключён из min), раньше якорь был subtree head-NOUN и захватывал чужие punct/conj, сдвигая рез на позицию запятой ('Hand, | von' давало p=11=P2 вместо 12)"
     },
     {
       "class_id": "C4",
@@ -68,15 +68,53 @@
         "min_right_lex": 3
       },
       "note": "subordinate clauses: '..., weil er muede ist', 'Weil ..., kam ...' (iter 3)"
+    },
+    {
+      "class_id": "C6",
+      "status": "verified",
+      "condition": {
+        "deprel": ["mark"],
+        "xpos": "KOUS",
+        "after": true,
+        "min_right_lex": 3
+      },
+      "note": "v4: рез СРАЗУ ПОСЛЕ mark/KOUS — старт контента придаточного ('Ich denke, dass | diese Idee ...'); C5 режет только ПЕРЕД SCONJ; слева достаточно SCONJ+punct, поэтому min_left_lex не требуется"
+    },
+    {
+      "class_id": "C7",
+      "status": "verified",
+      "condition": {
+        "deprel": ["advmod"],
+        "xpos": "ADV",
+        "min_left_lex": 3,
+        "min_right_lex": 3
+      },
+      "note": "v4: рез перед ADV-адвербиалом (deprel=advmod, xpos=ADV) внутри глагольной рамки придаточного ('... kompetente Handwerker | immer gefragt sind'); C4 покрывает только позицию после root-глагола"
+    },
+    {
+      "class_id": "C8",
+      "status": "verified",
+      "condition": {
+        "deprel": ["appos"],
+        "xpos": "TRUNC",
+        "min_left_lex": 3,
+        "min_right_lex": 3
+      },
+      "note": "v4: рез перед TRUNC-аппозицией ('... im Bereich | Sanitär- und Heizungstechnik gearbeitet') — начало эллиптического составного NOUN; complement к nocut det_to_noun(except TRUNC) и trunc_atomic_chain (внутри цепочки рез по-прежнему запрещён)"
     }
   ],
   "nocut": [
-    {"id": "det_to_noun", "deprel": ["det","det:poss","amod","nummod","compound","flat","appos"], "to": "NOUN"},
+    {"id": "det_to_noun", "deprel": ["det","det:poss","amod","nummod","compound","flat","appos"], "to": "NOUN",
+     "except": {"xpos": "TRUNC"},
+     "note": "v4: TRUNC-аппозиция ('Sanitär | und Heizungstechnik', deprel=appos, xpos=TRUNC) может отрезаться от head-NOUN; trunc_atomic_chain по-прежнему запрещает рез ВНУТРИ цепочки TRUNC+cc+conj"},
     {"id": "case_obl", "deprel": ["case"], "with": ["pobj","obl"]},
     {"id": "trunc_atomic_chain", "nouns_xpos": "TRUNC", "atomic_chain": true},
     {"id": "mwt", "mwt": true},
-    {"id": "aux_cop", "deprel": ["aux","aux:pass","cop"]},
-    {"id": "root_aux", "root_verb": ["VAFIN","VVFIN","VVPP"], "deprel": ["aux","aux:pass"]},
+    {"id": "aux_cop", "deprel": ["aux","aux:pass","cop"],
+     "except": {"deprel": "cop", "head_root": true, "head_upos": "NOUN"},
+     "note": "v4: cop, стоящий смежно с root-NOUN сказуемым ('Meine Zielgruppe sind | Privatkunden'), не запрещает рез — это граница именной группы предиката"},
+    {"id": "root_aux", "root_verb": ["VAFIN","VVFIN","VVPP"], "deprel": ["aux","aux:pass"],
+     "note": "v4 (bugfix): запрещён только смежный рез root<->aux (adjacent edge), не весь span между ними; V2-рамка 'habe ... gearbeitet' не блокирует середину предложения"},
     {"id": "adv_part_pair", "pair": ["ADV","PART"], "lemma_corr": true}
   ],
   "punct": {
@@ -88,6 +126,9 @@
     "C2": "verified",
     "C3": "verified",
     "C4": "verified",
-    "C5": "verified"
+    "C5": "verified",
+    "C6": "verified",
+    "C7": "verified",
+    "C8": "verified"
   }
 }
