@@ -101,6 +101,16 @@
         "min_right_lex": 3
       },
       "note": "v4: рез перед TRUNC-аппозицией ('... im Bereich | Sanitär- und Heizungstechnik gearbeitet') — начало эллиптического составного NOUN; complement к nocut det_to_noun(except TRUNC) и trunc_atomic_chain (внутри цепочки рез по-прежнему запрещён)"
+    },
+    {
+      "class_id": "C9",
+      "status": "verified",
+      "condition": {
+        "deprel": ["conj"],
+        "min_left_lex": 3,
+        "min_right_lex": 3
+      },
+      "note": "v4.1: рез перед конъюнктом цепочки однородных членов (deprel=conj) — асиндетическая координация через запятую ('die Installation, | Wartung und Reparatur'); запятая приклеена к левому блоку (P2), C2 не покрывает (нет cc перед конъюнктом); мин 3/3 отсекает мелкие хвосты типа 'Wasser- und | Abwassersystemen'"
     }
   ],
   "nocut": [
@@ -129,6 +139,7 @@
     "C5": "verified",
     "C6": "verified",
     "C7": "verified",
-    "C8": "verified"
+    "C8": "verified",
+    "C9": "verified"
   }
 }
