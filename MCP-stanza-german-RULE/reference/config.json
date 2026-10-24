@@ -127,12 +127,12 @@
       "status": "verified",
       "condition": {
         "deprel": ["det", "det:poss"],
-        "head_deprel": ["nmod", "nmod:poss", "appos", "conj"],
+        "head_deprel": ["nmod", "nmod:poss", "appos", "conj", "obl", "obj", "iobj"],
         "head_upos": ["NOUN", "PROPN"],
         "min_left_lex": 3,
         "min_right_lex": 3
       },
-      "note": "v5: рез перед артиклем/функционером полной зависимой цепочки — генитивная nmod-цепочка без ADP ('als Leiter | des Konstruktionsbüros', 'die Position | des Technischen Direktors') и конъюнкт с артиклем ('Strategie, | die Optimierung ...'); complement к C3 (ADP-цепочки) и C9 (conj без артикля)"
+      "note": "v5: рез перед артиклем/функционером полной зависимой цепочки — генитивная nmod-цепочка без ADP ('als Leiter | des Konstruktionsbüros', 'die Position | des Technischen Direktors') и конъюнкт с артиклем ('Strategie, | die Optimierung ...'); complement к C3 (ADP-цепочки) и C9 (conj без артикля). v5.1: head_deprel расширен obl/obj/iobj — артикль PP-дополнения глагола ('Ich habe bei | der Firma „Paritet-K“ gearbeitet', head Firma=obl)"
     }
   ],
   "nocut": [
