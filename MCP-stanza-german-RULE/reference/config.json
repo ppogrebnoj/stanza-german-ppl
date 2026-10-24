@@ -1,5 +1,5 @@
 {
-  "version": "v4",
+  "version": "v5",
   "rule_file": "RULE.md",
   "min": 3,
   "pref": [3, 5],
@@ -39,12 +39,12 @@
       "status": "verified",
       "condition": {
         "chain": ["case", "nmod", "appos"],
-        "head": "NOUN",
+        "head": ["NOUN", "PROPN", "ADV"],
         "scope": "whole_chain",
         "min_left_lex": 3,
         "min_right_lex": 3
       },
-      "note": "cut before the whole PP chain (ADP + its dependents), not before its first word; v4 bugfix: anchor = case-ADP subtree (PUNCT исключён из min), раньше якорь был subtree head-NOUN и захватывал чужие punct/conj, сдвигая рез на позицию запятой ('Hand, | von' давало p=11=P2 вместо 12)"
+      "note": "cut before the whole PP chain (ADP + its dependents), not before its first word; v4 bugfix: anchor = case-ADP subtree (PUNCT исключён из min); v5: head = список из данных (NOUN + PROPN 'in der Ukraine' + ADV 'in mehr als fünfundfünfzig Länder') — PP-дополнения при не-NOUN head тоже покрываются"
     },
     {
       "class_id": "C4",
@@ -111,6 +111,28 @@
         "min_right_lex": 3
       },
       "note": "v4.1: рез перед конъюнктом цепочки однородных членов (deprel=conj) — асиндетическая координация через запятую ('die Installation, | Wartung und Reparatur'); запятая приклеена к левому блоку (P2), C2 не покрывает (нет cc перед конъюнктом); мин 3/3 отсекает мелкие хвосты типа 'Wasser- und | Abwassersystemen'"
+    },
+    {
+      "class_id": "C10",
+      "status": "verified",
+      "condition": {
+        "xpos": ["PRELS"],
+        "min_left_lex": 3,
+        "min_right_lex": 3
+      },
+      "note": "v5: рез перед относительным местоимением (xpos=PRELS, deprel=nsubj/obj при глаголе придаточного) — 'ein Unternehmen, | das Tresore ... produziert'; C5 не покрывает (в немецких относительных предложениях нет SCONJ)"
+    },
+    {
+      "class_id": "C11",
+      "status": "verified",
+      "condition": {
+        "deprel": ["det", "det:poss"],
+        "head_deprel": ["nmod", "nmod:poss", "appos", "conj"],
+        "head_upos": ["NOUN", "PROPN"],
+        "min_left_lex": 3,
+        "min_right_lex": 3
+      },
+      "note": "v5: рез перед артиклем/функционером полной зависимой цепочки — генитивная nmod-цепочка без ADP ('als Leiter | des Konstruktionsbüros', 'die Position | des Technischen Direktors') и конъюнкт с артиклем ('Strategie, | die Optimierung ...'); complement к C3 (ADP-цепочки) и C9 (conj без артикля)"
     }
   ],
   "nocut": [
@@ -129,7 +151,7 @@
   ],
   "punct": {
     "P1": "attach_terminal_to_last_lexical_block",
-    "P2": "attach_nonterminal_to_previous_block"
+    "P2": {"rule": "attach_nonterminal_to_previous_block", "except_open_quote_xpos": ["$("], "note": "v5: открывающая кавычка (xpos=$(, « «) тяготеет к СЛЕДУЮЩЕМУ слову — рез перед ней легален; закрывающая остаётся при предшествующем блоке"}
   },
   "seam_classes_status": {
     "C1": "verified",
@@ -140,6 +162,8 @@
     "C6": "verified",
     "C7": "verified",
     "C8": "verified",
-    "C9": "verified"
+    "C9": "verified",
+    "C10": "verified",
+    "C11": "verified"
   }
 }
