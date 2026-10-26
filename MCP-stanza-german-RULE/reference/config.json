@@ -1,11 +1,18 @@
 {
-  "version": "v6",
+  "version": "v7",
   "rule_file": "RULE.md",
   "min": 2,
-  "pref": [3, 5],
+  "pref": [
+    3,
+    5
+  ],
   "cap": 7,
-  "min_note": "v6 (решение человека, итерация 6): min 3 -> 2 — блок из 2 лексических слов допустим. pref=[3,5] и cap=7 НЕ изменены: 2-словный блок легален, но вне предпочтения (учитывается в rank.criteria blocks_not_in_pref); min_merge теперь сливает только блоки <2. Seam-условия min_left_lex/min_right_lex=3 у C3,C5,C7..C11 сохранены как verified-данные: рез, создающий 2-словный блок через эти классы, пока не покрыт (GAP G7, см. GAPS/registry.md).",
-  "terminal_set": [".", "?", "!"],
+  "min_note": "v6: min 3 -> 2 (блок из 2 лексических слов допустим). v7 (решения человека №42/43/44): seam min_left_lex/min_right_lex 3 -> 2 у C3, C5, C7-C11 (C6 не назван человеком — остаётся 3); новые классы C12 (amod/ADJA при head-NOUN) и C13 (рез после запятой, head запятой = предикат клаузы). pref=[3,5] и cap=7 без изменений: 2-словный блок легален, но вне предпочтения (rank.criteria blocks_not_in_pref).",
+  "terminal_set": [
+    ".",
+    "?",
+    "!"
+  ],
   "min_merge": {
     "prefer": "root_block",
     "else": "fewer_lex_words",
@@ -13,11 +20,26 @@
   },
   "rank": {
     "criteria": [
-      { "criterion": "blocks_not_in_pref", "direction": "asc" },
-      { "criterion": "min_merges", "direction": "asc" },
-      { "criterion": "cuts_count", "direction": "desc" },
-      { "criterion": "units_preserved", "direction": "desc" },
-      { "criterion": "cut_positions", "direction": "asc" }
+      {
+        "criterion": "blocks_not_in_pref",
+        "direction": "asc"
+      },
+      {
+        "criterion": "min_merges",
+        "direction": "asc"
+      },
+      {
+        "criterion": "cuts_count",
+        "direction": "desc"
+      },
+      {
+        "criterion": "units_preserved",
+        "direction": "desc"
+      },
+      {
+        "criterion": "cut_positions",
+        "direction": "asc"
+      }
     ],
     "note": "Критерии ранжирования = ДАННЫЕ правила (SPEC §3.8 + amendment: состав и направления — в config, не в коде). В verdict-судье НЕ участвуют: ранг — мнение машины. cuts_count:desc (больше легальных швов = лучше) включён решением человека и стоит ПЕРЕД units_preserved: без него pure SPEC (a,b,c,d) даёт strict rank1 2/3 (K3 = rank 2), с ним — 3/3; compliant 3/3 в обоих случаях."
   },
@@ -33,28 +55,53 @@
     {
       "class_id": "C2",
       "status": "verified",
-      "condition": {"deprel": ["cc"]}
+      "condition": {
+        "deprel": [
+          "cc"
+        ]
+      }
     },
     {
       "class_id": "C3",
       "status": "verified",
       "condition": {
-        "chain": ["case", "nmod", "appos"],
-        "head": ["NOUN", "PROPN", "ADV"],
+        "chain": [
+          "case",
+          "nmod",
+          "appos"
+        ],
+        "head": [
+          "NOUN",
+          "PROPN",
+          "ADV"
+        ],
         "scope": "whole_chain",
-        "min_left_lex": 3,
-        "min_right_lex": 3
+        "min_left_lex": 2,
+        "min_right_lex": 2
       },
-      "note": "cut before the whole PP chain (ADP + its dependents), not before its first word; v4 bugfix: anchor = case-ADP subtree (PUNCT исключён из min); v5: head = список из данных (NOUN + PROPN 'in der Ukraine' + ADV 'in mehr als fünfundfünfzig Länder') — PP-дополнения при не-NOUN head тоже покрываются"
+      "note": "cut before the whole PP chain (ADP + its dependents), not before its first word; v4 bugfix: anchor = case-ADP subtree (PUNCT исключён из min); v5: head = список из данных (NOUN + PROPN 'in der Ukraine' + ADV 'in mehr als fünfundfünfzig Länder') — PP-дополнения при не-NOUN head тоже покрываются | v7 (решение №42/d): min_left_lex/min_right_lex 3->2 согласовано с block-min=2"
     },
     {
       "class_id": "C4",
       "status": "verified",
       "condition": {
-        "after": {"root_xpos": ["VAFIN", "VVFIN"]},
+        "after": {
+          "root_xpos": [
+            "VAFIN",
+            "VVFIN"
+          ]
+        },
         "next_token": {
-          "deprel": ["advmod", "cc"],
-          "xpos_or_lemma": ["KON", "denn", "dann", "so"]
+          "deprel": [
+            "advmod",
+            "cc"
+          ],
+          "xpos_or_lemma": [
+            "KON",
+            "denn",
+            "dann",
+            "so"
+          ]
         }
       },
       "note": "fixed set; PTKNEG (e.g. 'nicht') not included"
@@ -63,18 +110,22 @@
       "class_id": "C5",
       "status": "verified",
       "condition": {
-        "deprel": ["mark"],
+        "deprel": [
+          "mark"
+        ],
         "xpos": "KOUS",
-        "min_left_lex": 3,
-        "min_right_lex": 3
+        "min_left_lex": 2,
+        "min_right_lex": 2
       },
-      "note": "subordinate clauses: '..., weil er muede ist', 'Weil ..., kam ...' (iter 3)"
+      "note": "subordinate clauses: '..., weil er muede ist', 'Weil ..., kam ...' (iter 3) | v7 (решение №42/d): min_left_lex/min_right_lex 3->2 согласовано с block-min=2"
     },
     {
       "class_id": "C6",
       "status": "verified",
       "condition": {
-        "deprel": ["mark"],
+        "deprel": [
+          "mark"
+        ],
         "xpos": "KOUS",
         "after": true,
         "min_right_lex": 3
@@ -85,74 +136,204 @@
       "class_id": "C7",
       "status": "verified",
       "condition": {
-        "deprel": ["advmod"],
+        "deprel": [
+          "advmod"
+        ],
         "xpos": "ADV",
-        "min_left_lex": 3,
-        "min_right_lex": 3
+        "min_left_lex": 2,
+        "min_right_lex": 2
       },
-      "note": "v4: рез перед ADV-адвербиалом (deprel=advmod, xpos=ADV) внутри глагольной рамки придаточного ('... kompetente Handwerker | immer gefragt sind'); C4 покрывает только позицию после root-глагола"
+      "note": "v4: рез перед ADV-адвербиалом (deprel=advmod, xpos=ADV) внутри глагольной рамки придаточного ('... kompetente Handwerker | immer gefragt sind'); C4 покрывает только позицию после root-глагола | v7 (решение №42/d): min_left_lex/min_right_lex 3->2 согласовано с block-min=2"
     },
     {
       "class_id": "C8",
       "status": "verified",
       "condition": {
-        "deprel": ["appos"],
+        "deprel": [
+          "appos"
+        ],
         "xpos": "TRUNC",
-        "min_left_lex": 3,
-        "min_right_lex": 3
+        "min_left_lex": 2,
+        "min_right_lex": 2
       },
-      "note": "v4: рез перед TRUNC-аппозицией ('... im Bereich | Sanitär- und Heizungstechnik gearbeitet') — начало эллиптического составного NOUN; complement к nocut det_to_noun(except TRUNC) и trunc_atomic_chain (внутри цепочки рез по-прежнему запрещён)"
+      "note": "v4: рез перед TRUNC-аппозицией ('... im Bereich | Sanitär- und Heizungstechnik gearbeitet') — начало эллиптического составного NOUN; complement к nocut det_to_noun(except TRUNC) и trunc_atomic_chain (внутри цепочки рез по-прежнему запрещён) | v7 (решение №42/d): min_left_lex/min_right_lex 3->2 согласовано с block-min=2"
     },
     {
       "class_id": "C9",
       "status": "verified",
       "condition": {
-        "deprel": ["conj"],
-        "min_left_lex": 3,
-        "min_right_lex": 3
+        "deprel": [
+          "conj"
+        ],
+        "min_left_lex": 2,
+        "min_right_lex": 2
       },
-      "note": "v4.1: рез перед конъюнктом цепочки однородных членов (deprel=conj) — асиндетическая координация через запятую ('die Installation, | Wartung und Reparatur'); запятая приклеена к левому блоку (P2), C2 не покрывает (нет cc перед конъюнктом); мин 3/3 отсекает мелкие хвосты типа 'Wasser- und | Abwassersystemen'"
+      "note": "v4.1: рез перед конъюнктом цепочки однородных членов (deprel=conj) — асиндетическая координация через запятую ('die Installation, | Wartung und Reparatur'); запятая приклеена к левому блоку (P2), C2 не покрывает (нет cc перед конъюнктом); мин 3/3 отсекает мелкие хвосты типа 'Wasser- und | Abwassersystemen' | v7 (решение №42/d): min_left_lex/min_right_lex 3->2 согласовано с block-min=2"
     },
     {
       "class_id": "C10",
       "status": "verified",
       "condition": {
-        "xpos": ["PRELS"],
-        "min_left_lex": 3,
-        "min_right_lex": 3
+        "xpos": [
+          "PRELS"
+        ],
+        "min_left_lex": 2,
+        "min_right_lex": 2
       },
-      "note": "v5: рез перед относительным местоимением (xpos=PRELS, deprel=nsubj/obj при глаголе придаточного) — 'ein Unternehmen, | das Tresore ... produziert'; C5 не покрывает (в немецких относительных предложениях нет SCONJ)"
+      "note": "v5: рез перед относительным местоимением (xpos=PRELS, deprel=nsubj/obj при глаголе придаточного) — 'ein Unternehmen, | das Tresore ... produziert'; C5 не покрывает (в немецких относительных предложениях нет SCONJ) | v7 (решение №42/d): min_left_lex/min_right_lex 3->2 согласовано с block-min=2"
     },
     {
       "class_id": "C11",
       "status": "verified",
       "condition": {
-        "deprel": ["det", "det:poss"],
-        "head_deprel": ["nmod", "nmod:poss", "appos", "conj", "obl", "obj", "iobj"],
-        "head_upos": ["NOUN", "PROPN"],
-        "min_left_lex": 3,
-        "min_right_lex": 3
+        "deprel": [
+          "det",
+          "det:poss"
+        ],
+        "head_deprel": [
+          "nmod",
+          "nmod:poss",
+          "appos",
+          "conj",
+          "obl",
+          "obj",
+          "iobj"
+        ],
+        "head_upos": [
+          "NOUN",
+          "PROPN"
+        ],
+        "min_left_lex": 2,
+        "min_right_lex": 2
       },
-      "note": "v5: рез перед артиклем/функционером полной зависимой цепочки — генитивная nmod-цепочка без ADP ('als Leiter | des Konstruktionsbüros', 'die Position | des Technischen Direktors') и конъюнкт с артиклем ('Strategie, | die Optimierung ...'); complement к C3 (ADP-цепочки) и C9 (conj без артикля). v5.1: head_deprel расширен obl/obj/iobj — артикль PP-дополнения глагола ('Ich habe bei | der Firma „Paritet-K“ gearbeitet', head Firma=obl)"
+      "note": "v5: рез перед артиклем/функционером полной зависимой цепочки — генитивная nmod-цепочка без ADP ('als Leiter | des Konstruktionsbüros', 'die Position | des Technischen Direktors') и конъюнкт с артиклем ('Strategie, | die Optimierung ...'); complement к C3 (ADP-цепочки) и C9 (conj без артикля). v5.1: head_deprel расширен obl/obj/iobj — артикль PP-дополнения глагола ('Ich habe bei | der Firma „Paritet-K“ gearbeitet', head Firma=obl) | v7 (решение №42/d): min_left_lex/min_right_lex 3->2 согласовано с block-min=2"
+    },
+    {
+      "class_id": "C12",
+      "status": "verified",
+      "condition": {
+        "deprel": [
+          "amod"
+        ],
+        "xpos": [
+          "ADJA"
+        ],
+        "head_upos": [
+          "NOUN",
+          "PROPN"
+        ],
+        "min_left_lex": 2,
+        "min_right_lex": 2
+      },
+      "note": "v7 (решение №44/a): рез перед прилагательным (deprel=amod, xpos=ADJA), head которого NOUN/PROPN — AP-граница внутри NP: 'Ich habe als | Technischer Direktor gearbeitet', 'einem für mich | wichtigen Menschen erzählen', 'Wenn man | neue Dinge lernen kann'. NO-CUT det_to_noun не блокирует: он запрещает смежный рез amod<->head-NOUN, а не рез ПЕРЕД amod. min 2/2 = block-min v6. | статус verified: корпус iter7 (C12: 3 кейса, C13: 4 кейса)"
+    },
+    {
+      "class_id": "C13",
+      "status": "verified",
+      "condition": {
+        "deprel": [
+          "punct"
+        ],
+        "xpos": [
+          "$,"
+        ],
+        "after": true,
+        "head_deprel": [
+          "ccomp",
+          "acl",
+          "conj",
+          "csubj",
+          "xcomp",
+          "advcl"
+        ],
+        "min_left_lex": 2,
+        "min_right_lex": 2
+      },
+      "note": "v7 (решение №43/b): рез СРАЗУ ПОСЛЕ запятой (xpos=$,, P2 соблюдён — запятая при левом блоке), если head запятой = предикат новой клаузы (deprel in ccomp/acl/conj/csubj/xcomp/advcl) — старт клаузы без SCONJ: 'Ich glaube, | er hätte mir ...', 'Die Möglichkeit, | sich weiterzuentwickeln ...', '... gelernt, | bin aber Schweißingenieur', '... getan, | was er konnte'. C5/C6 требуют mark/KOUS, здесь союза нет. min 2/2 = block-min v6. | статус verified: корпус iter7 (C12: 3 кейса, C13: 4 кейса)"
     }
   ],
   "nocut": [
-    {"id": "det_to_noun", "deprel": ["det","det:poss","amod","nummod","compound","flat","appos"], "to": "NOUN",
-     "except": {"xpos": "TRUNC"},
-     "note": "v4: TRUNC-аппозиция ('Sanitär | und Heizungstechnik', deprel=appos, xpos=TRUNC) может отрезаться от head-NOUN; trunc_atomic_chain по-прежнему запрещает рез ВНУТРИ цепочки TRUNC+cc+conj"},
-    {"id": "case_obl", "deprel": ["case"], "with": ["pobj","obl"]},
-    {"id": "trunc_atomic_chain", "nouns_xpos": "TRUNC", "atomic_chain": true},
-    {"id": "mwt", "mwt": true},
-    {"id": "aux_cop", "deprel": ["aux","aux:pass","cop"],
-     "except": {"deprel": "cop", "head_root": true, "head_upos": "NOUN"},
-     "note": "v4: cop, стоящий смежно с root-NOUN сказуемым ('Meine Zielgruppe sind | Privatkunden'), не запрещает рез — это граница именной группы предиката"},
-    {"id": "root_aux", "root_verb": ["VAFIN","VVFIN","VVPP"], "deprel": ["aux","aux:pass"],
-     "note": "v4 (bugfix): запрещён только смежный рез root<->aux (adjacent edge), не весь span между ними; V2-рамка 'habe ... gearbeitet' не блокирует середину предложения"},
-    {"id": "adv_part_pair", "pair": ["ADV","PART"], "lemma_corr": true}
+    {
+      "id": "det_to_noun",
+      "deprel": [
+        "det",
+        "det:poss",
+        "amod",
+        "nummod",
+        "compound",
+        "flat",
+        "appos"
+      ],
+      "to": "NOUN",
+      "except": {
+        "xpos": "TRUNC"
+      },
+      "note": "v4: TRUNC-аппозиция ('Sanitär | und Heizungstechnik', deprel=appos, xpos=TRUNC) может отрезаться от head-NOUN; trunc_atomic_chain по-прежнему запрещает рез ВНУТРИ цепочки TRUNC+cc+conj"
+    },
+    {
+      "id": "case_obl",
+      "deprel": [
+        "case"
+      ],
+      "with": [
+        "pobj",
+        "obl"
+      ]
+    },
+    {
+      "id": "trunc_atomic_chain",
+      "nouns_xpos": "TRUNC",
+      "atomic_chain": true
+    },
+    {
+      "id": "mwt",
+      "mwt": true
+    },
+    {
+      "id": "aux_cop",
+      "deprel": [
+        "aux",
+        "aux:pass",
+        "cop"
+      ],
+      "except": {
+        "deprel": "cop",
+        "head_root": true,
+        "head_upos": "NOUN"
+      },
+      "note": "v4: cop, стоящий смежно с root-NOUN сказуемым ('Meine Zielgruppe sind | Privatkunden'), не запрещает рез — это граница именной группы предиката"
+    },
+    {
+      "id": "root_aux",
+      "root_verb": [
+        "VAFIN",
+        "VVFIN",
+        "VVPP"
+      ],
+      "deprel": [
+        "aux",
+        "aux:pass"
+      ],
+      "note": "v4 (bugfix): запрещён только смежный рез root<->aux (adjacent edge), не весь span между ними; V2-рамка 'habe ... gearbeitet' не блокирует середину предложения"
+    },
+    {
+      "id": "adv_part_pair",
+      "pair": [
+        "ADV",
+        "PART"
+      ],
+      "lemma_corr": true
+    }
   ],
   "punct": {
     "P1": "attach_terminal_to_last_lexical_block",
-    "P2": {"rule": "attach_nonterminal_to_previous_block", "except_open_quote_xpos": ["$("], "note": "v5: открывающая кавычка (xpos=$(, « «) тяготеет к СЛЕДУЮЩЕМУ слову — рез перед ней легален; закрывающая остаётся при предшествующем блоке"}
+    "P2": {
+      "rule": "attach_nonterminal_to_previous_block",
+      "except_open_quote_xpos": [
+        "$("
+      ],
+      "note": "v5: открывающая кавычка (xpos=$(, « «) тяготеет к СЛЕДУЮЩЕМУ слову — рез перед ней легален; закрывающая остаётся при предшествующем блоке"
+    }
   },
   "seam_classes_status": {
     "C1": "verified",
@@ -165,6 +346,8 @@
     "C8": "verified",
     "C9": "verified",
     "C10": "verified",
-    "C11": "verified"
+    "C11": "verified",
+    "C12": "verified",
+    "C13": "verified"
   }
 }
