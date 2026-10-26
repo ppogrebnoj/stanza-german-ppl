@@ -1,9 +1,10 @@
 {
-  "version": "v5",
+  "version": "v6",
   "rule_file": "RULE.md",
-  "min": 3,
+  "min": 2,
   "pref": [3, 5],
   "cap": 7,
+  "min_note": "v6 (решение человека, итерация 6): min 3 -> 2 — блок из 2 лексических слов допустим. pref=[3,5] и cap=7 НЕ изменены: 2-словный блок легален, но вне предпочтения (учитывается в rank.criteria blocks_not_in_pref); min_merge теперь сливает только блоки <2. Seam-условия min_left_lex/min_right_lex=3 у C3,C5,C7..C11 сохранены как verified-данные: рез, создающий 2-словный блок через эти классы, пока не покрыт (GAP G7, см. GAPS/registry.md).",
   "terminal_set": [".", "?", "!"],
   "min_merge": {
     "prefer": "root_block",
