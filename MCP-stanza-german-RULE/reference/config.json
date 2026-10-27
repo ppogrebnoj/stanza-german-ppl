@@ -1,5 +1,5 @@
 {
-  "version": "v7",
+  "version": "v8",
   "rule_file": "RULE.md",
   "min": 2,
   "pref": [
@@ -7,7 +7,7 @@
     5
   ],
   "cap": 7,
-  "min_note": "v6: min 3 -> 2 (блок из 2 лексических слов допустим). v7 (решения человека №42/43/44): seam min_left_lex/min_right_lex 3 -> 2 у C3, C5, C7-C11 (C6 не назван человеком — остаётся 3); новые классы C12 (amod/ADJA при head-NOUN) и C13 (рез после запятой, head запятой = предикат клаузы). pref=[3,5] и cap=7 без изменений: 2-словный блок легален, но вне предпочтения (rank.criteria blocks_not_in_pref).",
+  "min_note": "v6: min 3 -> 2 (блок из 2 лексических слов допустим). v7 (решения человека №42/43/44): seam min_left_lex/min_right_lex 3 -> 2 у C3, C5, C7-C11 (C6 не назван человеком — остаётся 3); новые классы C12 (amod/ADJA при head-NOUN) и C13 (рез после запятой, head запятой = предикат клаузы). v8 (iter16, реш. №46): C14 verified (PTKZU mark), C6=3, G6 lemma-needed. pref=[3,5] и cap=7 без изменений.",
   "terminal_set": [
     ".",
     "?",
@@ -250,7 +250,20 @@
         "min_right_lex": 2
       },
       "note": "v7 (решение №43/b): рез СРАЗУ ПОСЛЕ запятой (xpos=$,, P2 соблюдён — запятая при левом блоке), если head запятой = предикат новой клаузы (deprel in ccomp/acl/conj/csubj/xcomp/advcl) — старт клаузы без SCONJ: 'Ich glaube, | er hätte mir ...', 'Die Möglichkeit, | sich weiterzuentwickeln ...', '... gelernt, | bin aber Schweißingenieur', '... getan, | was er konnte'. C5/C6 требуют mark/KOUS, здесь союза нет. min 2/2 = block-min v6. | статус verified: корпус iter7 (C12: 3 кейса, C13: 4 кейса)"
-    }
+    },
+    {
+      "class_id": "C14",
+      "status": "verified",
+      "condition": {
+        "deprel": [
+          "mark"
+        ],
+        "xpos": "PTKZU",
+        "min_left_lex": 2,
+        "min_right_lex": 2
+      },
+      "note": "v7+ (iter16): рез ПЕРЕД маркером zu-инфинитива (deprel=mark, xpos=PTKZU), например 'Eindruck | zu machen', 'Unternehmen | zu wissen'. Не подчинительный союз (KOUS) — отдельный класс от C5. min 2/2 = block-min v6."
+    },
   ],
   "nocut": [
     {
@@ -348,6 +361,7 @@
     "C10": "verified",
     "C11": "verified",
     "C12": "verified",
-    "C13": "verified"
+    "C13": "verified",
+    "C14": "verified"
   }
 }
