@@ -263,7 +263,7 @@
         "min_right_lex": 2
       },
       "note": "v7+ (iter16): рез ПЕРЕД маркером zu-инфинитива (deprel=mark, xpos=PTKZU), например 'Eindruck | zu machen', 'Unternehmen | zu wissen'. Не подчинительный союз (KOUS) — отдельный класс от C5. min 2/2 = block-min v6."
-    },
+    }
   ],
   "nocut": [
     {

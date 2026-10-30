@@ -1,0 +1,28 @@
+#!/bin/sh
+# pre-commit: smoke-тест правила сегментации (fast, ~0.03 с, без Stanza).
+#
+# Зачем: 27.10.2026 в reference/config.json ушла лишняя запятая — судья перестал
+# запускаться на 3 дня, хотя в коммите было написано «reg 52/52». Гейт ловит это
+# до коммита. WARN (известные расхождения) коммит НЕ блокируют, FAIL — блокирует.
+#
+# Установка:  cp reference/git-hooks/pre-commit ../.git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit
+# Удаление:   rm ../.git/hooks/pre-commit
+# Полная проверка (со Stanza): python reference/smoke_test.py --full
+
+RULE_DIR="MCP-stanza-german-RULE"
+[ -d "$RULE_DIR/reference" ] || exit 0
+
+PY=$(command -v python || command -v py || true)
+if [ -z "$PY" ]; then
+  echo "pre-commit: python не найден — smoke-тест пропущен"
+  exit 0
+fi
+
+if ! PYTHONIOENCODING=utf-8 "$PY" "$RULE_DIR/reference/smoke_test.py" --quiet; then
+  echo ""
+  echo "pre-commit: smoke-тест правила НЕ прошёл — коммит отменён."
+  echo "Подробный отчёт: python $RULE_DIR/reference/smoke_test.py"
+  echo "Обойти (осознанно): git commit --no-verify"
+  exit 1
+fi
+exit 0
