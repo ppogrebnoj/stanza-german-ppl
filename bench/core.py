@@ -59,6 +59,27 @@ class Parsed:
         for f in self.lex:
             self.lexpref.append(self.lexpref[-1] + (1 if f else 0))
 
+    def syllables(self):
+        """слогов в каждом токене (pyphen, de_DE); ленивый кэш."""
+        if getattr(self, "_syl", None) is None:
+            import pyphen
+            dic = pyphen.Pyphen(lang="de_DE")
+            out = []
+            for txt, upos, *_ in self.tokens:
+                w = re.sub(r"^[^A-Za-zÄÖÜäöüß]+|[^A-Za-zÄÖÜäöüß]+$", "", txt)
+                if upos == "PUNCT" or not w:
+                    out.append(0)
+                elif "-" in w:
+                    out.append(sum(dic.inserted(x).count("-") + 1 for x in w.split("-") if x))
+                else:
+                    out.append(dic.inserted(w).count("-") + 1)
+            self._syl = out
+        return self._syl
+
+    def max_syl(self, a, b):
+        s = self.syllables()
+        return max(s[a:b]) if b > a else 0
+
     def lex_count(self, a, b):
         """лексических слов в токенах [a, b) (0-based, b не включается)."""
         return self.lexpref[b] - self.lexpref[a]
@@ -79,6 +100,28 @@ class Parsed:
             if self.tokens[i - 1][0] in ("„", "«", "“", "”", '"'):
                 bad.add(i)                     # открывающая кавычка -> к следующему слову
         return bad
+
+    def penalty_positions(self):
+        """Позиции для МЯГКИХ штрафов (заказчик: «запреты + штрафы»).
+
+        Возвращает dict: имя штрафа -> множество позиций.
+          np_inner   — рез между NOUN и его NP-зависимым (генитив/прилагательное/PP-модификатор)
+          before_aux — рез непосредственно ПЕРЕД вспомогательным глаголом (ist/hat/wird …)
+          subj_verb  — рез между подлежащим-местоимением и его сказуемым
+        """
+        out = {"np_inner": set(), "before_aux": set(), "subj_verb": set()}
+        for i in range(1, self.n):
+            l, r = i - 1, i
+            # NP-внутренний рез: один из соседей — NP-зависимое другого
+            if self.deprel[r] in NP_INNER and self.heads_tok[r] == l:
+                out["np_inner"].add(i)
+            if self.deprel[l] in NP_INNER and self.heads_tok[l] == r:
+                out["np_inner"].add(i)
+            if self.upos[r] in ("AUX",):
+                out["before_aux"].add(i)
+            if self.upos[l] == "PRON" and self.deprel[l] in ("nsubj", "nsubj:pass") and self.heads_tok[l] == r:
+                out["subj_verb"].add(i)
+        return out
 
     def pp_inner_positions(self):
         """позиции реза СТРОГО внутри предложной группы (ADP + head-NP)."""
@@ -116,7 +159,7 @@ def build_parse(sentence, nlp):
 # ---------------------------------------------------------------- DP
 
 def dp_segment(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=frozenset(),
-               allow_short_whole=True, _relaxed=False):
+               allow_short_whole=True, _relaxed=False, syl_max_words=None, syl_from=7):
     """Возвращает список границ [0, c1, ..., n] (индексы токенов).
 
     scores[i] — сила границы перед токеном i (1..n-1).
@@ -139,6 +182,8 @@ def dp_segment(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=froz
                 if start in forbidden:
                     continue
             if lc > cap:
+                continue
+            if syl_max_words and lc > syl_max_words and p.max_syl(start, end) >= syl_from:
                 continue
             if start == 0 and end == n and allow_short_whole:
                 pass  # всё предложение одним блоком — short-sentence exception
@@ -164,7 +209,8 @@ def dp_segment(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=froz
     return sorted(bounds)
 
 
-def dp_segment_mean(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=frozenset()):
+def dp_segment_mean(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=frozenset(),
+                    syl_max_words=None, syl_from=7):
     """То же, что dp_segment, но цель — СРЕДНЯЯ оценка блока (не сумма).
 
     Максимизируем (Σ score − w·Σ|ideal−len|) / k, где k — число блоков.
@@ -188,6 +234,8 @@ def dp_segment_mean(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden
                     if start in forbidden:
                         continue
                 if lc > cap:
+                    continue
+                if syl_max_words and lc > syl_max_words and p.max_syl(start, end) >= syl_from:
                     continue
                 cand = best[start][k - 1] - w_len * abs(ideal - float(max(lc, 1)))
                 if start > 0:
@@ -214,6 +262,22 @@ def dp_segment_mean(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden
     return sorted(bounds)
 
 
+def apply_penalties(scores, p, weights):
+    """Мягкие штрафы: вычитаем вес из оценки в «плохих» позициях.
+
+    weights: {"np_inner": w, "before_aux": w, "subj_verb": w}
+    """
+    if not weights:
+        return scores
+    pos = p.penalty_positions()
+    out = list(scores)
+    for name, w in weights.items():
+        for i in pos.get(name, ()):
+            if 0 <= i < len(out):
+                out[i] = out[i] - w
+    return out
+
+
 def dp_try(scores, p, params, forbidden_sets):
     """Пробуем ограничения по очереди (все -> только Q4 -> без ограничений).
 
@@ -224,7 +288,8 @@ def dp_try(scores, p, params, forbidden_sets):
     for level, fset in enumerate(forbidden_sets + [frozenset()]):
         b = (dp_segment_mean if obj == "mean" else dp_segment)(
             scores, p, min_lex=params["min_lex"], ideal=params["ideal"],
-            cap=params["cap"], w_len=params["w_len"], forbidden=fset)
+            cap=params["cap"], w_len=params["w_len"], forbidden=fset,
+            syl_max_words=params.get("syl_max_words"), syl_from=params.get("syl_from", 7))
         last = (b, level)
         if sum(1 for a, c in zip(b[:-1], b[1:]) if p.lex_count(a, c) > params["cap"]) == 0 and len(b) > 1:
             return b, level

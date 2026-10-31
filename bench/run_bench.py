@@ -16,14 +16,15 @@ import argparse
 import io
 import json
 import os
+import re
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-from bench.core import (block_stats, bounds_to_blocks, build_parse, dp_segment, dp_try,
-                        load_corpus, load_heldout, score_metrics, truth_cuts)
+from bench.core import (apply_penalties, block_stats, bounds_to_blocks, build_parse, dp_segment,
+                        dp_try, load_corpus, load_heldout, score_metrics, truth_cuts)
 from bench.scorers import DIRECT, SCORERS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -108,9 +109,13 @@ BASELINES = {
 
 # ------------------------------------------------------------------ кэш оценок
 
+def safe(name):
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", name)
+
+
 def get_scores(algo, set_name, parses):
     os.makedirs(CACHE, exist_ok=True)
-    path = os.path.join(CACHE, f"scores_{set_name}_{algo}.json")
+    path = os.path.join(CACHE, f"scores_{safe(set_name)}_{algo}.json")
     if os.path.exists(path):
         d = json.load(open(path, encoding="utf-8"))
         if len(d["scores"]) == len(parses):
@@ -131,7 +136,11 @@ def get_scores(algo, set_name, parses):
 
 # ------------------------------------------------------------------ прогон
 
-def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_json=None):
+PEN = {"np_inner": 0.35, "before_aux": 0.25, "subj_verb": 0.25}
+
+
+def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_json=None,
+        use_syl=False, use_pen=False):
     per_algo = {}
     if params_json and os.path.exists(params_json):
         per_algo = json.load(open(params_json, encoding="utf-8"))
@@ -140,7 +149,13 @@ def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_
     nlp = stanza.Pipeline("de", processors="tokenize,pos,lemma,depparse,constituency",
                           verbose=False, download_method=None)
 
-    rows = load_corpus() if set_name == "corpus52" else load_heldout()
+    if set_name.startswith("file:"):
+        path = set_name.split(":", 1)[1]
+        rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+        if all(not r.get("blocks") for r in rows):
+            blind = True
+    else:
+        rows = load_corpus() if set_name == "corpus52" else load_heldout()
     if limit:
         rows = rows[:limit]
     print(f"набор: {set_name}, предложений: {len(rows)}")
@@ -158,8 +173,11 @@ def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_
 
     variants = [("по умолчанию", DEFAULT)]
     if grid:
-        variants += [(f"{obj} ideal={ideal} w={w} cap={cap}",
-                      {"min_lex": 2, "ideal": ideal, "cap": cap, "w_len": w, "objective": obj})
+        variants += [(f"{obj} ideal={ideal} w={w} cap={cap}" + (" syl" if use_syl else "")
+                      + (" pen" if use_pen else ""),
+                      {"min_lex": 2, "ideal": ideal, "cap": cap, "w_len": w, "objective": obj,
+                       **({"syl_max_words": 3, "syl_from": 7} if use_syl else {}),
+                       **({"pen": PEN} if use_pen else {})})
                      for obj in ("sum", "mean")
                      for ideal in (3.0, 4.0, 5.0) for w in (0.3, 1.0, 2.5) for cap in (6, 7)]
 
@@ -193,7 +211,8 @@ def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_
                 elif algo in BASELINES:
                     bounds = BASELINES[algo][1](p, params, f_q4[i])
                 else:
-                    bounds, _lvl = dp_try(scores[i], p, params,
+                    sc = apply_penalties(scores[i], p, params.get("pen")) if params.get("pen") else scores[i]
+                    bounds, _lvl = dp_try(sc, p, params,
                                           [f_q4[i] | f_pp[i], f_q4[i], p.pp_inner_positions()])
                     bounds = enforce(bounds, p, params)
                 stats.append(block_stats(p, bounds))
@@ -216,7 +235,7 @@ def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_
 
     write_predictions(set_name, parses, truth, algos, use_constraints,
                       DEFAULT, per_algo)
-    write_summary(set_name, summary, blind, use_constraints)
+    write_summary(set_name, summary, blind, use_constraints, use_syl, use_pen)
     print_summary(summary, blind)
     return summary
 
@@ -225,7 +244,7 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
     for algo in algos:
         params = (per_algo or {}).get(algo, params)
         suffix = "_c" if use_constraints else ""
-        path = os.path.join(RESULTS, f"{set_name}_{algo}{suffix}.jsonl")
+        path = os.path.join(RESULTS, f"{safe(set_name)}_{algo}{suffix}.jsonl")
         scores = None
         if algo in DIRECT:
             pass
@@ -241,7 +260,8 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
                 elif algo in BASELINES:
                     bounds = BASELINES[algo][1](p, params, f4)
                 else:
-                    bounds, _lvl = dp_try(scores[i], p, params, [f4 | fpp, f4, fpp])
+                    sc = apply_penalties(scores[i], p, params.get("pen")) if params.get("pen") else scores[i]
+                    bounds, _lvl = dp_try(sc, p, params, [f4 | fpp, f4, fpp])
                     bounds = enforce(bounds, p, params)
                 f.write(json.dumps({"id": rid, "sentence": s,
                                     "blocks": bounds_to_blocks(p, bounds),
@@ -250,9 +270,9 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
                                    ensure_ascii=False) + "\n")
 
 
-def write_summary(set_name, summary, blind, use_constraints=False):
-    suffix = ("_c" if use_constraints else "") + ("_blind" if blind else "")
-    json.dump(summary, open(os.path.join(RESULTS, f"summary_{set_name}{suffix}.json"), "w",
+def write_summary(set_name, summary, blind, use_constraints=False, use_syl=False, use_pen=False):
+    suffix = ("_c" if use_constraints else "") + ("_syl" if use_syl else "") +              ("_pen" if use_pen else "") + ("_blind" if blind else "")
+    json.dump(summary, open(os.path.join(RESULTS, f"summary_{safe(set_name)}{suffix}.json"), "w",
                             encoding="utf-8"), ensure_ascii=False, indent=1)
     md = [f"# Сравнение алгоритмов: {set_name}{' (слепой режим)' if blind else ''}\n",
           "| алгоритм | вариант | exact | P | R | **F1** | блоков | вне 2–7 | кончается служ. | рез в PP | ср. длина |",
@@ -261,7 +281,7 @@ def write_summary(set_name, summary, blind, use_constraints=False):
         md.append(f"| {r['algo']} {r['name']} | {r['variant']} | {r['exact']}/{r['n']} | {r['P']} | "
                   f"{r['R']} | **{r['F1']}** | {r['blocks']} | {r['blocks_out_of_range']} | "
                   f"{r['func_end']} | {r['pp_inner']} | {r['mean_len']} |")
-    open(os.path.join(RESULTS, f"summary_{set_name}{suffix}.md"), "w", encoding="utf-8").write(
+    open(os.path.join(RESULTS, f"summary_{safe(set_name)}{suffix}.md"), "w", encoding="utf-8").write(
         "\n".join(md) + "\n")
 
 
@@ -282,13 +302,16 @@ def print_summary(summary, blind):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--set", default="corpus52", choices=["corpus52", "heldout"])
+    ap.add_argument("--set", default="corpus52",
+                    help="corpus52 | heldout | file:<путь к jsonl>")
     ap.add_argument("--algo", default="all")
     ap.add_argument("--grid", action="store_true")
     ap.add_argument("--constraints", action="store_true")
     ap.add_argument("--blind", action="store_true")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--params-json", default=None)
+    ap.add_argument("--syl", action="store_true", help="включить Q17(г): 7+ слогов -> max 3 слова")
+    ap.add_argument("--pen", action="store_true", help="включить мягкие штрафы (np_inner/before_aux/subj_verb)")
     a = ap.parse_args()
 
     algos = list(BASELINES) + list(SCORERS) + list(DIRECT) if a.algo == "all" else a.algo.split(",")
@@ -299,7 +322,12 @@ def main():
         return 2
     if a.set == "heldout":
         a.blind = True
-    run(a.set, algos, a.grid, a.constraints, a.blind, a.limit, a.params_json)
+    if a.syl:
+        DEFAULT["syl_max_words"] = 3
+        DEFAULT["syl_from"] = 7
+    if a.pen:
+        DEFAULT["pen"] = dict(PEN)
+    run(a.set, algos, a.grid, a.constraints, a.blind, a.limit, a.params_json, a.syl, a.pen)
     return 0
 
 

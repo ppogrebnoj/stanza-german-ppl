@@ -18,7 +18,18 @@ python bench/run_bench.py --set heldout --algo S1,S4,S12,S2,S6,S5,B1 --constrain
 
 # документ для просмотра глазами
 python bench/make_review.py --set heldout --algos S5,S1:d,S1,S4,S12 --per-register 3
+
+# новые наборы из ИТЕРАЦИИ_3 (новая разметка заказчика)
+python bench/run_bench.py --set file:E:/KI_WORK/bench/sets/corpus52_v2.jsonl        --algo all --grid --constraints --syl --pen
+python bench/run_bench.py --set file:E:/KI_WORK/bench/sets/heldout_mini.jsonl        --algo S1,S2,S3,S4,S12,S13,S6,S5,B1 --constraints --syl --pen        --params-json bench/results/best_params_v3.json
+
+# статистика эталонной разметки (длины, слоги, где резать нельзя)
+python bench/analyze_gold.py --set bench/sets/corpus52_v2.jsonl
 ```
+
+Флаги: `--constraints` (ваши Q3/Q4), `--syl` (Q17г: 7+ слогов → max 3 слова),
+`--pen` (мягкие штрафы: внутри NP / перед AUX / подлежащее+глагол), `--grid` (сетка параметров),
+`--params-json` (найденные лучшие параметры).
 
 ## Файлы
 
