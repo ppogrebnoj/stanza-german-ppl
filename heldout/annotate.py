@@ -43,8 +43,18 @@ def load_ids():
 
 
 def parse_md(path):
-    """-> list[(id, sentence, answer_line)] из рабочего MD."""
-    lines = open(path, encoding="utf-8").read().split("\n")
+    """-> list[(id, sentence, answer_line)] из рабочего MD.
+
+    Формат блока (с переводами):
+        **[W01]** 11 слов · признаки: ...
+        <немецкое предложение>
+        <русский перевод>
+        → <немецкое предложение — здесь стоят "/">
+
+    Ищем по блоку: первая непустая строка = предложение,
+    первая строка, начинающаяся с "→", = ответ.
+    """
+    lines = open(path, encoding="utf-8").lines = open(path, encoding="utf-8").read().split(chr(10))
     out, i = [], 0
     while i < len(lines):
         m = re.match(r"^\*\*\[([A-Z]\d{2})\]\*\*", lines[i])
@@ -53,17 +63,17 @@ def parse_md(path):
             continue
         cid = m.group(1)
         j = i + 1
-        while j < len(lines) and not lines[j].strip():
+        sentence, answer = "", ""
+        while j < len(lines) and not lines[j].startswith("**[") and not lines[j].startswith("## "):
+            raw = lines[j]
+            if raw.lstrip().startswith("→"):
+                if not answer:
+                    answer = raw.lstrip()[1:].strip()
+            elif not sentence and raw.strip():
+                sentence = raw.strip()
             j += 1
-        sentence = lines[j].strip() if j < len(lines) else ""
-        k = j + 1
-        while k < len(lines) and not lines[k].strip():
-            k += 1
-        answer = ""
-        if k < len(lines) and lines[k].lstrip().startswith("→"):
-            answer = lines[k].lstrip()[1:].strip()
         out.append((cid, sentence, answer))
-        i = k + 1 if k < len(lines) else j + 1
+        i = j
     return out
 
 
@@ -134,6 +144,10 @@ def main():
     empty = 0
     for cid, sentence, answer in rows:
         ref = known.get(cid, sentence)
+        if answer and answer.strip() == ref.strip():
+            answer = ""      # строка не тронута — ещё не размечено
+        if answer.startswith("="):
+            answer = ref     # "=" = пауз нет, один блок
         blocks, uncertain = to_blocks(answer, ref)
         if blocks is None:
             if answer and answer not in ("??", "?"):
