@@ -267,21 +267,21 @@ def check(text, blocks, cfg=None, pipeline=None):
                 nounish = s.upos[a] in ("NOUN", "PROPN", "NUM", "ADJ", "ADV")
                 ok_list = n_commas >= 3 and after_comma and nounish
             if ok_final_verb or ok_abbrev or ok_paren or ok_list:
-                warnings.append({"code": "L1", "message": f"блок из одного слова «{left}»",
+                warnings.append({"code": "MIN", "message": f"блок из одного слова «{left}»",
                                  "at": k + 1, "suggestion": "допустимо: финитный глагол/сокращение/вставка"})
             else:
-                add(errors, "L1", f"блок из одного слова «{left}» (минимум {cfg['min_lex']})", k + 1,
+                add(errors, "MIN", f"блок из одного слова «{left}» (минимум {cfg['min_lex']})", k + 1,
                     "присоединить к соседнему блоку")
         elif lc > cfg["cap_lex"]:
-            (add(errors, "L2", f"блок из {lc} слов (предел {cfg['cap_lex']}): «{left}»", k + 1,
+            (add(errors, "MAX", f"блок из {lc} слов (предел {cfg['cap_lex']}): «{left}»", k + 1,
                  "разрезать")
              if lc > cfg["warn_above_lex"] else
-             warnings.append({"code": "L2", "message": f"блок из {lc} слов (предел {cfg['cap_lex']})",
+             warnings.append({"code": "MAX", "message": f"блок из {lc} слов (предел {cfg['cap_lex']})",
                               "at": k + 1, "suggestion": "разрезать, если есть где"}))
         # ---- слоговая страховка
         syl = cfg["syllables"]
         if syl and lc > syl["max_words"] and s.max_syl(a, b) >= syl["from"]:
-            warnings.append({"code": "S1",
+            warnings.append({"code": "SYL",
                              "message": f"в блоке из {lc} слов есть слово длиной "
                                         f"{s.max_syl(a, b)} слогов", "at": k + 1,
                              "suggestion": f"не длиннее {syl['max_words']} слов"})
@@ -290,21 +290,21 @@ def check(text, blocks, cfg=None, pipeline=None):
             i = b
             pair = f"«{s.tokens[i - 1][0]} | {s.tokens[i][0]}»"
             if i in pp_strict and s.upos[i - 1] == "ADP":
-                add(errors, "Q3", f"рез сразу после предлога {pair}", i,
+                add(errors, "ADP", f"рез сразу после предлога {pair}", i,
                     "резать перед предлогом, а не после")
             elif s.upos[i - 1] in bans["after_upos"]:
-                add(errors, "Q4", f"блок кончается служебным словом {pair}", i,
+                add(errors, "FUNC", f"блок кончается служебным словом {pair}", i,
                     "сдвинуть рез на слово влево или вправо")
             elif i in pp_strict:
-                warnings.append({"code": "Q3", "message": f"рез внутри предложной группы {pair}",
+                warnings.append({"code": "ADP", "message": f"рез внутри предложной группы {pair}",
                                  "at": i, "suggestion": "можно, но правило считает это слабым местом"})
             if s.upos[i] == "PUNCT" and s.tokens[i][0] in bans["before_punct"]:
-                add(errors, "P2", f"рез перед знаком препинания {pair}", i, "знак — к левому блоку")
+                add(errors, "PUNCT", f"рез перед знаком препинания {pair}", i, "знак — к левому блоку")
             if bans["inside_hyphen"] and s.tokens[i - 1][0].endswith("-") \
                     and not s.tokens[i][0].startswith("("):
-                add(errors, "H1", f"рез внутри дефисного слова {pair}", i, "держать слово целиком")
+                add(errors, "HYPHEN", f"рез внутри дефисного слова {pair}", i, "держать слово целиком")
             if bans["after_open_quote"] and s.tokens[i - 1][0] in bans["open_quotes"]:
-                add(errors, "H2", f"рез сразу после открывающей кавычки {pair}", i, "кавычка — к правому блоку")
+                add(errors, "QUOTE", f"рез сразу после открывающей кавычки {pair}", i, "кавычка — к правому блоку")
             if i in ppmod:
                 cost += 1.0
                 info.append({"code": "PP", "message": f"рез на границе PP-определения {pair}", "at": i,

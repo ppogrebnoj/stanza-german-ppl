@@ -63,7 +63,7 @@ def audit(name, path):
     rows, parses = get_parses(path)
     lens, syl_lens = [], []
     cats = Counter()
-    per_ex = {k: [] for k in ("ADP|NP", "NP|PP-mod", "Q4", "before_punct", "AUX", "subj|verb",
+    per_ex = {k: [] for k in ("ADP|NP", "NP|PP-mod", "FUNC", "before_punct", "AUX", "subj|verb",
                               "np_inner", "hyphen", "one_word_verb")}
     patterns = Counter()
     blocked = Counter()
@@ -93,10 +93,10 @@ def audit(name, path):
                 if len(per_ex["NP|PP-mod"]) < 6:
                     per_ex["NP|PP-mod"].append(f"{rid}: …{left} | {right}…")
             if i in func:
-                cats["Q4"] += 1
+                cats["FUNC"] += 1
                 hit = True
-                if len(per_ex["Q4"]) < 6:
-                    per_ex["Q4"].append(f"{rid}: …{left} | {right}…")
+                if len(per_ex["FUNC"]) < 6:
+                    per_ex["FUNC"].append(f"{rid}: …{left} | {right}…")
             if p.upos[i] == "PUNCT":
                 cats["before_punct"] += 1
                 hit = True
@@ -147,7 +147,7 @@ def audit(name, path):
           f"(финитный глагол в конце — {one_word_final_verb}, прочее — {one_word_other})")
     print(f"блоков длиннее 6 слов: {sum(long_blocks.values())} {dict(long_blocks)}")
     print(f"\nнарушения по классам (на {ncuts} резов):")
-    for k in ("ADP|NP", "NP|PP-mod", "Q4", "before_punct", "AUX", "subj|verb", "np_inner", "hyphen"):
+    for k in ("ADP|NP", "NP|PP-mod", "FUNC", "before_punct", "AUX", "subj|verb", "np_inner", "hyphen"):
         print(f"  {k:12} {cats[k]:4}  {100.0*cats[k]/max(ncuts,1):5.1f}%")
     for k, v in per_ex.items():
         if v and k != "one_word_verb":

@@ -6,7 +6,7 @@
 ## Запуск
 
 ```bash
-# 52 предложения, все алгоритмы, сетка параметров, с вашими ограничениями Q3/Q4
+# 52 предложения, все алгоритмы, сетка параметров, с запретами V4
 python bench/run_bench.py --set corpus52 --algo all --grid --constraints
 
 # только один алгоритм, «из коробки»
@@ -23,7 +23,7 @@ python bench/make_review.py --set heldout --algos S1:d,S1,S4,S11 --per-register 
 python bench/build_sets.py                    # -> sets/corpus52.jsonl, sets/heldout_51.jsonl
 python bench/pcache.py                        # кэш разборов (один раз)
 python bench/audit.py                         # что нарушает сама разметка заказчика
-python bench/experiments.py --stage all       # все замеры (Q3, cap, Q22, штрафы, сетка)
+python bench/experiments.py --stage all       # все замеры (варианты запретов, cap, однословные блоки, штрафы, сетка)
 python правило/validator.py --set bench/sets/heldout_51.jsonl
 
 # новые наборы из ИТЕРАЦИИ_3 (новая разметка заказчика)
@@ -34,7 +34,7 @@ python bench/run_bench.py --set file:E:/KI_WORK/bench/sets/heldout_51.jsonl     
 python bench/analyze_gold.py --set bench/sets/corpus52.jsonl
 ```
 
-Флаги: `--constraints` (ваши Q3/Q4), `--syl` (Q17г: 7+ слогов → max 3 слова),
+Флаги: `--constraints` (запреты V4), `--syl` (7+ слогов → max 3 слова),
 `--pen` (мягкие штрафы: внутри NP / перед AUX / подлежащее+глагол), `--grid` (сетка параметров),
 `--params-json` (найденные лучшие параметры).
 
@@ -69,5 +69,7 @@ python bench/analyze_gold.py --set bench/sets/corpus52.jsonl
 ## Ограничения (одинаковые для всех)
 
 - `base` — всегда: не резать перед знаком препинания, внутри дефисного слова, после открывающей кавычки.
-- `--constraints` — плюс ваши Q3 (не внутри PP) и Q4 (не после служебного слова).
+- `--constraints` — запреты V4: не резать сразу после предлога, блок не кончается
+  служебным словом, механика пунктуации. Рез на границе PP-определения НЕ запрещён
+  (это мягкий штраф, см. `ПРАВИЛО.md` §2).
 - Длина блока: минимум 2, максимум 7 лексических слов (как в правиле).
