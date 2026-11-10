@@ -321,6 +321,18 @@ def check(text, blocks, cfg=None, pipeline=None):
                 cost += cfg["penalties"]["subj_verb"]
                 info.append({"code": "SV", "message": f"рез между подлежащим и сказуемым {pair}", "at": i,
                              "weight": cfg["penalties"]["subj_verb"]})
+    # ---- нормализация: технический мусор в тексте (чистится нарезчиком)
+    try:
+        import normalize as _N
+        _clean, _fixes = _N.normalize(text)
+        if _fixes:
+            warnings.append({"code": "NORM",
+                             "message": "в тексте технический мусор: " + _N.describe(_fixes),
+                             "at": 0,
+                             "suggestion": "нарезчик чистит его сам (правило/normalize.py)"})
+    except Exception:  # noqa: BLE001 — нормализация не должна ломать судью
+        pass
+
     # ---- P1: терминальный знак в последнем блоке
     if s.n and s.upos[-1] == "PUNCT" and s.tokens[-1][0] in cfg["stats_marks"]["terminal"]:
         last = bounds[-2]

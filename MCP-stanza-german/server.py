@@ -467,28 +467,30 @@ def _segment_german_impl(text, with_check: bool = False) -> dict:
     text — строка или список строк (абзац/страница: делится на предложения сам).
     with_check=true — дополнительно прогнать валидатор по своей же нарезке
     (показывает цену штрафов и предупреждения).
-    Блоки возвращаются текстом, ровно как в исходнике (пунктуация на месте).
+    Перед разбором текст чистится от технического мусора (NBSP, мягкие переносы,
+    лигатуры, прямые кавычки) — список правок в поле "normalized". Слова и пунктуация
+    исходника сохраняются.
     Пример: segment_german("Ich habe bei der Firma gearbeitet.")"""
     seg, val = get_segmenter(), get_rule()
     cfg = rule_config()
     pipe = get_pipeline()
-    out = []
+    out, all_fixes = [], []
     for k, t in enumerate(_texts_arg(text)):
-        doc = pipe(t)
-        for sent in doc.sentences:
-            s = val.Sent(t, sent)          # смещения символов — от начала t
-            _, bounds = seg.bounds_of(s, cfg)
-            blocks = val.blocks_text(s, bounds)
+        sentences, fixes = seg.segments_of_text(t, cfg, pipe)
+        for f in fixes:
+            if f not in all_fixes:
+                all_fixes.append(f)
+        for x in sentences:
             row = {
                 "id": len(out) + 1,
                 "item": k + 1,
-                "text": sent.text,
-                "blocks": blocks,
-                "block_count": len(blocks),
-                "lens": [s.lex_count(a, b) for a, b in zip(bounds[:-1], bounds[1:])],
+                "text": x["text"],
+                "blocks": x["blocks"],
+                "block_count": len(x["blocks"]),
+                "lens": x["lens"],
             }
             if with_check:
-                rep = val.check(sent.text, blocks, cfg, pipeline=pipe)
+                rep = val.check(x["text"], x["blocks"], cfg, pipeline=pipe)
                 row["verdict"] = rep["verdict"]
                 row["cost"] = rep["cost"]
                 if rep["errors"]:
@@ -503,6 +505,7 @@ def _segment_german_impl(text, with_check: bool = False) -> dict:
         "blocks_total": sum(r["block_count"] for r in out),
         "rule_version": cfg.get("_version"),
         "config_hash": _canonical_hash(cfg),
+        "normalized": all_fixes,
         "sentences": out,
     }
 

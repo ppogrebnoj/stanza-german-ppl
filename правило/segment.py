@@ -27,6 +27,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+import normalize as N
 import validator as V
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -218,10 +219,34 @@ def bounds_of(sentence, cfg=None, pipeline=None):
     return s, bounds
 
 
-def segment(sentence, cfg=None, pipeline=None):
-    """Список блоков предложения (строки — ровно как в исходном тексте)."""
+def segments_of_text(text, cfg=None, pipeline=None, do_normalize=True):
+    """Страница/абзац -> (список предложений с блоками, правки нормализации).
+
+    Нормализация (Q13) чинит только технический мусор: неразрывные пробелы, мягкие
+    переносы, лигатуры, прямые кавычки, переводы строк. Слова не меняются.
+    """
     cfg = cfg or load_cfg()
-    s, bounds = bounds_of(sentence, cfg, pipeline)
+    clean, fixes = N.normalize(text) if do_normalize else (text, [])
+    pipe = pipeline or V.nlp()
+    doc = pipe(clean)
+    out = []
+    for sent in doc.sentences:
+        s = V.Sent(clean, sent)
+        bounds = bounds_of(s, cfg)[1]
+        out.append({
+            "text": sent.text,
+            "blocks": V.blocks_text(s, bounds),
+            "lens": [s.lex_count(a, b) for a, b in zip(bounds[:-1], bounds[1:])],
+        })
+    return out, fixes
+
+
+def segment(sentence, cfg=None, pipeline=None, do_normalize=True):
+    """Список блоков одного предложения (строки — как в исходном тексте)."""
+    if hasattr(sentence, "tokens"):
+        return V.blocks_text(sentence, bounds_of(sentence, cfg)[1])
+    clean, _ = N.normalize(sentence) if do_normalize else (sentence, [])
+    s, bounds = bounds_of(clean, cfg, pipeline)
     return V.blocks_text(s, bounds)
 
 
@@ -236,6 +261,7 @@ def main():
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--config")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--no-normalize", action="store_true", help="не чистить технический мусор")
     a = ap.parse_args()
     cfg = load_cfg(a.config)
     print(f"[правило: {cfg.get('_version', '?')} / {os.path.basename(str(cfg.get('_source')))}; "
@@ -267,18 +293,10 @@ def main():
 
     if a.file:
         text = open(a.file, encoding="utf-8").read()
-        doc = V.nlp()(text)
-        out = []
-        for sent in doc.sentences:
-            sub = V.Sent(text, sent)   # смещения символов — от начала документа
-            sc = score_s1(sub)
-            bounds = None
-            for fset in _forbidden(sub, cfg):
-                bounds = dp_mean(sc, sub, cfg, fset)
-                if bounds:
-                    break
-            bounds = enforce(bounds or [0, sub.n], sub, cfg)
-            out.append({"sentence": sent.text, "blocks": V.blocks_text(sub, bounds)})
+        sentences, fixes = segments_of_text(text, cfg, do_normalize=not a.no_normalize)
+        out = [{"sentence": x["text"], "blocks": x["blocks"]} for x in sentences]
+        if fixes:
+            print(f"[нормализация: {N.describe(fixes)}]", file=sys.stderr)
         if a.json:
             print(json.dumps(out, ensure_ascii=False, indent=1))
         else:
@@ -290,7 +308,7 @@ def main():
     if not a.text:
         ap.print_help()
         return 2
-    blocks = segment(a.text, cfg)
+    blocks = segment(a.text, cfg, do_normalize=not a.no_normalize)
     if a.json:
         print(json.dumps({"sentence": a.text, "blocks": blocks}, ensure_ascii=False, indent=1))
     else:

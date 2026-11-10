@@ -93,6 +93,16 @@ def check_code_agrees(cfg):
         add("WARN", "config_code_consistency", f"в config нет ключей кода: {missing}")
     else:
         add("OK", "config_code_consistency", "ключи config покрывают DEFAULT_CFG")
+    try:
+        import normalize as N
+        bad = N.self_test(verbose=False)
+        if bad:
+            add("FAIL", "normalize_self_test", f"{bad} кейсов не прошли")
+        else:
+            add("OK", "normalize_self_test", f"{len(N.CASES)} кейсов чистки текста")
+    except Exception as exc:  # noqa: BLE001
+        add("FAIL", "normalize_self_test", str(exc))
+
     loaded = V.load_cfg(CONFIG)
     for key in ("min_lex", "cap_lex", "ideal_lex", "w_len", "objective"):
         if loaded.get(key) != seg.get(key):
