@@ -25,6 +25,8 @@ import re
 import sys
 
 DEFAULT_CFG = {
+    "objective": "mean",
+    "w_len": 0.3,
     "min_lex": 2,
     "ideal_lex": 3,
     "cap_lex": 6,
@@ -169,6 +171,17 @@ def subj_verb_positions(s):
     return {i for i in range(1, s.n)
             if s.upos[i - 1] == "PRON" and s.deprel[i - 1] in ("nsubj", "nsubj:pass")
             and s.heads_tok[i - 1] == i}
+
+
+def blocks_text(s, bounds):
+    """Текст блоков по границам токенов (сохраняя пунктуацию и кавычки как в исходнике)."""
+    out = []
+    for a, b in zip(bounds[:-1], bounds[1:]):
+        if b > a and s.tokens[a][3] is not None and s.tokens[b - 1][4] is not None:
+            out.append(s.text[s.tokens[a][3]:s.tokens[b - 1][4]].strip())
+        else:
+            out.append(" ".join(t[0] for t in s.tokens[a:b]))
+    return out
 
 
 def blocks_to_bounds(s, blocks):
