@@ -3,4 +3,3 @@ __pycache__/
 server.log*
 .pi-tmp.*
 bench/cache/
-_exp/models/
