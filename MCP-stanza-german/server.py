@@ -392,7 +392,7 @@ def _config_path() -> str:
 def _regression_set() -> str:
     return os.environ.get(
         "RULE_SET",
-        os.path.join(os.path.dirname(_rule_root()), "bench", "sets", "corpus52_v3.jsonl"))
+        os.path.join(os.path.dirname(_rule_root()), "bench", "sets", "corpus52.jsonl"))
 
 
 def _load_rule() -> None:
@@ -548,7 +548,7 @@ def check_segmentation(items, with_opinion: bool = False) -> dict:
 
 
 def _rule_self_test_impl() -> dict:
-    """Регресс: разметка bench/sets/corpus52_v3.jsonl должна проходить валидатор
+    """Регресс: разметка bench/sets/corpus52.jsonl должна проходить валидатор
     целиком (гейт G4). Медленно (~30 с): парсит 52 предложения.
 
     Пример: rule_self_test() -> {"total":52,"compliant":52,"gate_passed":true}"""

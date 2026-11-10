@@ -1,0 +1,238 @@
+[
+ {
+  "algo": "S1",
+  "name": "LCA по дереву зависимостей (subtitle2go)",
+  "variant": "лучшая на 52",
+  "params": {
+   "min_lex": 2,
+   "ideal": 3.0,
+   "cap": 6,
+   "w_len": 0.3,
+   "objective": "mean",
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 27,
+  "n": 52,
+  "P": 0.74,
+  "R": 0.817,
+  "F1": 0.777,
+  "blocks": 179,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 1,
+  "ppmod": 8,
+  "mean_len": 2.95
+ },
+ {
+  "algo": "S1",
+  "name": "LCA по дереву зависимостей (subtitle2go)",
+  "variant": "по умолчанию",
+  "params": {
+   "min_lex": 2,
+   "ideal": 4.0,
+   "cap": 7,
+   "w_len": 1.0,
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 17,
+  "n": 52,
+  "P": 0.761,
+  "R": 0.583,
+  "F1": 0.66,
+  "blocks": 140,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 0,
+  "ppmod": 6,
+  "mean_len": 3.77
+ },
+ {
+  "algo": "S2",
+  "name": "расстояние по дереву составляющих (EMNLP-2024)",
+  "variant": "лучшая на 52",
+  "params": {
+   "min_lex": 2,
+   "ideal": 3.0,
+   "cap": 6,
+   "w_len": 0.3,
+   "objective": "mean",
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 25,
+  "n": 52,
+  "P": 0.714,
+  "R": 0.783,
+  "F1": 0.747,
+  "blocks": 178,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 1,
+  "ppmod": 10,
+  "mean_len": 2.97
+ },
+ {
+  "algo": "S2",
+  "name": "расстояние по дереву составляющих (EMNLP-2024)",
+  "variant": "по умолчанию",
+  "params": {
+   "min_lex": 2,
+   "ideal": 4.0,
+   "cap": 7,
+   "w_len": 1.0,
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 11,
+  "n": 52,
+  "P": 0.679,
+  "R": 0.496,
+  "F1": 0.573,
+  "blocks": 136,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 0,
+  "ppmod": 7,
+  "mean_len": 3.88
+ },
+ {
+  "algo": "S3",
+  "name": "тип составляющей на границе",
+  "variant": "лучшая на 52",
+  "params": {
+   "min_lex": 2,
+   "ideal": 3.0,
+   "cap": 6,
+   "w_len": 0.3,
+   "objective": "mean",
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 28,
+  "n": 52,
+  "P": 0.731,
+  "R": 0.757,
+  "F1": 0.744,
+  "blocks": 171,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 1,
+  "ppmod": 7,
+  "mean_len": 3.09
+ },
+ {
+  "algo": "S3",
+  "name": "тип составляющей на границе",
+  "variant": "по умолчанию",
+  "params": {
+   "min_lex": 2,
+   "ideal": 4.0,
+   "cap": 7,
+   "w_len": 1.0,
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 10,
+  "n": 52,
+  "P": 0.747,
+  "R": 0.513,
+  "F1": 0.608,
+  "blocks": 131,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 0,
+  "ppmod": 5,
+  "mean_len": 4.03
+ },
+ {
+  "algo": "S4",
+  "name": "гибрид S1+S2",
+  "variant": "лучшая на 52",
+  "params": {
+   "min_lex": 2,
+   "ideal": 3.0,
+   "cap": 6,
+   "w_len": 0.3,
+   "objective": "mean",
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 26,
+  "n": 52,
+  "P": 0.72,
+  "R": 0.826,
+  "F1": 0.769,
+  "blocks": 184,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 1,
+  "ppmod": 9,
+  "mean_len": 2.87
+ },
+ {
+  "algo": "S4",
+  "name": "гибрид S1+S2",
+  "variant": "по умолчанию",
+  "params": {
+   "min_lex": 2,
+   "ideal": 4.0,
+   "cap": 7,
+   "w_len": 1.0,
+   "syl_max_words": 3,
+   "syl_from": 7,
+   "pen": {
+    "np_inner": 0.35,
+    "before_aux": 0.25,
+    "subj_verb": 0.25
+   }
+  },
+  "exact": 14,
+  "n": 52,
+  "P": 0.75,
+  "R": 0.574,
+  "F1": 0.65,
+  "blocks": 140,
+  "blocks_out_of_range": 0,
+  "func_end": 0,
+  "pp_strict": 0,
+  "ppmod": 7,
+  "mean_len": 3.77
+ }
+]

@@ -59,7 +59,7 @@ python E:\KI_WORK\MCP-stanza-german\server.py
 | `calc_pause(texts, chars_per_sec=4)` | Пакетный расчёт пауз в секундах: символы / скорость (симв./сек; по умолчанию 4, настраивается через `STANZA_CHARS_PER_SEC`) — по блокам + total |
 | `pipeline_info()`              | Статус: загруженные процессоры, версии, путь к кэшу моделей, `rule_root`, `rule_registered` |
 | `check_segmentation(items, with_opinion=false)` | **Судья правила V4.** Проверка соответствия вашей разбивки правилу. `verdict: compliant \| non_compliant \| invalid_input`, `violations` (код + где + как поправить), `warnings` (допустимо, но помечено), `penalties` (мягкие штрафы с весом), `cost`. Пакетный. Судит по **тому же** разбору, что отдаёт `parse_german` |
-| `rule_self_test()`             | Регресс: ваша разметка `bench/sets/corpus52_v3.jsonl` должна проходить валидатор целиком (`gate_passed`, `failed_ids`, `error_codes`). ~30 с |
+| `rule_self_test()`             | Регресс: ваша разметка `bench/sets/corpus52.jsonl` должна проходить валидатор целиком (`gate_passed`, `failed_ids`, `error_codes`). ~30 с |
 | `rule_info()`                  | Паспорт правила: версия, `config_hash`, параметры нарезки, запреты, штрафы, измеренные цифры, путь регресс-набора |
 
 Пример запроса LLM: «Разбери синтаксис предложения *Der schneller Braunhund

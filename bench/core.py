@@ -11,7 +11,7 @@ import time
 
 ROOT = r"E:\KI_WORK"
 SETS = os.path.join(ROOT, "bench", "sets")
-CORPUS = os.path.join(SETS, "corpus52_v3.jsonl")     # разметка заказчика, 52 (настройка)
+CORPUS = os.path.join(SETS, "corpus52.jsonl")     # разметка заказчика, 52 (настройка)
 HELDOUT = os.path.join(SETS, "heldout_150.jsonl")    # 150 предложений (список для разметки)
 
 FUNC_UPOS = {"ADP", "DET", "CCONJ", "SCONJ", "PART"}  # решение Q4 (без глаголов-связок)
@@ -175,6 +175,132 @@ class Parsed:
             for p2 in range(lo + 1, hi + 1):
                 bad.add(p2)
         return bad
+
+
+# ---------------------------------------------------------------- запреты V4 (общие)
+
+ATTACHED_PUNCT = {",", ".", "!", "?", ";", ":", "\u2026"}   # приклеены к левому блоку
+
+
+def base_forbidden_v4(p, punct_v2=False):
+    """Механика. punct_v2=True: резать перед «(», «–», «„» МОЖНО (так делает заказчик).
+
+    Алгоритму выгоднее punct_v2=False (F1 0.777 против 0.749) — так и стоит в config.json.
+    """
+    bad = set()
+    for i in range(1, p.n):
+        tok = p.tokens[i][0]
+        if p.upos[i] == "PUNCT" and (not punct_v2 or tok in ATTACHED_PUNCT):
+            bad.add(i)
+        if p.tokens[i - 1][0].endswith("-") and not p.tokens[i][0].startswith("("):
+            bad.add(i)
+        if p.tokens[i - 1][0] in ("\u201e", "\u00ab", "\u201c", '"'):
+            bad.add(i)
+    return bad
+
+
+def pp_spans(p, np_inner=None):
+    """PP: (strict, ppmod).
+
+    strict — рез между предлогом и его существительным («in | seiner Firma») — запрет;
+    ppmod  — рез между существительным и его предложным определением
+             («zur Bezeichnung | neben …») — заказчик так режет в 17.7% случаев,
+             поэтому НЕ запрет, а мягкий штраф.
+    """
+    np_inner = np_inner or NP_INNER
+    children = {}
+    for idx, h in enumerate(p.heads_tok):
+        if h >= 0:
+            children.setdefault(h, []).append(idx)
+    strict, broad = set(), set()
+    for idx, (dep, up) in enumerate(zip(p.deprel, p.upos)):
+        if dep != "case" or up != "ADP":
+            continue
+        h = p.heads_tok[idx]
+        if h < 0:
+            continue
+        s_members = {idx, h}
+        b_members = set(s_members)
+        stack = [h]
+        while stack:
+            cur = stack.pop()
+            for ch in children.get(cur, []):
+                if p.deprel[ch] in np_inner:
+                    b_members.add(ch)
+                    stack.append(ch)
+        lo, hi = min(s_members), max(s_members)
+        strict.update(range(lo + 1, hi + 1))
+        lo, hi = min(b_members), max(b_members)
+        broad.update(range(lo + 1, hi + 1))
+    return strict, broad - strict
+
+
+def constraint_chain(p, mode="strict", punct_v2=False, q4=True):
+    """Уровни отката для dp_try: все запреты -> механика+Q4 -> только Q3 -> ничего.
+
+    mode: "strict" (как в config.json) | "broad" (старая трактовка) | "off".
+    """
+    base = base_forbidden_v4(p, punct_v2)
+    if q4:
+        base = base | p.forbidden_after_funcword()
+    strict, ppmod = pp_spans(p)
+    if mode == "off":
+        return [base]
+    pp = strict if mode == "strict" else strict | ppmod
+    return [base | pp, base, pp]
+
+
+def score_with_pen(scores, p, pen):
+    """Мягкие штрафы. Ключ "ppmod" — рез на границе PP-определения (см. pp_spans)."""
+    if not pen:
+        return scores
+    sc = list(scores)
+    pos = dict(p.penalty_positions())
+    if "ppmod" in pen:
+        pos["ppmod"] = pp_spans(p)[1]
+    for name, w in pen.items():
+        for i in pos.get(name, ()):
+            if 0 <= i < len(sc):
+                sc[i] -= w
+    return sc
+
+
+def enforce(bounds, p, params):
+    """2..cap лексических слов: длинные разрезать, короткие слить."""
+    min_lex, cap = params["min_lex"], params["cap"]
+    allow1 = params.get("allow_one_word_final", False)
+    bounds = sorted(set(bounds))
+    for _ in range(50):
+        out = [bounds[0]]
+        for b in bounds[1:]:
+            while p.lex_count(out[-1], b) > cap:
+                a, cnt, i = out[-1], 0, out[-1]
+                while i < b:
+                    if p.lex[i]:
+                        cnt += 1
+                        if cnt == cap:
+                            break
+                    i += 1
+                if i + 1 >= b:
+                    break
+                out.append(i + 1)
+            out.append(b)
+        bounds = out
+        changed = False
+        for k in range(len(bounds) - 1):
+            if p.lex_count(bounds[k], bounds[k + 1]) < min_lex:
+                if allow1 and bounds[k + 1] == p.n and p.lex_count(bounds[k], bounds[k + 1]) == 1:
+                    continue
+                del bounds[k if k > 0 else k + 1]
+                changed = True
+                break
+        if not changed and len(bounds) > 1 and p.lex_count(bounds[-2], bounds[-1]) < min_lex:
+            if not (allow1 and p.lex_count(bounds[-2], bounds[-1]) == 1):
+                bounds = bounds[:-2] + [bounds[-1]]
+                changed = True
+        if not changed:
+            break
+    return bounds
 
 
 def build_parse(sentence, nlp):
@@ -377,9 +503,9 @@ def score_metrics(pairs):
 
 
 def block_stats(p, bounds):
-    """Статистика блоков: длины (в словах), нарушения Q3/Q4, слоги не считаем."""
-    lens, func_end, pp_inner = [], 0, 0
-    pp_bad = p.pp_inner_positions()
+    """Статистика блоков: длины (в словах), нарушения запретов V4."""
+    lens, func_end, pp_strict, ppmod, punct = [], 0, 0, 0, 0
+    strict, mod = pp_spans(p)
     func_bad = p.forbidden_after_funcword()
     for a, b in zip(bounds[:-1], bounds[1:]):
         if b <= a:
@@ -387,9 +513,14 @@ def block_stats(p, bounds):
         lens.append(p.lex_count(a, b))
         if a > 0 and a in func_bad:
             func_end += 1
-        if a in pp_bad:
-            pp_inner += 1
-    return {"lens": lens, "func_end": func_end, "pp_inner": pp_inner, "nblocks": len(lens)}
+        if a > 0 and a in strict:
+            pp_strict += 1
+        if a > 0 and a in mod:
+            ppmod += 1
+        if a > 0 and p.upos[a] == "PUNCT" and p.tokens[a][0] in ATTACHED_PUNCT:
+            punct += 1
+    return {"lens": lens, "func_end": func_end, "pp_strict": pp_strict,
+            "ppmod": ppmod, "punct": punct, "nblocks": len(lens)}
 
 
 def now():

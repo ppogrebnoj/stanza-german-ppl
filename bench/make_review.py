@@ -21,7 +21,7 @@ from bench.scorers import DIRECT, SCORERS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "cache")
-BEST = os.path.join(HERE, "results", "best_params_c.json")
+BEST = os.path.join(HERE, "results", "best_params.json")
 
 
 def load_scores(set_name, algo, n):

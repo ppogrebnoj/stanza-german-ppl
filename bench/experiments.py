@@ -16,7 +16,7 @@
 Каркас — тот же, что в bench/run_bench.py (dp_try + enforce), поэтому цифры сравнимы
 с прошлыми итерациями.
 
-  python bench/exp_v3.py --stage constraints
+  python bench/experiments.py --stage constraints
 """
 import argparse
 import io
@@ -29,7 +29,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from bench.core import NP_INNER, apply_penalties, dp_try, score_metrics, truth_cuts
+from bench.core import (dp_try, enforce, pp_spans, score_metrics, score_with_pen,
+                        truth_cuts, constraint_chain, base_forbidden_v4)
 from bench.pcache import get_parses
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,125 +41,14 @@ FUNC_UPOS = {"ADP", "DET", "CCONJ", "SCONJ", "PART"}
 ATTACHED = {",", ".", "!", "?", ";", ":", "…"}     # приклеены к левому блоку
 
 
-# ------------------------------------------------------------------ запреты
-
-def base_forbidden(p, punct_v2: bool):
-    """Механика. punct_v2: резать перед «(», «–», «„» МОЖНО (так делает заказчик)."""
-    bad = set()
-    for i in range(1, p.n):
-        tok = p.tokens[i][0]
-        if p.upos[i] == "PUNCT":
-            if tok in ATTACHED or not punct_v2:
-                bad.add(i)
-        if p.tokens[i - 1][0].endswith("-") and not p.tokens[i][0].startswith("("):
-            bad.add(i)
-        if p.tokens[i - 1][0] in ("„", "«", "“", '"'):
-            bad.add(i)
-    return bad
-
-
-def _spans(p):
-    """PP: strict (ADP..head) и broad (+ NP-зависимые, включая вложенные PP)."""
-    children = {}
-    for idx, h in enumerate(p.heads_tok):
-        if h >= 0:
-            children.setdefault(h, []).append(idx)
-    strict, broad = set(), set()
-    for idx, (dep, up) in enumerate(zip(p.deprel, p.upos)):
-        if dep != "case" or up != "ADP":
-            continue
-        h = p.heads_tok[idx]
-        if h < 0:
-            continue
-        s_members = {idx, h}
-        b_members = set(s_members)
-        stack = [h]
-        while stack:
-            cur = stack.pop()
-            for ch in children.get(cur, []):
-                if p.deprel[ch] in NP_INNER:
-                    b_members.add(ch)
-                    stack.append(ch)
-        lo, hi = min(s_members), max(s_members)
-        strict.update(range(lo + 1, hi + 1))
-        lo, hi = min(b_members), max(b_members)
-        broad.update(range(lo + 1, hi + 1))
-    return strict, broad - strict
-
-
-_span_cache = {}
-
+# ------------------------------------------------------------------ запреты/каркас из core
 
 def spans(p):
-    k = id(p)
-    if k not in _span_cache:
-        _span_cache[k] = _spans(p)
-    return _span_cache[k]
+    return pp_spans(p)
 
 
-def constraint_chain(p, mode, punct_v2, q4=True):
-    """Уровни отката — как в run_bench: все ограничения -> механика+Q4 -> Q3 -> ничего."""
-    base = base_forbidden(p, punct_v2)
-    if q4:
-        base = base | p.forbidden_after_funcword()
-    strict, ppmod = spans(p)
-    if mode == "off":
-        return [base]
-    pp = strict if mode == "strict" else strict | ppmod
-    return [base | pp, base, pp]
-
-
-# ------------------------------------------------------------------ каркас run_bench
-
-def enforce(bounds, p, params):
-    """2..cap лексических слов: длинные разрезать, короткие слить (копия из run_bench)."""
-    min_lex, cap = params["min_lex"], params["cap"]
-    allow1 = params.get("allow_one_word_final", False)
-    bounds = sorted(set(bounds))
-    for _ in range(50):
-        out = [bounds[0]]
-        for b in bounds[1:]:
-            while p.lex_count(out[-1], b) > cap:
-                a, cnt, i = out[-1], 0, out[-1]
-                while i < b:
-                    if p.lex[i]:
-                        cnt += 1
-                        if cnt == cap:
-                            break
-                    i += 1
-                if i + 1 >= b:
-                    break
-                out.append(i + 1)
-            out.append(b)
-        bounds = out
-        changed = False
-        for k in range(len(bounds) - 1):
-            if p.lex_count(bounds[k], bounds[k + 1]) < min_lex:
-                if allow1 and bounds[k + 1] == p.n and p.lex_count(bounds[k], bounds[k + 1]) == 1:
-                    continue
-                del bounds[k if k > 0 else k + 1]
-                changed = True
-                break
-        if not changed and len(bounds) > 1 and p.lex_count(bounds[-2], bounds[-1]) < min_lex:
-            if not (allow1 and p.lex_count(bounds[-2], bounds[-1]) == 1):
-                bounds = bounds[:-2] + [bounds[-1]]
-                changed = True
-        if not changed:
-            break
-    return bounds
-
-
-def score_with_pen(scores, p, pen):
-    if not pen:
-        return scores
-    sc = list(scores)
-    pos = dict(p.penalty_positions())
-    pos["ppmod"] = spans(p)[1]
-    for name, w in pen.items():
-        for i in pos.get(name, ()):
-            if 0 <= i < len(sc):
-                sc[i] -= w
-    return sc
+def base_forbidden(p, punct_v2):
+    return base_forbidden_v4(p, punct_v2)
 
 
 # ------------------------------------------------------------------ оценка
@@ -202,7 +92,7 @@ def evaluate(parses, truth, scores, cfg, mode, punct_v2):
 def load(set_name, algo):
     path = os.path.join(SET_DIR, set_name + ".jsonl")
     rows, parses = get_parses(path)
-    key = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"file:{os.path.abspath(path).replace(chr(92), '/')}")
+    key = set_name          # имена файлов = имя набора (см. run_bench.set_key)
     sc_path = os.path.join(CACHE, f"scores_{key}_{algo}.json")
     if not os.path.exists(sc_path):
         raise SystemExit(f"нет кэша оценок: {sc_path}\nсначала:\n"
@@ -239,7 +129,7 @@ def main():
     ap.add_argument("--algo", default="S1")
     a = ap.parse_args()
 
-    P52, T52, S52 = load("corpus52_v3", a.algo)
+    P52, T52, S52 = load("corpus52", a.algo)
     P51, T51, S51 = load("heldout_51", a.algo)
     print(f"алгоритм {a.algo}: настройка — 52 предложения, проверка — 51 предложение")
 

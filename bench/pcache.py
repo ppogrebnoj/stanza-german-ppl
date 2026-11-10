@@ -62,7 +62,7 @@ if __name__ == "__main__":
     import sys
     here = os.path.dirname(os.path.abspath(__file__))
     sets = sys.argv[1:] or [os.path.join(here, "sets", x) for x in
-                            ("corpus52_v3.jsonl", "heldout_51.jsonl")]
+                            ("corpus52.jsonl", "heldout_51.jsonl")]
     for p in sets:
         rows, parses = get_parses(p)
         print(f"{os.path.basename(p)}: {len(parses)} разборов в кэше")

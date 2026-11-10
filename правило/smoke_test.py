@@ -102,7 +102,7 @@ def check_code_agrees(cfg):
 
 
 def check_data():
-    for fname, name in (("corpus52_v3.jsonl", "набор 52"), ("heldout_51.jsonl", "набор 51"),
+    for fname, name in (("corpus52.jsonl", "набор 52"), ("heldout_51.jsonl", "набор 51"),
                         ("heldout_150.jsonl", "список 150")):
         path = os.path.join(SETS, fname)
         if not os.path.exists(path):
@@ -119,7 +119,7 @@ def check_data():
 
 
 def check_corpus_integrity():
-    path = os.path.join(SETS, "corpus52_v3.jsonl")
+    path = os.path.join(SETS, "corpus52.jsonl")
     if not os.path.exists(path):
         return
     rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
@@ -145,13 +145,13 @@ def check_live():
         add("FAIL", "live_import", str(exc))
         return
     cfg = V.load_cfg(CONFIG)
-    stat, codes, details = V.run_set(os.path.join(SETS, "corpus52_v3.jsonl"), cfg)
+    stat, codes, details = V.run_set(os.path.join(SETS, "corpus52.jsonl"), cfg)
     if stat["compliant"] == stat["n"] and stat["n"] > 0:
         add("OK", "validator_52", f"{stat['compliant']}/{stat['n']} compliant")
     else:
         add("FAIL", "validator_52", f"{stat['compliant']}/{stat['n']}; коды {codes}")
 
-    for name, min_f1 in (("corpus52_v3.jsonl", 0.75), ("heldout_51.jsonl", 0.65)):
+    for name, min_f1 in (("corpus52.jsonl", 0.75), ("heldout_51.jsonl", 0.65)):
         rows = [json.loads(l) for l in open(os.path.join(SETS, name), encoding="utf-8") if l.strip()]
         tp = fp = fn = 0
         for r in rows:
@@ -163,7 +163,7 @@ def check_live():
             tp += len(p & t); fp += len(p - t); fn += len(t - p)
         f1 = 2 * tp / (2 * tp + fp + fn) if tp else 0
         status = "OK" if f1 >= min_f1 else "FAIL"
-        add(status, f"segment_f1_{name.split('_')[0]}", f"F1 {f1:.3f} (порог {min_f1})")
+        add(status, f"segment_f1_{name.split('.')[0]}", f"F1 {f1:.3f} (порог {min_f1})")
 
 
 # ------------------------------------------------------------------ вывод

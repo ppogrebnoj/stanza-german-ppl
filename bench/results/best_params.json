@@ -1,0 +1,86 @@
+{
+ "S1": {
+  "min_lex": 2,
+  "ideal": 3.0,
+  "cap": 6,
+  "w_len": 0.3,
+  "objective": "mean",
+  "syl_max_words": 3,
+  "syl_from": 7,
+  "pen": {
+   "np_inner": 0.35,
+   "before_aux": 0.25,
+   "subj_verb": 0.25
+  }
+ },
+ "S2": {
+  "min_lex": 2,
+  "ideal": 3.0,
+  "cap": 6,
+  "w_len": 0.3,
+  "objective": "mean",
+  "syl_max_words": 3,
+  "syl_from": 7,
+  "pen": {
+   "np_inner": 0.35,
+   "before_aux": 0.25,
+   "subj_verb": 0.25
+  }
+ },
+ "S3": {
+  "min_lex": 2,
+  "ideal": 3.0,
+  "cap": 6,
+  "w_len": 0.3,
+  "objective": "mean",
+  "syl_max_words": 3,
+  "syl_from": 7,
+  "pen": {
+   "np_inner": 0.35,
+   "before_aux": 0.25,
+   "subj_verb": 0.25
+  }
+ },
+ "S4": {
+  "min_lex": 2,
+  "ideal": 3.0,
+  "cap": 6,
+  "w_len": 0.3,
+  "objective": "mean",
+  "syl_max_words": 3,
+  "syl_from": 7,
+  "pen": {
+   "np_inner": 0.35,
+   "before_aux": 0.25,
+   "subj_verb": 0.25
+  }
+ },
+ "S12": {
+  "min_lex": 2,
+  "ideal": 3.0,
+  "cap": 6,
+  "w_len": 0.3,
+  "objective": "mean",
+  "syl_max_words": 3,
+  "syl_from": 7,
+  "pen": {
+   "np_inner": 0.35,
+   "before_aux": 0.25,
+   "subj_verb": 0.25
+  }
+ },
+ "S13": {
+  "min_lex": 2,
+  "ideal": 3.0,
+  "cap": 6,
+  "w_len": 0.3,
+  "objective": "mean",
+  "syl_max_words": 3,
+  "syl_from": 7,
+  "pen": {
+   "np_inner": 0.35,
+   "before_aux": 0.25,
+   "subj_verb": 0.25
+  }
+ }
+}

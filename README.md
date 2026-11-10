@@ -31,9 +31,9 @@ KI_WORK/
 │
 ├─ MCP-stanza-german/           ← MCP-сервер (Stanza: разбор, составляющие, паузы, судья)
 ├─ bench/                       ← стенд: сравнение алгоритмов
-│   ├─ sets/*.jsonl             … данные в машинном виде (52 / 51 / 150)
-│   ├─ results/                 … актуальные цифры (exp_v3_all.txt, audit, предсказания)
-│   └─ *.py                     … core, scorers, run_bench, exp_v3, audit_v3, build_sets_v3
+│   ├─ sets/*.jsonl             … данные в машинном виде (corpus52 / heldout_51 / heldout_150)
+│   ├─ results/                 … актуальные цифры (experiments_all.txt, audit.json, предсказания)
+│   └─ *.py                     … core, scorers, run_bench, experiments, audit, build_sets
 └─ АРХИВ/                       ← история: прошлые итерации, старые прогоны, старый судья
 ```
 
@@ -54,7 +54,7 @@ python правило/validator.py \
 python правило/validator.py --set bench/sets/heldout_51.jsonl
 
 # пересчитать машинные наборы из markdown-разметки (после правок заказчика)
-python bench/build_sets_v3.py
+python bench/build_sets.py
 
 # гейт целостности (быстро / с проверкой живого кода)
 python правило/smoke_test.py
@@ -67,7 +67,7 @@ python правило/smoke_test.py --full
 
 1. Открываете `данные/СПИСОК_150.md`, размечаете очередную часть слэшами: `… фраза / фраза …`.
 2. Кладёте файл в `данные/РАЗМЕТКА_<N>.md` (как `РАЗМЕТКА_51.md`).
-3. Я собираю машинный набор (`bench/build_sets_v3.py`), прогоняю аудит и валидатор,
+3. Я собираю машинный набор (`bench/build_sets.py`), прогоняю аудит и валидатор,
    показываю, где правило с вами не согласно.
 
 ## Состояние (итерация 4, июль 2026)

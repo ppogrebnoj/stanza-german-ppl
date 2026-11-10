@@ -2,7 +2,7 @@
 """Сборка машинных наборов из файлов разметки заказчика (итерация 4 / V3).
 
 Источники:
-  данные/РАЗМЕТКА_52.md   -> bench/sets/corpus52_v3.jsonl
+  данные/РАЗМЕТКА_52.md   -> bench/sets/corpus52.jsonl
   данные/РАЗМЕТКА_51.md   -> bench/sets/heldout_51.jsonl
 
 Почему отдельный парсер: заказчик размечает в markdown, причём
@@ -24,7 +24,7 @@ import sys
 ROOT = r"E:\KI_WORK"
 SRC52 = os.path.join(ROOT, "данные", "РАЗМЕТКА_52.md")
 SRC51 = os.path.join(ROOT, "данные", "РАЗМЕТКА_51.md")
-OUT52 = os.path.join(ROOT, "bench", "sets", "corpus52_v3.jsonl")
+OUT52 = os.path.join(ROOT, "bench", "sets", "corpus52.jsonl")
 OUT51 = os.path.join(ROOT, "bench", "sets", "heldout_51.jsonl")
 
 CYR = re.compile(r"[А-Яа-яЁё]")
@@ -193,7 +193,7 @@ def qa(rows, label):
 def main():
     r51 = parse_51(SRC51)
     r52 = parse_52(SRC52)
-    bad = qa(r51, "heldout_51") + qa(r52, "corpus52_v3")
+    bad = qa(r51, "heldout_51") + qa(r52, "corpus52")
     os.makedirs(os.path.dirname(OUT51), exist_ok=True)
     with open(OUT51, "w", encoding="utf-8") as f:
         for r in r51:

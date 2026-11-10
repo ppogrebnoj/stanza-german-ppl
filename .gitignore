@@ -2,6 +2,5 @@ __pycache__/
 *.pyc
 server.log*
 .pi-tmp.*
-MCP-stanza-german-RULE/reference/cache/
 bench/cache/
 _exp/models/

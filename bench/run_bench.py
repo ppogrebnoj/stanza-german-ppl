@@ -23,8 +23,9 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from bench.core import (apply_penalties, block_stats, bounds_to_blocks, build_parse, dp_segment,
-                        dp_try, load_corpus, load_heldout, score_metrics, truth_cuts)
+from bench.core import (block_stats, bounds_to_blocks, build_parse, constraint_chain, dp_segment,
+                        dp_try, enforce, load_corpus, load_heldout, score_metrics,
+                        score_with_pen, truth_cuts)
 from bench.scorers import DIRECT, SCORERS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,42 +35,6 @@ DEFAULT = {"min_lex": 2, "ideal": 4.0, "cap": 7, "w_len": 1.0}
 
 
 # ------------------------------------------------------------------ ограничения блоков
-
-def enforce(bounds, p, params):
-    """Привести границы к 2..cap лексических слов: длинные разрезать, короткие слить."""
-    min_lex, cap = params["min_lex"], params["cap"]
-    bounds = sorted(set(bounds))
-    for _ in range(50):
-        # 1) разрезать длинные
-        out = [bounds[0]]
-        for b in bounds[1:]:
-            while p.lex_count(out[-1], b) > cap:
-                a, cnt, i = out[-1], 0, out[-1]
-                while i < b:
-                    if p.lex[i]:
-                        cnt += 1
-                        if cnt == cap:
-                            break
-                    i += 1
-                if i + 1 >= b:
-                    break
-                out.append(i + 1)
-            out.append(b)
-        bounds = out
-        # 2) слить короткие
-        changed = False
-        for k in range(len(bounds) - 1):
-            if p.lex_count(bounds[k], bounds[k + 1]) < min_lex:
-                del bounds[k if k > 0 else k + 1]
-                changed = True
-                break
-        if not changed and len(bounds) > 1 and p.lex_count(bounds[-2], bounds[-1]) < min_lex:
-            bounds = bounds[:-2] + [bounds[-1]]
-            changed = True
-        if not changed:
-            break
-    return bounds
-
 
 # ------------------------------------------------------------------ базовые линии
 
@@ -113,9 +78,16 @@ def safe(name):
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", name)
 
 
+def set_key(name: str) -> str:
+    """Короткое имя набора для файлов: file:E:/.../corpus52.jsonl -> corpus52."""
+    if name.startswith("file:"):
+        return os.path.splitext(os.path.basename(name.split(":", 1)[1]))[0]
+    return name
+
+
 def get_scores(algo, set_name, parses):
     os.makedirs(CACHE, exist_ok=True)
-    path = os.path.join(CACHE, f"scores_{safe(set_name)}_{algo}.json")
+    path = os.path.join(CACHE, f"scores_{safe(set_key(set_name))}_{algo}.json")
     if os.path.exists(path):
         d = json.load(open(path, encoding="utf-8"))
         if len(d["scores"]) == len(parses):
@@ -192,13 +164,8 @@ def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_
             scores, ok = get_scores(algo, set_name, parses)
             print(f"  {algo} {name}: оценок нет у {ok.count(False)} предл.")
 
-        f_q4, f_pp = [], []
-        for rid, s, p in parses:
-            base = p.forbidden_base()
-            f4 = (p.forbidden_after_funcword() if use_constraints else set()) | base
-            fpp = (p.pp_inner_positions() if use_constraints else set()) | base
-            f_q4.append(f4)
-            f_pp.append(fpp)
+        mode = "strict" if use_constraints else "off"
+        chains = [constraint_chain(p, mode, False, q4=use_constraints) for _, _, p in parses]
 
         algo_variants = variants
         if per_algo.get(algo):
@@ -211,9 +178,8 @@ def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_
                 elif algo in BASELINES:
                     bounds = BASELINES[algo][1](p, params, f_q4[i])
                 else:
-                    sc = apply_penalties(scores[i], p, params.get("pen")) if params.get("pen") else scores[i]
-                    bounds, _lvl = dp_try(sc, p, params,
-                                          [f_q4[i] | f_pp[i], f_q4[i], p.pp_inner_positions()])
+                    sc = score_with_pen(scores[i], p, params.get("pen"))
+                    bounds, _lvl = dp_try(sc, p, params, chains[i])
                     bounds = enforce(bounds, p, params)
                 stats.append(block_stats(p, bounds))
                 pairs.append((set(bounds[1:-1]), truth[i]))
@@ -227,7 +193,8 @@ def run(set_name, algos, grid, use_constraints, blind=False, limit=None, params_
                 "blocks": nb,
                 "blocks_out_of_range": sum(1 for st in stats for L in st["lens"] if L < 2 or L > 7),
                 "func_end": sum(st["func_end"] for st in stats),
-                "pp_inner": sum(st["pp_inner"] for st in stats),
+                "pp_strict": sum(st["pp_strict"] for st in stats),
+                "ppmod": sum(st["ppmod"] for st in stats),
                 "mean_len": round(sum(L for st in stats for L in st["lens"]) / max(nb, 1), 2),
             }
             summary.append(row)
@@ -244,7 +211,7 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
     for algo in algos:
         params = (per_algo or {}).get(algo, params)
         suffix = "_c" if use_constraints else ""
-        path = os.path.join(RESULTS, f"{safe(set_name)}_{algo}{suffix}.jsonl")
+        path = os.path.join(RESULTS, f"{safe(set_key(set_name))}_{algo}{suffix}.jsonl")
         scores = None
         if algo in DIRECT:
             pass
@@ -252,16 +219,17 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
             scores, _ = get_scores(algo, set_name, parses)
         with open(path, "w", encoding="utf-8") as f:
             for i, (rid, s, p) in enumerate(parses):
-                base = p.forbidden_base()
-                f4 = (p.forbidden_after_funcword() if use_constraints else set()) | base
-                fpp = (p.pp_inner_positions() if use_constraints else set()) | base
+                f4 = constraint_chain(p, "strict" if use_constraints else "off",
+                                      False, q4=use_constraints)[0]
                 if algo in DIRECT:
                     bounds = enforce(DIRECT[algo][1](p) or [0, p.n], p, params)
                 elif algo in BASELINES:
                     bounds = BASELINES[algo][1](p, params, f4)
                 else:
-                    sc = apply_penalties(scores[i], p, params.get("pen")) if params.get("pen") else scores[i]
-                    bounds, _lvl = dp_try(sc, p, params, [f4 | fpp, f4, fpp])
+                    sc = score_with_pen(scores[i], p, params.get("pen"))
+                    bounds, _lvl = dp_try(sc, p, params,
+                                          constraint_chain(p, "strict" if use_constraints else "off",
+                                                           False, q4=use_constraints))
                     bounds = enforce(bounds, p, params)
                 f.write(json.dumps({"id": rid, "sentence": s,
                                     "blocks": bounds_to_blocks(p, bounds),
@@ -272,22 +240,22 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
 
 def write_summary(set_name, summary, blind, use_constraints=False, use_syl=False, use_pen=False):
     suffix = ("_c" if use_constraints else "") + ("_syl" if use_syl else "") +              ("_pen" if use_pen else "") + ("_blind" if blind else "")
-    json.dump(summary, open(os.path.join(RESULTS, f"summary_{safe(set_name)}{suffix}.json"), "w",
+    json.dump(summary, open(os.path.join(RESULTS, f"summary_{safe(set_key(set_name))}{suffix}.json"), "w",
                             encoding="utf-8"), ensure_ascii=False, indent=1)
     md = [f"# Сравнение алгоритмов: {set_name}{' (слепой режим)' if blind else ''}\n",
-          "| алгоритм | вариант | exact | P | R | **F1** | блоков | вне 2–7 | кончается служ. | рез в PP | ср. длина |",
-          "|---|---|---|---|---|---|---|---|---|---|---|"]
+          "| алгоритм | вариант | exact | P | R | **F1** | блоков | вне 2–7 | кончается служ. | рез после предлога | PP-определение | ср. длина |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in sorted(summary, key=lambda x: (x["algo"], -(x["F1"] or 0))):
         md.append(f"| {r['algo']} {r['name']} | {r['variant']} | {r['exact']}/{r['n']} | {r['P']} | "
                   f"{r['R']} | **{r['F1']}** | {r['blocks']} | {r['blocks_out_of_range']} | "
-                  f"{r['func_end']} | {r['pp_inner']} | {r['mean_len']} |")
-    open(os.path.join(RESULTS, f"summary_{safe(set_name)}{suffix}.md"), "w", encoding="utf-8").write(
+                  f"{r['func_end']} | {r['pp_strict']} | {r['ppmod']} | {r['mean_len']} |")
+    open(os.path.join(RESULTS, f"summary_{safe(set_key(set_name))}{suffix}.md"), "w", encoding="utf-8").write(
         "\n".join(md) + "\n")
 
 
 def print_summary(summary, blind):
     print("\n" + "=" * 122)
-    print(f"{'алг':4} {'вариант':36} {'exact':>8} {'P':>5} {'R':>5} {'F1':>5} {'блоков':>7} {'вне2-7':>7} {'функ':>5} {'PP':>4}")
+    print(f"{'алг':4} {'вариант':36} {'exact':>8} {'P':>5} {'R':>5} {'F1':>5} {'блоков':>7} {'вне2-7':>7} {'функ':>5} {'Q3':>4} {'PPо':>4}")
     print("-" * 122)
     for r in summary:
         if blind:
@@ -296,7 +264,7 @@ def print_summary(summary, blind):
         else:
             print(f"{r['algo']:4} {r['variant']:36} {str(r['exact'])+'/'+str(r['n']):>8} "
                   f"{r['P']:5.2f} {r['R']:5.2f} {r['F1']:5.2f} {r['blocks']:7} "
-                  f"{r['blocks_out_of_range']:7} {r['func_end']:5} {r['pp_inner']:4}")
+                  f"{r['blocks_out_of_range']:7} {r['func_end']:5} {r['pp_strict']:4} {r['ppmod']:4}")
     print("=" * 122)
 
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Анализ эталонной разметки заказчика: какие ограничения из неё следуют.
 
-  python bench/analyze_gold.py --set bench/sets/corpus52_v3.jsonl
+  python bench/analyze_gold.py --set bench/sets/corpus52.jsonl
   python bench/analyze_gold.py --set bench/sets/heldout_51.jsonl
 
 Печатает: длины блоков, нарушения кандидатов в запреты (служебное слово в конце блока,

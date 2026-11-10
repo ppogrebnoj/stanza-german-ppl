@@ -11,7 +11,7 @@
   np_inner      — рез между существительным и его адъективным/генитивным зависимым
   hyphen/quote  — механика
 
-  python bench/audit_v3.py
+  python bench/audit.py
 """
 import io
 import json
@@ -27,7 +27,7 @@ from bench.core import FUNC_UPOS, NP_INNER, truth_cuts
 from bench.pcache import get_parses
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SETS = [("corpus52", os.path.join(HERE, "sets", "corpus52_v3.jsonl")),
+SETS = [("corpus52", os.path.join(HERE, "sets", "corpus52.jsonl")),
         ("heldout51", os.path.join(HERE, "sets", "heldout_51.jsonl"))]
 
 
@@ -164,9 +164,9 @@ def audit(name, path):
 def main():
     out = [audit(n, p) for n, p in SETS]
     out.append(audit("all_103", None) if False else None)
-    json.dump([o for o in out if o], open(os.path.join(HERE, "results", "audit_v3.json"), "w",
+    json.dump([o for o in out if o], open(os.path.join(HERE, "results", "audit.json"), "w",
                                           encoding="utf-8"), ensure_ascii=False, indent=1)
-    print("\nсохранено: bench/results/audit_v3.json")
+    print("\nсохранено: bench/results/audit.json")
 
 
 if __name__ == "__main__":
