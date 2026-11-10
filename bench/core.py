@@ -59,6 +59,31 @@ class Parsed:
         for f in self.lex:
             self.lexpref.append(self.lexpref[-1] + (1 if f else 0))
 
+    # -- сериализация (кэш разборов: Stanza считается один раз на набор)
+
+    @classmethod
+    def from_dict(cls, d):
+        obj = cls.__new__(cls)
+        obj.sent = None
+        obj.const = None
+        obj.tok_of_word = {}
+        obj.text = d["text"]
+        obj.tokens = [tuple(t) for t in d["tokens"]]
+        obj.n = len(obj.tokens)
+        obj.heads_tok = list(d["heads_tok"])
+        obj.upos = [x[1] for x in obj.tokens]
+        obj.deprel = [x[2] for x in obj.tokens]
+        obj.head = [x[3] for x in obj.tokens]
+        obj.lex = [x[6] for x in obj.tokens]
+        obj.lexpref = [0]
+        for f in obj.lex:
+            obj.lexpref.append(obj.lexpref[-1] + (1 if f else 0))
+        return obj
+
+    def to_dict(self):
+        return {"text": self.text, "tokens": [list(t) for t in self.tokens],
+                "heads_tok": list(self.heads_tok)}
+
     def syllables(self):
         """слогов в каждом токене (pyphen, de_DE); ленивый кэш."""
         if getattr(self, "_syl", None) is None:
@@ -159,7 +184,8 @@ def build_parse(sentence, nlp):
 # ---------------------------------------------------------------- DP
 
 def dp_segment(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=frozenset(),
-               allow_short_whole=True, _relaxed=False, syl_max_words=None, syl_from=7):
+               allow_short_whole=True, _relaxed=False, syl_max_words=None, syl_from=7,
+               allow_one_word_final=False):
     """Возвращает список границ [0, c1, ..., n] (индексы токенов).
 
     scores[i] — сила границы перед токеном i (1..n-1).
@@ -177,7 +203,8 @@ def dp_segment(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=froz
             lc = p.lex_count(start, end)
             is_last = (end == n)
             if start > 0:
-                if lc < min_lex:
+                if lc < min_lex and not (allow_one_word_final and end == n and lc == 1
+                                         and p.upos[start] in ("VERB", "AUX")):
                     continue
                 if start in forbidden:
                     continue
@@ -210,7 +237,7 @@ def dp_segment(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=froz
 
 
 def dp_segment_mean(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden=frozenset(),
-                    syl_max_words=None, syl_from=7):
+                    syl_max_words=None, syl_from=7, allow_one_word_final=False):
     """То же, что dp_segment, но цель — СРЕДНЯЯ оценка блока (не сумма).
 
     Максимизируем (Σ score − w·Σ|ideal−len|) / k, где k — число блоков.
@@ -229,7 +256,8 @@ def dp_segment_mean(scores, p, min_lex=2, ideal=4.0, cap=7, w_len=1.0, forbidden
                     continue
                 lc = p.lex_count(start, end)
                 if start > 0:
-                    if lc < min_lex:
+                    if lc < min_lex and not (allow_one_word_final and end == n and lc == 1
+                                             and p.upos[start] in ("VERB", "AUX")):
                         continue
                     if start in forbidden:
                         continue
@@ -289,7 +317,8 @@ def dp_try(scores, p, params, forbidden_sets):
         b = (dp_segment_mean if obj == "mean" else dp_segment)(
             scores, p, min_lex=params["min_lex"], ideal=params["ideal"],
             cap=params["cap"], w_len=params["w_len"], forbidden=fset,
-            syl_max_words=params.get("syl_max_words"), syl_from=params.get("syl_from", 7))
+            syl_max_words=params.get("syl_max_words"), syl_from=params.get("syl_from", 7),
+            allow_one_word_final=params.get("allow_one_word_final", False))
         last = (b, level)
         if sum(1 for a, c in zip(b[:-1], b[1:]) if p.lex_count(a, c) > params["cap"]) == 0 and len(b) > 1:
             return b, level
