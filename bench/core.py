@@ -10,8 +10,9 @@ import re
 import time
 
 ROOT = r"E:\KI_WORK"
-CORPUS = os.path.join(ROOT, "MCP-stanza-german-RULE", "CORPUS", "verified.jsonl")
-HELDOUT = os.path.join(ROOT, "heldout", "heldout_150.jsonl")
+SETS = os.path.join(ROOT, "bench", "sets")
+CORPUS = os.path.join(SETS, "corpus52_v3.jsonl")     # разметка заказчика, 52 (настройка)
+HELDOUT = os.path.join(SETS, "heldout_150.jsonl")    # 150 предложений (список для разметки)
 
 FUNC_UPOS = {"ADP", "DET", "CCONJ", "SCONJ", "PART"}  # решение Q4 (без глаголов-связок)
 NP_INNER = {"det", "det:poss", "amod", "nummod", "nmod", "nmod:poss", "flat", "compound", "appos"}
@@ -357,18 +358,7 @@ def load_corpus():
 def load_heldout():
     """150 предложений. Если появилась разметка заказчика (annotations.jsonl),
     подставляем блоки -> прогон автоматически становится оценочным, а не слепым."""
-    rows = [json.loads(l) for l in open(HELDOUT, encoding="utf-8") if l.strip()]
-    ann_path = os.path.join(os.path.dirname(HELDOUT), "annotations.jsonl")
-    if os.path.exists(ann_path):
-        ann = {}
-        for line in open(ann_path, encoding="utf-8"):
-            if line.strip():
-                d = json.loads(line)
-                ann[d["id"]] = d.get("blocks") or []
-        for r in rows:
-            if ann.get(r["id"]):
-                r["blocks"] = ann[r["id"]]
-    return rows
+    return [json.loads(l) for l in open(HELDOUT, encoding="utf-8") if l.strip()]
 
 
 def score_metrics(pairs):

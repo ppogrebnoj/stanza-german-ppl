@@ -58,11 +58,9 @@ python E:\KI_WORK\MCP-stanza-german\server.py
 | `constituency_german(text)`    | Фразовое дерево Penn Treebank в скобочной записи по предложениям          |
 | `calc_pause(texts, chars_per_sec=4)` | Пакетный расчёт пауз в секундах: символы / скорость (симв./сек; по умолчанию 4, настраивается через `STANZA_CHARS_PER_SEC`) — по блокам + total |
 | `pipeline_info()`              | Статус: загруженные процессоры, версии, путь к кэшу моделей, `rule_root`, `rule_registered` |
-| `check_segmentation(items, with_opinion=false)` | **Судья правила.** Проверка соответствия вашей разбивки правилу + подсказки. `verdict: compliant \| non_compliant \| invalid_input`, `violations`, `coverage`, `effects`, `hints`, `delta_required`. Пакетный. Судит по **тому же** разбору, что отдаёт `parse_german` |
-| `rule_self_test()`             | Регресс по `CORPUS/verified.jsonl`: `compliant N/N` + `strict_rank1` + `failed_ids`. Гейт «ноль регресса» |
-| `rule_info()`                  | Паспорт правила: версия, `config_hash`, `rank_criteria`, статусы C-классов, лимиты, `config_completeness`, размер CORPUS |
-
-Судья **не решает, как резать**: `recommended`/`admissible`/`human_rank` идут в `machine_opinion` как справочное мнение и в `verdict` не входят.
+| `check_segmentation(items, with_opinion=false)` | **Судья правила V4.** Проверка соответствия вашей разбивки правилу. `verdict: compliant \| non_compliant \| invalid_input`, `violations` (код + где + как поправить), `warnings` (допустимо, но помечено), `penalties` (мягкие штрафы с весом), `cost`. Пакетный. Судит по **тому же** разбору, что отдаёт `parse_german` |
+| `rule_self_test()`             | Регресс: ваша разметка `bench/sets/corpus52_v3.jsonl` должна проходить валидатор целиком (`gate_passed`, `failed_ids`, `error_codes`). ~30 с |
+| `rule_info()`                  | Паспорт правила: версия, `config_hash`, параметры нарезки, запреты, штрафы, измеренные цифры, путь регресс-набора |
 
 Пример запроса LLM: «Разбери синтаксис предложения *Der schneller Braunhund
 jagt die kleine Katze im Garten*» → клиент вызывает `parse_german` и получает JSON с
@@ -76,8 +74,8 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
 - **`words[].is_mwt`** — bool: часть ли это MWT. Источником значения
   является только `Token.is_mwt()` в Stanza (не вычисляется из text/lemma).
 - **`words[].mwt_id`** — идентификатор поверхностного токена: для MWT —
-  диапазон Word-ID `[a, b]`, для одиночного — свой int id. rule.py собирает
-  слова одного MWT по единому ключу `mwt_id` (запрет реза внутри MWT).
+  диапазон Word-ID `[a, b]`, для одиночного — свой int id. Слова одного MWT
+  собираются по единому ключу `mwt_id` (внутри MWT резать нельзя).
 - **`tokens[]`** — параллельный список: один объект на каждый поверхностный
   токен (`id`, `text`, `is_mwt`, `word_ids`). Нужен для восстановления
   поверхностного текста/пунктуации и диапазона MWT.
@@ -88,8 +86,8 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
 ## Судья правила: `RULE_ROOT`
 
 Инструменты судьи (`check_segmentation`, `rule_self_test`, `rule_info`) работают поверх
-отдельного проекта правила — `MCP-stanza-german-RULE` (`reference/rule.py`,
-`reference/config.json`, `CORPUS/verified.jsonl`). Путь задаётся переменной `RULE_ROOT`
+отдельного проекта правила — `MCP-stanza-german-RULE` (`reference/validator_v3.py`,
+`reference/config.json`). Путь задаётся переменной `RULE_ROOT`
 (дефолт `E:\KI_WORK\MCP-stanza-german-RULE`). **Правила нет — сервер работает как раньше:**
 инструменты судьи просто не регистрируются, причина — в `pipeline_info().notes`.
 
@@ -109,7 +107,7 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
 }
 ```
 
-Пример вызова (пакет из PROMPT.md):
+Пример пакетного вызова:
 
 ```json
 check_segmentation({"sentence": "Ich weiß es, weil er müde ist.",
@@ -150,4 +148,4 @@ check_segmentation({"sentence": "Ich weiß es, weil er müde ist.",
 
 ## Файлы проекта
 
-- `server.py` — сам MCP-сервер (FastMCP, stdio): анализ (Stanza) + судья правила (обёртка над `reference/rule.py`)
+- `server.py` — сам MCP-сервер (FastMCP, stdio): анализ (Stanza) + судья правила (обёртка над `reference/validator_v3.py`)

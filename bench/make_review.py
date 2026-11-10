@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Сборка документа для просмотра глазами: предложение -> нарезка разными алгоритмами.
 
-  python bench/make_review.py --set heldout --per-register 3 --algos S5,S1,S4,S12
-  python bench/make_review.py --set corpus52 --algos S5,S1,S4 --out ИТЕРАЦИЯ_2/ПРОСМОТР_52.md
+  python bench/make_review.py --set heldout --per-register 3 --algos S1,S4,S11
+  python bench/make_review.py --set corpus52 --algos S1,S4 --out bench/results/review_52.md
 
 Скоры берутся из кэша (bench/cache/scores_<set>_<algo>.json) — без повторных прогонов.
 """
@@ -13,7 +13,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from bench.core import bounds_to_blocks, build_parse, dp_try, load_corpus, load_heldout
 from bench.run_bench import BASELINES, DEFAULT, enforce
@@ -116,7 +116,8 @@ def main():
         if a.set == "corpus52" and r.get("blocks"):
             out.append("- `человек`: " + " / ".join(r["blocks"]) + "\n")
 
-    path = a.out or os.path.join(r"E:\KI_WORK\ИТЕРАЦИЯ_2", f"ПРОСМОТР_{a.set}.md")
+    path = a.out or os.path.join(os.path.dirname(os.path.abspath(__file__)), "results",
+                                 f"review_{a.set}.md")
     open(path, "w", encoding="utf-8").write("".join(out))
     print("записано:", path, "| примеров:", len(parsed))
 

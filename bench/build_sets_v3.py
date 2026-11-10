@@ -2,8 +2,8 @@
 """Сборка машинных наборов из файлов разметки заказчика (итерация 4 / V3).
 
 Источники:
-  ИТЕРАЦИЯ_2/КОРПУС_52_для_разбивки.md      -> bench/sets/corpus52_v3.jsonl
-  ИТЕРАЦИЯ_3/heldout_51_150_part1.md        -> bench/sets/heldout_51.jsonl
+  данные/РАЗМЕТКА_52.md   -> bench/sets/corpus52_v3.jsonl
+  данные/РАЗМЕТКА_51.md   -> bench/sets/heldout_51.jsonl
 
 Почему отдельный парсер: заказчик размечает в markdown, причём
   * в 52-м корпусе последние 8 предложений размечены слэшами В САМОЙ СТРОКЕ
@@ -22,8 +22,8 @@ import re
 import sys
 
 ROOT = r"E:\KI_WORK"
-SRC52 = os.path.join(ROOT, "ИТЕРАЦИЯ_2", "КОРПУС_52_для_разбивки.md")
-SRC51 = os.path.join(ROOT, "ИТЕРАЦИЯ_3", "heldout_51_150_part1.md")
+SRC52 = os.path.join(ROOT, "данные", "РАЗМЕТКА_52.md")
+SRC51 = os.path.join(ROOT, "данные", "РАЗМЕТКА_51.md")
 OUT52 = os.path.join(ROOT, "bench", "sets", "corpus52_v3.jsonl")
 OUT51 = os.path.join(ROOT, "bench", "sets", "heldout_51.jsonl")
 

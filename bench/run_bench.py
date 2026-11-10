@@ -21,7 +21,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from bench.core import (apply_penalties, block_stats, bounds_to_blocks, build_parse, dp_segment,
                         dp_try, load_corpus, load_heldout, score_metrics, truth_cuts)

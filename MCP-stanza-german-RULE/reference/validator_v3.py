@@ -25,6 +25,7 @@ import re
 import sys
 
 DEFAULT_CFG = {
+    "algorithm": "S1",
     "objective": "mean",
     "w_len": 0.3,
     "min_lex": 2,
@@ -37,19 +38,43 @@ DEFAULT_CFG = {
         "inside_pp": "strict",          # strict: только ADP -> его существительное
         "inside_hyphen": True,
         "after_open_quote": True,
+        "open_quotes": ["„", "»", "«", "‚"],  # „ » « ‚ — только открывающие
     },
     "one_word": {
         "allow_final_verb": True,
         "allow_abbrev": ["etc.", "etc", "usw.", "usw", "bzw.", "bzw", "bzw", "vgl.", "ca."],
         "allow_parenthetical": True,
+        "allow_list_item": True,
     },
     "syllables": {"from": 7, "max_words": 3},
     "penalties": {"np_inner": 0.35, "before_aux": 0.25, "subj_verb": 0.25},
     "np_inner_deprels": ["det", "det:poss", "amod", "nummod", "nmod", "nmod:poss",
                          "flat", "compound", "appos"],
-    "open_quotes": ["\u201e", "\u00bb", "\u00ab", "\u201a"],  # „ » « ‚ — только открывающие
     "stats_marks": {"terminal": [".", "?", "!"], "comma": [","]},
 }
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_cfg(path=None):
+    """Числа из config.json (раздел "segment"). Нет файла — DEFAULT_CFG."""
+    for cand in (path, os.path.join(HERE, "config.json")):
+        if cand and os.path.exists(cand):
+            raw = json.load(open(cand, encoding="utf-8"))
+            seg = raw.get("segment")
+            if not seg:
+                continue
+            out = dict(DEFAULT_CFG)
+            out.update({k: v for k, v in seg.items() if k in DEFAULT_CFG})
+            out["bans"] = dict(DEFAULT_CFG["bans"], **seg.get("bans", {}))
+            out["one_word"] = dict(DEFAULT_CFG["one_word"], **seg.get("one_word", {}))
+            out["_source"] = cand
+            out["_version"] = raw.get("version")
+            return out
+    out = dict(DEFAULT_CFG)
+    out["_source"] = "DEFAULT_CFG"
+    return out
+
 
 _nlp = None
 
@@ -201,7 +226,7 @@ def blocks_to_bounds(s, blocks):
 # ------------------------------------------------------------------ проверка
 
 def check(text, blocks, cfg=None, pipeline=None):
-    cfg = cfg or DEFAULT_CFG
+    cfg = cfg or load_cfg()
     bans = cfg["bans"]
     s = parse(text, pipeline)
     bounds = blocks_to_bounds(s, blocks)
@@ -233,7 +258,15 @@ def check(text, blocks, cfg=None, pipeline=None):
             ok_abbrev = single.strip(".,;:") in [x.strip(".,;:") for x in cfg["one_word"]["allow_abbrev"]]
             ok_paren = (cfg["one_word"]["allow_parenthetical"] and any(
                 t[1] == "PUNCT" and t[0] in ("(", ")", "[", "]") for t in s.tokens[a:b]))
-            if ok_final_verb or ok_abbrev or ok_paren:
+            # пункт перечисления: одно слово в цепочке через запятую
+            ok_list = False
+            if cfg["one_word"].get("allow_list_item"):
+                n_commas = sum(1 for t in s.tokens if t[0] == ",")
+                after_comma = (s.tokens[b - 1][0].endswith(",")
+                               or (b < s.n and s.tokens[b][0] in (",", "und", "oder", "sowie")))
+                nounish = s.upos[a] in ("NOUN", "PROPN", "NUM", "ADJ", "ADV")
+                ok_list = n_commas >= 3 and after_comma and nounish
+            if ok_final_verb or ok_abbrev or ok_paren or ok_list:
                 warnings.append({"code": "L1", "message": f"блок из одного слова «{left}»",
                                  "at": k + 1, "suggestion": "допустимо: финитный глагол/сокращение/вставка"})
             else:
@@ -270,7 +303,7 @@ def check(text, blocks, cfg=None, pipeline=None):
             if bans["inside_hyphen"] and s.tokens[i - 1][0].endswith("-") \
                     and not s.tokens[i][0].startswith("("):
                 add(errors, "H1", f"рез внутри дефисного слова {pair}", i, "держать слово целиком")
-            if bans["after_open_quote"] and s.tokens[i - 1][0] in cfg["open_quotes"]:
+            if bans["after_open_quote"] and s.tokens[i - 1][0] in bans["open_quotes"]:
                 add(errors, "H2", f"рез сразу после открывающей кавычки {pair}", i, "кавычка — к правому блоку")
             if i in ppmod:
                 cost += 1.0
@@ -303,7 +336,7 @@ def check(text, blocks, cfg=None, pipeline=None):
 # ------------------------------------------------------------------ прогон по набору
 
 def run_set(path, cfg=None):
-    cfg = cfg or DEFAULT_CFG
+    cfg = cfg or load_cfg()
     pipeline = nlp()
     rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
     stat = {"n": 0, "compliant": 0, "non_compliant": 0, "invalid": 0}
@@ -336,15 +369,17 @@ def main():
     ap.add_argument("--blocks", help="блоки через |")
     ap.add_argument("--set")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--config")
     a = ap.parse_args()
+    cfg = load_cfg(a.config)
     if a.set:
-        run_set(a.set)
+        run_set(a.set, cfg)
         return 0
     if not (a.text and a.blocks):
         ap.print_help()
         return 2
     blocks = [x.strip() for x in a.blocks.split("|")]
-    rep = check(a.text, blocks)
+    rep = check(a.text, blocks, cfg)
     if a.json:
         print(json.dumps(rep, ensure_ascii=False, indent=1))
     else:

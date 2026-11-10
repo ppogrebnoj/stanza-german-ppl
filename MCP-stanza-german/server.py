@@ -10,10 +10,12 @@ download_method=None — сеть не используется и повтор�
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import math
 import os
+import re
 import sys
 import threading
 import time
@@ -81,7 +83,7 @@ LANGUAGE = "de"
 FULL_PROCESSORS = "tokenize,mwt,pos,lemma,depparse,constituency"
 CORE_PROCESSORS = "tokenize,mwt,pos,lemma,depparse"
 
-# Правило сегментации (rule.py + config.json + CORPUS) живёт отдельно от сервера.
+# Правило сегментации (validator_v3.py + config.json) живёт отдельно от сервера.
 # Путь — переменная окружения RULE_ROOT (поле env в mcp.json), иначе — дефолт.
 RULE_ROOT_DEFAULT = r"E:\KI_WORK\MCP-stanza-german-RULE"
 
@@ -91,7 +93,7 @@ mcp = FastMCP(
         "Stanza de: parse_german — синтаксис (леммы/POS/зависимости + MWT-поля); "
         "constituency_german — фразовое дерево; calc_pause — паузы в сек по символам, пакетно; "
         "pipeline_info — статус. Судья правила: check_segmentation (verdict + подсказки), "
-        "rule_self_test (регресс по CORPUS), rule_info (версия/критерии/полнота). Офлайн."
+        "rule_self_test (регресс на разметке 52), rule_info (версия/параметры/цифры). Офлайн."
     ),
 )
 
@@ -173,7 +175,7 @@ def _sentence_words(doc, s) -> list[dict]:
     Каждой записи добавлены is_mwt / mwt_id — ИСТОЧНИК ТОЛЬКО STANZA:
     Token.is_mwt() и Token.id. Без вычисления/гадания из text/lemma/upos.
     Для MWT t.id — диапазон Word-ID (a, b); в JSON — список [a, b].
-    rule.py собирает слова одного MWT по mwt_id."""
+    Слова одного MWT собираются по mwt_id."""
     words: list[dict] = []
     for t in s.tokens:
         is_mwt = bool(t.is_mwt())
@@ -191,7 +193,7 @@ def _sentence_tokens(doc, s) -> list[dict]:
     """Параллельный список поверхностных токенов: один объект на каждый
     Sentence.token. Содержит MWT-флаг (Token.is_mwt()), явный перечень
     word_ids — Word-ID, входящие в токен, и offsets start_char/end_char.
-    Нужен rule.py для восстановления поверхностного текста/пунктуации,
+    Нужен для восстановления поверхностного текста/пунктуации,
     диапазона MWT и вырезания текста блока по позициям символов (SPEC §4)."""
     tokens: list[dict] = []
     for t in s.tokens:
@@ -357,36 +359,49 @@ def _pipeline_info_impl() -> dict:
 
 
 # ======================= правило сегментации (судья) =========================
-# rule.py = единственный код правила. Сервер — тонкая read-only обёртка:
-# судья (check), регресс (self_test), паспорт правила (rule_info).
-# config.json перечитывается на КАЖДЫЙ вызов: цикл правит конфиг и сразу
-# перепроверяется; в ответе — config_hash, которым доказана версия суждения.
+# Единственный код правила - reference/validator_v3.py + config.json (раздел
+# "segment"). Сервер - тонкая read-only обёртка: судья (check), регресс
+# (self_test), паспорт правила (rule_info). config.json перечитывается на
+# КАЖДЫЙ вызов: поправили конфиг - сразу действует, рестарт не нужен.
 _RULE = None
 _RULE_NOTE: str | None = None
-
 
 
 @mcp.tool()
 def pipeline_info() -> dict:
     return _run_tool("pipeline_info", lambda: _pipeline_info_impl())
 
+
 def _rule_root() -> str:
     return os.environ.get("RULE_ROOT", RULE_ROOT_DEFAULT)
 
 
+def _config_path() -> str:
+    return os.path.join(_rule_root(), "reference", "config.json")
+
+
+def _regression_set() -> str:
+    return os.environ.get(
+        "RULE_SET",
+        os.path.join(os.path.dirname(_rule_root()), "bench", "sets", "corpus52_v3.jsonl"))
+
+
 def _load_rule() -> None:
-    """Импорт reference/rule.py из RULE_ROOT. Нет правила — сервер работает как
-    раньше, инструменты судьи просто не регистрируются (не падает)."""
+    """Импорт reference/validator_v3.py из RULE_ROOT. Нет правила - сервер работает
+    как раньше, инструменты судьи просто не регистрируются (не падает)."""
     global _RULE, _RULE_NOTE
     root = _rule_root()
-    path = os.path.join(root, "reference", "rule.py")
+    path = os.path.join(root, "reference", "validator_v3.py")
     if not os.path.exists(path):
         _RULE_NOTE = f"правило не подключено: нет {path} (задайте RULE_ROOT)"
         return
     try:
-        spec = importlib.util.spec_from_file_location("rule_reference", path)
+        ref_dir = os.path.dirname(path)
+        if ref_dir not in sys.path:
+            sys.path.insert(0, ref_dir)   # segment_v3 импортирует validator_v3 рядом
+        spec = importlib.util.spec_from_file_location("rule_validator_v3", path)
         mod = importlib.util.module_from_spec(spec)
-        sys.modules["rule_reference"] = mod
+        sys.modules["rule_validator_v3"] = mod
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
         _RULE = mod
     except Exception as exc:  # noqa: BLE001
@@ -395,18 +410,24 @@ def _load_rule() -> None:
 
 def get_rule():
     if _RULE is None:
-        raise RuntimeError(_RULE_NOTE or "rule.py не подключен")
+        raise RuntimeError(_RULE_NOTE or "validator_v3 не подключен")
     return _RULE
 
 
 def rule_config():
-    """config.json перечитывается каждый раз — свежее правило без рестарта сервера."""
-    return get_rule().load_config(os.path.join(_rule_root(), "reference", "config.json"))
+    """config.json перечитывается каждый раз - свежее правило без рестарта сервера."""
+    return get_rule().load_cfg(_config_path())
+
+
+def _canonical_hash(cfg: dict) -> str:
+    """sha256 канонического JSON - доказательство версии суждения."""
+    clean = {k: v for k, v in cfg.items() if not str(k).startswith("_")}
+    blob = json.dumps(clean, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _parse_payload(sentence: str) -> dict:
-    """Разбор одного предложения в формате parse_german — его же судья и судит
-    (SPEC §4): LLM и судья оперируют одними Word-ID."""
+    """Разбор одного предложения в формате parse_german (тот же, что видит LLM)."""
     pipe = get_pipeline()
     doc = pipe(sentence)
     if len(doc.sentences) != 1:
@@ -419,85 +440,85 @@ def _parse_payload(sentence: str) -> dict:
     }]}
 
 
-def _blocks_from_toks(tokens: list[dict], sentence: str, toks: list[list[int]]) -> list[str]:
-    """toks=[[a,b],...] (Word-ID) -> тексты блоков. Канонический ввод: номера слов
-    надёжнее текста блока (защита от опечаток)."""
-    return [get_rule().block_text(sentence, tokens, int(a), int(b)) for a, b in toks]
+def _blocks_from_toks(sentence: str, toks: list) -> list[str]:
+    """toks=[[a,b],...] (Word-ID, b включительно) -> тексты блоков по смещениям
+    символов. Номера слов надёжнее текста блока: защита от опечаток в блоке."""
+    tokens = _parse_payload(sentence)["sentences"][0]["tokens"]
+    out = []
+    for a, b in toks:
+        a, b = int(a), int(b)
+        start = end = None
+        for t in tokens:
+            ids = t.get("word_ids") or []
+            if not ids:
+                continue
+            if ids[0] == a:
+                start = t["start_char"]
+            if ids[-1] == b:
+                end = t["end_char"]
+        if start is None or end is None:
+            raise ValueError(f"блок [{a},{b}] не найден в разборе")
+        out.append(sentence[start:end].strip())
+    # P2: непарный знак препинания в начале блока уходит в конец предыдущего
+    for k in range(1, len(out)):
+        m = re.match(r"^([,.;:!?]+)\s*(.*)$", out[k])
+        if m and m.group(2):
+            out[k - 1] = out[k - 1] + m.group(1)
+            out[k] = m.group(2)
+    return out
 
 
-def _check_one(item: dict, with_opinion: bool) -> dict:
-    rule = get_rule()
+def _check_one(item: dict, with_opinion: bool = False) -> dict:
     cfg = rule_config()
     sentence = (item.get("sentence") or "").strip()
     if not sentence:
         return {"verdict": "invalid_input", "sentence": sentence,
                 "violations": [{"type": "invalid_sentence", "detail": "empty 'sentence'"}]}
-    try:
-        payload = _parse_payload(sentence)
-    except Exception as exc:  # noqa: BLE001
-        return {"verdict": "invalid_input", "sentence": sentence,
-                "violations": [{"type": "invalid_sentence", "detail": str(exc)}]}
-    tokens = payload["sentences"][0]["tokens"]
     blocks = item.get("blocks")
     if not blocks and item.get("toks"):
-        blocks = _blocks_from_toks(tokens, sentence, item["toks"])
+        try:
+            blocks = _blocks_from_toks(sentence, item["toks"])
+        except Exception as exc:  # noqa: BLE001
+            return {"verdict": "invalid_input", "sentence": sentence,
+                    "violations": [{"type": "invalid_sentence", "detail": str(exc)}]}
     if not blocks:
         return {"verdict": "invalid_input", "sentence": sentence,
                 "violations": [{"type": "invalid_sentence",
                                 "detail": "нужны 'blocks' (текст) или 'toks' (Word-ID)"}]}
-    res = rule.check(sentence, list(blocks), cfg,
-                     with_opinion=bool(with_opinion), parsed=payload)
-    out = {
+    rep = get_rule().check(sentence, list(blocks), cfg, pipeline=get_pipeline())
+    return {
         "sentence": sentence,
-        "verdict": res["verdict"],
-        "violations": res["violations"],
-        "coverage": res["diagnosis"]["coverage"],
-        "cuts": res["diagnosis"]["cuts"],
-        "effects": res["diagnosis"]["effects"],
-        "hints": res["diagnosis"]["hints"],
-        "delta_required": res["diagnosis"]["delta_required"],
-        "block_not_found": res["diagnosis"].get("block_not_found", []),
-        "parse_source": res["parse_source"],
-        "rule_version": res["rule_version"],
-        "config_hash": res["config_hash"],
+        "verdict": rep["verdict"],
+        "violations": [{"type": e["code"], "detail": e["message"],
+                        "at": e.get("at"), "suggestion": e.get("suggestion")}
+                       for e in rep.get("errors", [])],
+        "warnings": [{"type": w["code"], "detail": w["message"], "at": w.get("at")}
+                     for w in rep.get("warnings", [])],
+        "penalties": [{"type": i["code"], "detail": i["message"], "at": i.get("at")}
+                      for i in rep.get("info", [])],
+        "cost": rep.get("cost"),
+        "blocks": len(blocks),
+        "lens": rep.get("lens"),
+        "rule_version": cfg.get("_version"),
+        "config_hash": _canonical_hash(cfg),
     }
-    op = res["machine_opinion"]
-    if op.get("enabled"):
-        out["machine_opinion"] = {
-            "recommended": [b["text"] for b in op.get("recommended", [])],
-            "admissible_top": [[b["text"] for b in a["blocks"]] for a in op.get("admissible_top", [])],
-            "total_admissible": op.get("total_admissible"),
-            "total_rejected": op.get("total_rejected"),
-            "human_rank": op.get("human_rank"),
-            "note": op.get("note"),
-        }
-        if op.get("error"):
-            out["machine_opinion"]["error"] = op["error"]
-            out["machine_opinion"]["seam_positions"] = op.get("seam_positions")
-            out["machine_opinion"]["limit"] = op.get("limit")
-    return out
 
 
-def _check_segmentation_impl(items: dict | list[dict] | str,
-                       with_opinion: bool = False) -> dict:
-    """Судья правила сегментации: проверяет СООТВЕТСТВИЕ разбивки человека правилу
-    и даёт подсказки. НЕ решает, как резать: recommended/admissible — справочное
-    мнение, в verdict не входит.
+def _check_segmentation_impl(items, with_opinion: bool = False) -> dict:
+    """Судья правила V4: проверяет СООТВЕТСТВИЕ разбивки человека правилу.
 
-    items — одно или список: {"sentence": "...", "blocks": ["блок1", "блок2"]}
-    (текст блоков) ИЛИ {"sentence": "...", "toks": [[1,3],[4,9]]} (Word-ID, надёжнее).
-    with_opinion=true включает перебор §8 (ранжирование) — он ограничен
-    max_seam_positions и max_admissible из config.json.
-
-    verdict: compliant | non_compliant | invalid_input. delta_required=true — только
-    при missing/forbidden (дыра правила); min/cap/coverage — дырой НЕ считаются.
+    items - одно или список: {"sentence": "...", "blocks": ["блок1", "блок2"]}
+    (текст блоков) ИЛИ {"sentence": "...", "toks": [[1,3],[4,9]]} (Word-ID).
+    verdict: compliant | non_compliant | invalid_input.
+    violations - ошибки (правило нарушено), warnings - допустимо, но помечено,
+    penalties - мягкие штрафы с весом (нарезчик их избегает).
     Пример: check_segmentation({"sentence":"Ich weiß es, weil er müde ist.",
     "blocks":["Ich weiß es,","weil er müde ist."]})"""
     get_rule()
     if isinstance(items, str):
-        s = items.strip()
-        if s.startswith("{") or s.startswith("["):
-            items = json.loads(s)  # JSON-строка пакета/объекта — принимаем как данные
+        st = items.strip()
+        if st.startswith("{") or st.startswith("["):
+            items = json.loads(st)  # JSON-строка пакета/объекта - принимаем как данные
     lst = [items] if isinstance(items, (dict, str)) else list(items)
     lst = [i if isinstance(i, dict) else {"sentence": i} for i in lst]
     results = [_check_one(i, with_opinion) for i in lst]
@@ -505,90 +526,94 @@ def _check_segmentation_impl(items: dict | list[dict] | str,
     return {
         "count": len(results),
         "all_compliant": all(r["verdict"] == "compliant" for r in results),
-        "rule_version": cfg["version"],
-        "config_hash": get_rule()._canonical_hash(cfg),
+        "rule_version": cfg.get("_version"),
+        "config_hash": _canonical_hash(cfg),
         "results": results,
     }
 
 
+def check_segmentation(items, with_opinion: bool = False) -> dict:
+    return _run_tool("check_segmentation", lambda: _check_segmentation_impl(items, with_opinion))
 
-def check_segmentation(items: dict | list[dict] | str,
-                       with_opinion: bool = False) -> dict:    return _run_tool("check_segmentation", lambda: _check_segmentation_impl(items, with_opinion))
 
 def _rule_self_test_impl() -> dict:
-    """Регресс по CORPUS/verified.jsonl: воспроизводит ли ТЕКУЩИЙ config.json все
-    ваши verified-разбивки. Гейт PROTOCOL: все compliant. strict_rank1 — справочно
-    (разбивка человека = recommended[0] машины).
+    """Регресс: разметка bench/sets/corpus52_v3.jsonl должна проходить валидатор
+    целиком (гейт G4). Медленно (~30 с): парсит 52 предложения.
 
-    Пример: rule_self_test() → {"total":3,"compliant":3,"failed_ids":[]}"""
-    rule = get_rule()
-    res = rule.self_test()
-    total = len(res)
-    compliant = sum(1 for r in res if r["pass"])
-    strict = sum(1 for r in res if r["strict_rank1"])
+    Пример: rule_self_test() -> {"total":52,"compliant":52,"gate_passed":true}"""
     cfg = rule_config()
+    path = _regression_set()
+    if not os.path.exists(path):
+        return {"error": f"нет набора: {path}", "gate_passed": False}
+    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+    failed, codes = [], {}
+    for r in rows:
+        if not r.get("blocks"):
+            continue
+        rep = get_rule().check(r["sentence"], r["blocks"], cfg, pipeline=get_pipeline())
+        if rep["verdict"] != "compliant":
+            failed.append(r["id"])
+            for e in rep["errors"]:
+                codes[e["code"]] = codes.get(e["code"], 0) + 1
+    total = len([r for r in rows if r.get("blocks")])
     return {
         "total": total,
-        "compliant": compliant,
-        "non_compliant": total - compliant,
-        "strict_rank1": strict,
-        "gate_passed": total > 0 and compliant == total,
-        "failed_ids": [r["id"] for r in res if not r["pass"]],
-        "cases": res,
-        "rule_version": cfg["version"],
-        "config_hash": rule._canonical_hash(cfg),
+        "compliant": total - len(failed),
+        "non_compliant": len(failed),
+        "gate_passed": total > 0 and not failed,
+        "failed_ids": failed,
+        "error_codes": codes,
+        "regression_set": path,
+        "rule_version": cfg.get("_version"),
+        "config_hash": _canonical_hash(cfg),
     }
 
 
+def rule_self_test() -> dict:
+    return _run_tool("rule_self_test", lambda: _rule_self_test_impl())
 
-def rule_self_test() -> dict:    return _run_tool("rule_self_test", lambda: _rule_self_test_impl())
 
 def _rule_info_impl() -> dict:
-    """Паспорт правила: версия, hash config.json, критерии ранжирования, статусы
-    C-классов, лимиты перебора, полнота конфига, размер CORPUS.
+    """Паспорт правила: версия, hash конфига, параметры нарезки, запреты, штрафы,
+    измеренные цифры, путь регресс-набора.
 
     Пример: rule_info()"""
-    rule = get_rule()
     cfg = rule_config()
-    rep = rule.config_completeness()
-    cpath = os.path.join(_rule_root(), "CORPUS", "verified.jsonl")
-    verified = 0
-    if os.path.exists(cpath):
-        with open(cpath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    if json.loads(line).get("accepted") is True:
-                        verified += 1
-                except Exception:  # noqa: BLE001
-                    continue
+    measured, seg_version = {}, None
+    try:
+        raw = json.load(open(_config_path(), encoding="utf-8"))
+        measured = raw.get("segment", {}).get("measured", {})
+        seg_version = raw.get("segment_version")
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "rule_root": _rule_root(),
         "registered": True,
-        "rule_version": cfg["version"],
-        "config_hash": rule._canonical_hash(cfg),
-        "rank_criteria": [f"{c['criterion']}:{c['direction']}" for c in cfg["rank"]["criteria"]],
-        "seam_classes_status": cfg["seam_classes_status"],
-        "params": {"min": cfg["min"], "pref": cfg["pref"], "cap": cfg["cap"]},
-        "guards": {"max_seam_positions": cfg.get("max_seam_positions"),
-                   "max_admissible": cfg.get("max_admissible")},
-        "config_completeness": rep,
-        "corpus_verified_count": verified,
-        "corpus_path": cpath,
+        "rule_version": cfg.get("_version"),
+        "segment_version": seg_version,
+        "config_hash": _canonical_hash(cfg),
+        "algorithm": cfg.get("algorithm"),
+        "params": {k: cfg.get(k) for k in
+                   ("min_lex", "ideal_lex", "cap_lex", "warn_above_lex", "w_len", "objective")},
+        "bans": cfg.get("bans"),
+        "one_word": cfg.get("one_word"),
+        "penalties": cfg.get("penalties"),
+        "syllables": cfg.get("syllables"),
+        "measured": measured,
+        "regression_set": _regression_set(),
     }
 
 
+def rule_info() -> dict:
+    return _run_tool("rule_info", lambda: _rule_info_impl())
 
-def rule_info() -> dict:    return _run_tool("rule_info", lambda: _rule_info_impl())
 
 def main() -> None:
     rule_status = "rule not connected"
     if _RULE is not None and os.path.exists(os.path.join(_rule_root(), "reference", "config.json")):
         try:
-            cfg = get_rule().load_config(os.path.join(_rule_root(), "reference", "config.json"))
-            rule_status = "rule v%s, config_hash=%s" % (cfg["version"], get_rule()._canonical_hash(cfg))
+            cfg = rule_config()
+            rule_status = "rule v%s, config_hash=%s" % (cfg.get("_version"), _canonical_hash(cfg))
         except Exception:  # noqa: BLE001
             rule_status = "rule error"
     _log(
@@ -610,9 +635,9 @@ if _RULE is not None:
     mcp.tool(name="check_segmentation",
              description="Судья: verdict compliant/non_compliant/invalid_input + подсказки (см. docstring)")(check_segmentation)
     mcp.tool(name="rule_self_test",
-             description="Регресс по CORPUS/verified.jsonl: compliant N/N + strict_rank1")(rule_self_test)
+             description="Регресс: разметка 52 проходит валидатор целиком (52/52)")(rule_self_test)
     mcp.tool(name="rule_info",
-             description="Версия правила, config_hash, rank_criteria, лимиты, полнота конфига")(rule_info)
+             description="Версия правила, config_hash, параметры нарезки, запреты, штрафы, цифры")(rule_info)
 
 
 if __name__ == "__main__":

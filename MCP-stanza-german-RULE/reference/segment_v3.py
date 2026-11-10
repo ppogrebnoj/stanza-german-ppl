@@ -32,24 +32,7 @@ import validator_v3 as V
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def load_cfg(path=None):
-    """Числа из config.json (раздел "segment"); нет файла — DEFAULT_CFG."""
-    for cand in (path,
-                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"),
-                 os.path.join(ROOT, "MCP-stanza-german-RULE", "reference", "config.json")):
-        if cand and os.path.exists(cand):
-            cfg = json.load(open(cand, encoding="utf-8"))
-            seg = cfg.get("segment")
-            if seg:
-                out = dict(V.DEFAULT_CFG)
-                out.update({k: v for k, v in seg.items() if k in V.DEFAULT_CFG})
-                out["penalties"] = seg.get("penalties", V.DEFAULT_CFG["penalties"])
-                out["_source"] = cand
-                out["_version"] = cfg.get("version")
-                return out
-    out = dict(V.DEFAULT_CFG)
-    out["_source"] = "DEFAULT_CFG"
-    return out
+load_cfg = V.load_cfg   # числа — из config.json (раздел segment)
 
 
 # ------------------------------------------------------------------ оценка границы (S1)
@@ -250,7 +233,7 @@ def main():
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     cfg = load_cfg(a.config)
-    print(f"[правило: {cfg.get('_version', '?')} / {os.path.basename(str(cfg['_source']))}; "
+    print(f"[правило: {cfg.get('_version', '?')} / {os.path.basename(str(cfg.get('_source')))}; "
           f"алгоритм S1; min {cfg['min_lex']}, ideal {cfg['ideal_lex']}, cap {cfg['cap_lex']}]",
           file=sys.stderr)
 

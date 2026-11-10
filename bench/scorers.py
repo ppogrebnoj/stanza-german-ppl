@@ -181,67 +181,6 @@ def s4_hybrid(p):
     return [(x + y) / 2.0 for x, y in zip(a, b)]
 
 
-# ------------------------------------------------------------ S5: наши правила (rule.py)
-
-_RULE_CACHE = {}
-
-
-def s5_rule_bounds(p):
-    """Нарезка rule.py (rank 1) НАПРЯМУЮ -> границы (без DP: DP бы её исказил)."""
-    import os
-    import sys
-    key = "rule"
-    if key not in _RULE_CACHE:
-        rule_root = os.path.join(r"E:\KI_WORK\MCP-stanza-german-RULE", "reference")
-        sys.path.insert(0, rule_root)
-        import rule as R
-        cfg = R.load_config(os.path.join(rule_root, "config.json"))
-        _RULE_CACHE[key] = (R, cfg)
-    R, cfg = _RULE_CACHE[key]
-    try:
-        res = R.check(p.text, [p.text], cfg, with_opinion=True)
-    except Exception:
-        return None
-    mo = res.get("machine_opinion") or {}
-    rec = mo.get("recommended") or []
-    if not rec:
-        return [0, p.n]
-    cuts = {0}
-    for blk in rec[1:]:
-        t0 = blk["toks"][0]
-        cuts.add(t0 - 1)
-    cuts.add(p.n)
-    return sorted(cuts)
-
-
-def s5_rule_rank1(p):
-    """Нарезка rule.py (rank 1) -> множество резов -> индикаторная оценка."""
-    import os
-    import sys
-    key = "rule"
-    if key not in _RULE_CACHE:
-        rule_root = os.path.join(r"E:\KI_WORK\MCP-stanza-german-RULE", "reference")
-        sys.path.insert(0, rule_root)
-        import rule as R
-        cfg = R.load_config(os.path.join(rule_root, "config.json"))
-        _RULE_CACHE[key] = (R, cfg)
-    R, cfg = _RULE_CACHE[key]
-    try:
-        res = R.check(p.text, [p.text], cfg, with_opinion=True)
-    except Exception:
-        return None
-    mo = res.get("machine_opinion") or {}
-    rec = mo.get("recommended") or []
-    if not rec:
-        return [0.0] * (p.n + 1)
-    toks = [x["toks"] for x in rec]
-    starts = {t[0] for t in toks[1:]}
-    sc = [0.0] * (p.n + 1)
-    for i in range(1, p.n):
-        sc[i] = 1.0 if i + 1 in starts else 0.0
-    return sc
-
-
 # ------------------------------------------------------------ S6: TextTiling (эмбеддинги)
 
 _EMB = {}
@@ -334,7 +273,7 @@ def s11_mlm_mbert_comma(p):
     return _mlm_scores(p, "bert-base-multilingual-cased", [","])
 
 
-DIRECT = {"S5": ("наши 14 правил (rule.py rank1, напрямую)", s5_rule_bounds)}
+DIRECT = {}   # прямых алгоритмов нет: старый rule.py (C1-C14) выведен из проекта
 
 def _mix(a, b):
     if a is None:

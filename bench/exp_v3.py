@@ -27,7 +27,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from bench.core import NP_INNER, apply_penalties, dp_try, score_metrics, truth_cuts
 from bench.pcache import get_parses

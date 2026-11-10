@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Анализ эталонной разметки заказчика: какие ограничения из неё следуют.
 
-  python bench/analyze_gold.py --set bench/sets/corpus52_v2.jsonl
-  python bench/analyze_gold.py --set bench/sets/heldout_mini.jsonl
+  python bench/analyze_gold.py --set bench/sets/corpus52_v3.jsonl
+  python bench/analyze_gold.py --set bench/sets/heldout_51.jsonl
 
 Печатает: длины блоков, нарушения кандидатов в запреты (служебное слово в конце блока,
 рез внутри PP, рез перед пунктуацией, дефисные слова), слоговую статистику (Q17).
@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from bench.core import build_parse, truth_cuts
 
