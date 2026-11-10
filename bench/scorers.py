@@ -273,7 +273,7 @@ def s11_mlm_mbert_comma(p):
     return _mlm_scores(p, "bert-base-multilingual-cased", [","])
 
 
-DIRECT = {}   # прямых алгоритмов нет: старый rule.py (C1-C14) выведен из проекта
+DIRECT = {}   # прямых алгоритмов нет: все считают оценку границы (S1…S13)
 
 def _mix(a, b):
     if a is None:

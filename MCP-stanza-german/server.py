@@ -372,17 +372,9 @@ def pipeline_info() -> dict:
     return _run_tool("pipeline_info", lambda: _pipeline_info_impl())
 
 
-RULE_ROOT_LEGACY = r"E:\KI_WORK\MCP-stanza-german-RULE"   # до переименования (итерация 20)
-
-
 def _rule_root() -> str:
-    """Папка правила: env RULE_ROOT -> правило/ -> старое имя (если env не задан)."""
-    env = os.environ.get("RULE_ROOT")
-    if env:
-        return env
-    if os.path.exists(os.path.join(RULE_ROOT_DEFAULT, "validator.py")):
-        return RULE_ROOT_DEFAULT
-    return RULE_ROOT_LEGACY
+    """Папка правила: env RULE_ROOT, иначе папка по умолчанию."""
+    return os.environ.get("RULE_ROOT", RULE_ROOT_DEFAULT)
 
 
 def _config_path() -> str:
@@ -479,7 +471,7 @@ def _blocks_from_toks(sentence: str, toks: list) -> list[str]:
     return out
 
 
-def _check_one(item: dict, with_opinion: bool = False) -> dict:
+def _check_one(item: dict) -> dict:
     cfg = rule_config()
     sentence = (item.get("sentence") or "").strip()
     if not sentence:
@@ -515,7 +507,7 @@ def _check_one(item: dict, with_opinion: bool = False) -> dict:
     }
 
 
-def _check_segmentation_impl(items, with_opinion: bool = False) -> dict:
+def _check_segmentation_impl(items) -> dict:
     """Судья правила V4: проверяет СООТВЕТСТВИЕ разбивки человека правилу.
 
     items - одно или список: {"sentence": "...", "blocks": ["блок1", "блок2"]}
@@ -532,7 +524,7 @@ def _check_segmentation_impl(items, with_opinion: bool = False) -> dict:
             items = json.loads(st)  # JSON-строка пакета/объекта - принимаем как данные
     lst = [items] if isinstance(items, (dict, str)) else list(items)
     lst = [i if isinstance(i, dict) else {"sentence": i} for i in lst]
-    results = [_check_one(i, with_opinion) for i in lst]
+    results = [_check_one(i) for i in lst]
     cfg = rule_config()
     return {
         "count": len(results),
@@ -543,8 +535,8 @@ def _check_segmentation_impl(items, with_opinion: bool = False) -> dict:
     }
 
 
-def check_segmentation(items, with_opinion: bool = False) -> dict:
-    return _run_tool("check_segmentation", lambda: _check_segmentation_impl(items, with_opinion))
+def check_segmentation(items) -> dict:
+    return _run_tool("check_segmentation", lambda: _check_segmentation_impl(items))
 
 
 def _rule_self_test_impl() -> dict:

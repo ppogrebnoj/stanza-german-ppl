@@ -43,7 +43,7 @@ python bench/analyze_gold.py --set bench/sets/corpus52.jsonl
 | Файл | Что |
 |---|---|
 | `core.py` | разбор Stanza (Parsed), ограничения, DP (`sum` и `mean`), метрики |
-| `scorers.py` | 12 оценок границы (S1…S13 без S5); S5 (старый rule.py) выведен |
+| `scorers.py` | 12 оценок границы (S1…S13) |
 | `run_bench.py` | прогон, таблицы, `results/summary_*.md/.json`, `results/<set>_<algo>.jsonl` |
 | `make_review.py` | документ «предложение × алгоритмы» для просмотра глазами |
 | `cache/` | кэш оценок (чтобы сетка параметров не пересчитывала модели) |

@@ -61,7 +61,7 @@ def pick(rows, per_register):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", default="heldout", choices=["heldout", "corpus52"])
-    ap.add_argument("--algos", default="S5,S1,S4,S12")
+    ap.add_argument("--algos", default="S1,S4,S11")
     ap.add_argument("--per-register", type=int, default=3)
     ap.add_argument("--out", default=None)
     ap.add_argument("--max-words", type=int, default=0, help="пропускать предложения длиннее N слов")

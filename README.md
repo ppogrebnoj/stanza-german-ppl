@@ -36,7 +36,7 @@ KI_WORK/
 │   ├─ sets/*.jsonl             … данные в машинном виде (corpus52 / heldout_51 / heldout_150)
 │   ├─ results/                 … актуальные цифры (experiments_all.txt, audit.json, предсказания)
 │   └─ *.py                     … core, scorers, run_bench, experiments, audit, build_sets
-└─ АРХИВ/                       ← история: прошлые итерации, старые прогоны, старый судья
+└─ АРХИВ/                       ← история: прошлые прогоны и черновики
 ```
 
 ## Как запустить
