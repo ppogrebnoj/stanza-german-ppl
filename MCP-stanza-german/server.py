@@ -83,9 +83,9 @@ LANGUAGE = "de"
 FULL_PROCESSORS = "tokenize,mwt,pos,lemma,depparse,constituency"
 CORE_PROCESSORS = "tokenize,mwt,pos,lemma,depparse"
 
-# Правило сегментации (validator_v3.py + config.json) живёт отдельно от сервера.
+# Правило сегментации (validator.py + config.json) живёт отдельно от сервера.
 # Путь — переменная окружения RULE_ROOT (поле env в mcp.json), иначе — дефолт.
-RULE_ROOT_DEFAULT = r"E:\KI_WORK\MCP-stanza-german-RULE"
+RULE_ROOT_DEFAULT = r"E:\KI_WORK\правило"
 
 mcp = FastMCP(
     "stanza-german",
@@ -359,7 +359,7 @@ def _pipeline_info_impl() -> dict:
 
 
 # ======================= правило сегментации (судья) =========================
-# Единственный код правила - reference/validator_v3.py + config.json (раздел
+# Единственный код правила - validator.py + config.json (раздел
 # "segment"). Сервер - тонкая read-only обёртка: судья (check), регресс
 # (self_test), паспорт правила (rule_info). config.json перечитывается на
 # КАЖДЫЙ вызов: поправили конфиг - сразу действует, рестарт не нужен.
@@ -372,12 +372,21 @@ def pipeline_info() -> dict:
     return _run_tool("pipeline_info", lambda: _pipeline_info_impl())
 
 
+RULE_ROOT_LEGACY = r"E:\KI_WORK\MCP-stanza-german-RULE"   # до переименования (итерация 20)
+
+
 def _rule_root() -> str:
-    return os.environ.get("RULE_ROOT", RULE_ROOT_DEFAULT)
+    """Папка правила: env RULE_ROOT -> правило/ -> старое имя (если env не задан)."""
+    env = os.environ.get("RULE_ROOT")
+    if env:
+        return env
+    if os.path.exists(os.path.join(RULE_ROOT_DEFAULT, "validator.py")):
+        return RULE_ROOT_DEFAULT
+    return RULE_ROOT_LEGACY
 
 
 def _config_path() -> str:
-    return os.path.join(_rule_root(), "reference", "config.json")
+    return os.path.join(_rule_root(), "config.json")
 
 
 def _regression_set() -> str:
@@ -387,21 +396,23 @@ def _regression_set() -> str:
 
 
 def _load_rule() -> None:
-    """Импорт reference/validator_v3.py из RULE_ROOT. Нет правила - сервер работает
-    как раньше, инструменты судьи просто не регистрируются (не падает)."""
+    """Импорт validator.py из RULE_ROOT. Нет правила - сервер работает как раньше,
+    инструменты судьи просто не регистрируются (не падает)."""
     global _RULE, _RULE_NOTE
     root = _rule_root()
-    path = os.path.join(root, "reference", "validator_v3.py")
+    path = os.path.join(root, "validator.py")
+    if not os.path.exists(path):          # старое имя (reference/validator_v3.py)
+        path = os.path.join(root, "reference", "validator_v3.py")
     if not os.path.exists(path):
         _RULE_NOTE = f"правило не подключено: нет {path} (задайте RULE_ROOT)"
         return
     try:
         ref_dir = os.path.dirname(path)
         if ref_dir not in sys.path:
-            sys.path.insert(0, ref_dir)   # segment_v3 импортирует validator_v3 рядом
-        spec = importlib.util.spec_from_file_location("rule_validator_v3", path)
+            sys.path.insert(0, ref_dir)   # segment.py импортирует validator.py рядом
+        spec = importlib.util.spec_from_file_location("rule_validator", path)
         mod = importlib.util.module_from_spec(spec)
-        sys.modules["rule_validator_v3"] = mod
+        sys.modules["rule_validator"] = mod
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
         _RULE = mod
     except Exception as exc:  # noqa: BLE001
@@ -410,7 +421,7 @@ def _load_rule() -> None:
 
 def get_rule():
     if _RULE is None:
-        raise RuntimeError(_RULE_NOTE or "validator_v3 не подключен")
+        raise RuntimeError(_RULE_NOTE or "validator.py не подключен")
     return _RULE
 
 

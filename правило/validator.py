@@ -13,9 +13,9 @@
 раздел "segment", если он есть).
 
 CLI:
-  python reference/validator_v3.py --text "Ich habe bei der Firma gearbeitet." --blocks "Ich habe|bei der Firma gearbeitet."
-  python reference/validator_v3.py --set E:/KI_WORK/bench/sets/heldout_51.jsonl
-  python reference/validator_v3.py --self-test
+  python правило/validator.py --text "Ich habe bei der Firma gearbeitet." --blocks "Ich habe|bei der Firma gearbeitet."
+  python правило/validator.py --set E:/KI_WORK/bench/sets/heldout_51.jsonl
+  python правило/validator.py --self-test
 """
 import argparse
 import io

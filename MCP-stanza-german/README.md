@@ -86,9 +86,8 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
 ## Судья правила: `RULE_ROOT`
 
 Инструменты судьи (`check_segmentation`, `rule_self_test`, `rule_info`) работают поверх
-отдельного проекта правила — `MCP-stanza-german-RULE` (`reference/validator_v3.py`,
-`reference/config.json`). Путь задаётся переменной `RULE_ROOT`
-(дефолт `E:\KI_WORK\MCP-stanza-german-RULE`). **Правила нет — сервер работает как раньше:**
+отдельного проекта правила — `правило` (`validator.py`, `config.json`). Путь задаётся переменной `RULE_ROOT`
+(дефолт `E:\KI_WORK\правило`). **Правила нет — сервер работает как раньше:**
 инструменты судьи просто не регистрируются, причина — в `pipeline_info().notes`.
 
 `config.json` перечитывается на **каждый** вызов: цикл «дельта → перепроверка» работает без
@@ -101,7 +100,7 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
     "stanza-german": {
       "command": "python",
       "args": ["E:\\KI_WORK\\MCP-stanza-german\\server.py"],
-      "env": { "STANZA_CHARS_PER_SEC": "6", "RULE_ROOT": "E:\\KI_WORK\\MCP-stanza-german-RULE" }
+      "env": { "STANZA_CHARS_PER_SEC": "6", "RULE_ROOT": "E:\\KI_WORK\\правило" }
     }
   }
 }
@@ -148,4 +147,4 @@ check_segmentation({"sentence": "Ich weiß es, weil er müde ist.",
 
 ## Файлы проекта
 
-- `server.py` — сам MCP-сервер (FastMCP, stdio): анализ (Stanza) + судья правила (обёртка над `reference/validator_v3.py`)
+- `server.py` — сам MCP-сервер (FastMCP, stdio): анализ (Stanza) + судья правила (обёртка над `правило/validator.py`)

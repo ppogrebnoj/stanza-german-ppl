@@ -24,7 +24,7 @@ python bench/build_sets_v3.py                 # -> sets/corpus52_v3.jsonl, sets/
 python bench/pcache.py                        # кэш разборов (один раз)
 python bench/audit_v3.py                      # что нарушает сама разметка заказчика
 python bench/exp_v3.py --stage all            # все замеры V4 (Q3, cap, Q22, штрафы, сетка)
-python MCP-stanza-german-RULE/reference/validator_v3.py --set bench/sets/heldout_51.jsonl
+python правило/validator.py --set bench/sets/heldout_51.jsonl
 
 # новые наборы из ИТЕРАЦИИ_3 (новая разметка заказчика)
 python bench/run_bench.py --set file:E:/KI_WORK/bench/sets/corpus52_v3.jsonl        --algo all --grid --constraints --syl --pen

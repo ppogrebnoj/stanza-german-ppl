@@ -22,9 +22,9 @@ KI_WORK/
 │   ├─ РАЗМЕТКА_51.md           … первая часть из 150 (энциклопедические + новостные)
 │   └─ СПИСОК_150.md            … все 150 предложений с переводом (задание на разметку)
 │
-├─ MCP-stanza-german-RULE/reference/   ← код правила
-│   ├─ segment_v3.py            … нарезчик: текст → блоки
-│   ├─ validator_v3.py          … валидатор: блоки + текст → verdict и где ошибка
+├─ правило/                     ← код правила
+│   ├─ segment.py               … нарезчик: текст → блоки
+│   ├─ validator.py             … валидатор: блоки + текст → verdict и где ошибка
 │   ├─ config.json              … ВСЕ числа правила (раздел segment)
 │   ├─ smoke_test.py            … гейт целостности (запускается перед коммитом)
 │   └─ git-hooks/pre-commit     … хук, который вызывает smoke_test
@@ -41,24 +41,24 @@ KI_WORK/
 
 ```bash
 # нарезать одно предложение
-python MCP-stanza-german-RULE/reference/segment_v3.py --text "Ich habe bei der Firma gearbeitet."
+python правило/segment.py --text "Ich habe bei der Firma gearbeitet."
 
 # нарезать страницу целиком
-python MCP-stanza-german-RULE/reference/segment_v3.py --file страница.txt
+python правило/segment.py --file страница.txt
 
 # проверить мою разбивку
-python MCP-stanza-german-RULE/reference/validator_v3.py \
+python правило/validator.py \
    --text "Ich habe bei der Firma gearbeitet." --blocks "Ich habe|bei der Firma gearbeitet."
 
 # проверить целую разметку (52/51)
-python MCP-stanza-german-RULE/reference/validator_v3.py --set bench/sets/heldout_51.jsonl
+python правило/validator.py --set bench/sets/heldout_51.jsonl
 
 # пересчитать машинные наборы из markdown-разметки (после правок заказчика)
 python bench/build_sets_v3.py
 
 # гейт целостности (быстро / с проверкой живого кода)
-python MCP-stanza-german-RULE/reference/smoke_test.py
-python MCP-stanza-german-RULE/reference/smoke_test.py --full
+python правило/smoke_test.py
+python правило/smoke_test.py --full
 ```
 
 Числа правила живут только в `config.json` → правка правила = правка JSON, без кода.

@@ -22,9 +22,8 @@ import json
 import os
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)                      # MCP-stanza-german-RULE
-WORK = os.path.dirname(ROOT)                      # E:\KI_WORK
+HERE = os.path.dirname(os.path.abspath(__file__))   # E:\KI_WORK\правило
+WORK = os.path.dirname(HERE)                        # E:\KI_WORK
 CONFIG = os.path.join(HERE, "config.json")
 SETS = os.path.join(WORK, "bench", "sets")
 DATA = os.path.join(WORK, "данные")
@@ -83,11 +82,11 @@ def check_code_agrees(cfg):
     """config.json и DEFAULT_CFG в валидаторе должны описывать одно и то же."""
     sys.path.insert(0, HERE)
     try:
-        import validator_v3 as V
+        import validator as V
     except Exception as exc:  # noqa: BLE001
-        add("FAIL", "code_import", f"validator_v3 не импортируется: {exc}")
+        add("FAIL", "code_import", f"validator.py не импортируется: {exc}")
         return
-    add("OK", "code_import", "validator_v3 импортируется")
+    add("OK", "code_import", "validator.py импортируется")
     seg = cfg["segment"]
     missing = [k for k in V.DEFAULT_CFG if k.startswith("_") is False and k not in seg]
     if missing:
@@ -140,8 +139,8 @@ def check_corpus_integrity():
 def check_live():
     sys.path.insert(0, HERE)
     try:
-        import validator_v3 as V
-        import segment_v3 as S
+        import validator as V
+        import segment as S
     except Exception as exc:  # noqa: BLE001
         add("FAIL", "live_import", str(exc))
         return

@@ -14,10 +14,10 @@ config.json (раздел "segment"), в коде немецких слов и �
     между подлежащим-местоимением и сказуемым.
 
 CLI:
-  python reference/segment_v3.py --text "Ich habe bei der Firma gearbeitet."
-  python reference/segment_v3.py --file page.txt        # страница целиком
-  python reference/segment_v3.py --set ../../bench/sets/heldout_51.jsonl --f1
-  python reference/segment_v3.py --text "..." --check   # + проверка валидатором
+  python правило/segment.py --text "Ich habe bei der Firma gearbeitet."
+  python правило/segment.py --file page.txt        # страница целиком
+  python правило/segment.py --set ../../bench/sets/heldout_51.jsonl --f1
+  python правило/segment.py --text "..." --check   # + проверка валидатором
 """
 import argparse
 import json
@@ -27,7 +27,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-import validator_v3 as V
+import validator as V
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
