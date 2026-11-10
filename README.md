@@ -31,7 +31,7 @@ KI_WORK/
 │   ├─ smoke_test.py            … гейт целостности (запускается перед коммитом)
 │   └─ git-hooks/pre-commit     … хук, который вызывает smoke_test
 │
-├─ MCP-stanza-german/           ← MCP-сервер (Stanza: разбор, составляющие, паузы, судья)
+├─ MCP-stanza-german/           ← MCP-сервер: нарезка, разбор, судья (для чата)
 ├─ bench/                       ← стенд: сравнение алгоритмов
 │   ├─ sets/*.jsonl             … данные в машинном виде (corpus52 / heldout_51 / heldout_150)
 │   ├─ results/                 … актуальные цифры (experiments_all.txt, audit.json, предсказания)
@@ -47,6 +47,8 @@ python правило/segment.py --text "Ich habe bei der Firma gearbeitet."
 
 # нарезать страницу целиком
 python правило/segment.py --file страница.txt
+
+# нарезать из чата: segment_german("текст")  — MCP-инструмент сервера
 
 # проверить мою разбивку
 python правило/validator.py \

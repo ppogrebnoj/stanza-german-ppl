@@ -1,4 +1,4 @@
 {
-  "server_version": "2.0.0",
-  "note": "v1.x — только разбор (parse_german/constituency_german) + calc_pause; v2.x — судья правила (check_segmentation/rule_self_test/rule_info), логирование, версия."
+  "server_version": "4.0.0",
+  "note": "4.0.0 — нарезка (segment_german) + судья V4; убраны constituency/analyze/calc_pause, конвейер без constituency (старт 3.7 -> 2.0 с)."
 }

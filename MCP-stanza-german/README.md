@@ -1,4 +1,4 @@
-# Stanza German — локальный MCP-сервер синтаксического анализа немецкого языка
+# Stanza German — локальный MCP-сервер: разбор, нарезка на блоки, судья правила
 
 Документация по библиотеке https://github.com/stanfordnlp/stanza
 
@@ -54,9 +54,8 @@ python E:\KI_WORK\MCP-stanza-german\server.py
 
 | Инструмент                     | Назначение                                                                 |
 |--------------------------------|----------------------------------------------------------------------------|
-| `parse_german(text)`           | Токены с леммой, UPOS/XPOS, морфологией (`features`) и зависимостями (`head`/`dep`) по предложениям — основной инструмент. Плюс MWT-поля (`is_mwt`, `mwt_id`), параллельный список `tokens` и offsets `start_char`/`end_char` |
-| `constituency_german(text)`    | Фразовое дерево Penn Treebank в скобочной записи по предложениям          |
-| `calc_pause(texts, chars_per_sec=4)` | Пакетный расчёт пауз в секундах: символы / скорость (симв./сек; по умолчанию 4, настраивается через `STANZA_CHARS_PER_SEC`) — по блокам + total |
+| `segment_german(text, with_check=false)` | **Нарезка на блоки по правилу V4.** `text` — строка или список (абзац/страница делятся на предложения сами). Возвращает `blocks` (текстом, как в исходнике), `lens` (слов в блоке), `blocks_total`; при `with_check=true` — ещё `verdict` и `cost` (цена штрафов) |
+| `parse_german(text)`           | Токены с леммой, UPOS/XPOS, морфологией (`features`) и зависимостями (`head`/`dep`) по предложениям. Плюс MWT-поля (`is_mwt`, `mwt_id`), параллельный список `tokens` и offsets `start_char`/`end_char` |
 | `pipeline_info()`              | Статус: загруженные процессоры, версии, путь к кэшу моделей, `rule_root`, `rule_registered` |
 | `check_segmentation(items, with_opinion=false)` | **Судья правила V4.** Проверка соответствия вашей разбивки правилу. `verdict: compliant \| non_compliant \| invalid_input`, `violations` (код + где + как поправить), `warnings` (допустимо, но помечено), `penalties` (мягкие штрафы с весом), `cost`. Пакетный. Судит по **тому же** разбору, что отдаёт `parse_german` |
 | `rule_self_test()`             | Регресс: ваша разметка `bench/sets/corpus52.jsonl` должна проходить валидатор целиком (`gate_passed`, `failed_ids`, `error_codes`). ~30 с |
@@ -100,13 +99,21 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
     "stanza-german": {
       "command": "python",
       "args": ["E:\\KI_WORK\\MCP-stanza-german\\server.py"],
-      "env": { "STANZA_CHARS_PER_SEC": "6", "RULE_ROOT": "E:\\KI_WORK\\правило" }
+      "env": { "RULE_ROOT": "E:\\KI_WORK\\правило" }
     }
   }
 }
 ```
 
-Пример пакетного вызова:
+Пример нарезки (страница целиком):
+
+```json
+segment_german("Meine Dienstleistungen umfassen nicht nur die Arbeit an Heizungsanlagen. ...")
+→ {"count": 3, "blocks_total": 14, "sentences": [{"blocks": ["Meine Dienstleistungen umfassen",
+   "nicht nur", "die Arbeit", ...], "lens": [3, 2, 2, ...]}, ...]}
+```
+
+Пример проверки:
 
 ```json
 check_segmentation({"sentence": "Ich weiß es, weil er müde ist.",
@@ -118,31 +125,6 @@ check_segmentation({"sentence": "Ich weiß es, weil er müde ist.",
 
 Перебора вариантов нет: судья проверяет **только вашу** разбивку, поэтому отвечает
 быстро и без ограничений на длину предложения.
-
-## Скорость для calc_pause (настройка в LM Studio)
-
-По умолчанию паузы считаются со скоростью **4 симв./сек**. Значение по
-умолчанию задаётся переменной окружения **`STANZA_CHARS_PER_SEC`** — это поле
-ввода на «панели управления MCP»: в LM Studio 0.4.x серверы настраиваются в
-`mcp.json` (Program → Install → Edit mcp.json), добавьте `env` в запись
-`stanza-german`:
-
-```json
-{
-  "mcpServers": {
-    "stanza-german": {
-      "command": "python",
-      "args": ["E:\\KI_WORK\\MCP-stanza-german\\server.py"],
-      "env": { "STANZA_CHARS_PER_SEC": "6" }
-    }
-  }
-}
-```
-
-Конкретный вызов инструмента может переопределить скорость аргументом
-`chars_per_sec`. Действующее значение по умолчанию видно в `pipeline_info()`
-→ поле `chars_per_sec_default`; некорректное значение (не число, ≤ 0) даёт
-сноску в `notes` и откат на 4.
 
 ## Файлы проекта
 

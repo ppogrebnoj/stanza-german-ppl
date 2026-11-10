@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import math
 import os
 import re
 import sys
@@ -80,8 +79,10 @@ import stanza
 from mcp.server.fastmcp import FastMCP
 
 LANGUAGE = "de"
-FULL_PROCESSORS = "tokenize,mwt,pos,lemma,depparse,constituency"
-CORE_PROCESSORS = "tokenize,mwt,pos,lemma,depparse"
+PROCESSORS = "tokenize,mwt,pos,lemma,depparse"   # правило работает на зависимостях
+
+# Сколько символов в секунду при чтении вслух — для оценки пауз (не обязательный параметр)
+DEFAULT_CHARS_PER_SEC = 4.0
 
 # Правило сегментации (validator.py + config.json) живёт отдельно от сервера.
 # Путь — переменная окружения RULE_ROOT (поле env в mcp.json), иначе — дефолт.
@@ -90,10 +91,10 @@ RULE_ROOT_DEFAULT = r"E:\KI_WORK\правило"
 mcp = FastMCP(
     "stanza-german",
     instructions=(
-        "Stanza de: parse_german — синтаксис (леммы/POS/зависимости + MWT-поля); "
-        "constituency_german — фразовое дерево; calc_pause — паузы в сек по символам, пакетно; "
-        "pipeline_info — статус. Судья правила: check_segmentation (verdict + подсказки), "
-        "rule_self_test (регресс на разметке 52), rule_info (версия/параметры/цифры). Офлайн."
+        "Stanza de: segment_german — нарезать текст на блоки по правилу V4 (with_check=true — "
+        "ещё и проверить результат); check_segmentation — проверить готовую разбивку "
+        "(вердикт + коды нарушений + штрафы); parse_german — синтаксис (леммы/POS/зависимости + MWT); "
+        "rule_info / rule_self_test — паспорт и регресс правила; pipeline_info — статус. Офлайн."
     ),
 )
 
@@ -102,47 +103,21 @@ _pipeline_lock = threading.Lock()
 _load_notes: list[str] = []
 
 
-def _default_chars_per_sec() -> float:
-    """Скорость calc_pause по умолчанию (симв./сек): переменная окружения
-    STANZA_CHARS_PER_SEC, иначе 4.0. Настраивается полем 'env' записи сервера
-    в mcp.json (LM Studio: Program → Install → Edit mcp.json)."""
-    raw = os.environ.get("STANZA_CHARS_PER_SEC")
-    if not raw:
-        return 4.0
-    try:
-        value = float(raw)
-    except ValueError:
-        _load_notes.append(f"STANZA_CHARS_PER_SEC='{raw}' — не число, использовано 4.0")
-        return 4.0
-    if value <= 0:
-        _load_notes.append(f"STANZA_CHARS_PER_SEC={value} должно быть > 0, использовано 4.0")
-        return 4.0
-    return value
-
-
-DEFAULT_CHARS_PER_SEC = _default_chars_per_sec()
-
-
 def _load_pipeline() -> stanza.Pipeline:
-    """Загружает пайплайн из локального кэша (без сети). При неудаче с полным
-    набором процессоров откатывается на ядро tokenize,mwt,pos,lemma,depparse."""
-    for processors in (FULL_PROCESSORS, CORE_PROCESSORS):
-        try:
-            pipe = stanza.Pipeline(
-                lang=LANGUAGE,  # в Stanza 1.15 параметр называется lang
-                processors=processors,
-                download_method=None,  # офлайн: только локальный кэш, без сети
-                verbose=False,
-            )
-            if processors != FULL_PROCESSORS:
-                _load_notes.append(
-                    f"Загружено ядро процессоров ({processors}); "
-                    "constituency недоступен"
-                )
-            return pipe
-        except Exception as exc:  # noqa: BLE001 — фиксируем и пробуем ядро
-            _load_notes.append(f"Не удалось загрузить '{processors}': {exc}")
-    raise RuntimeError("Stanza pipeline не удалось загрузить: " + "; ".join(_load_notes))
+    """Пайплайн из локального кэша (без сети): tokenize, MWT, POS, леммы, зависимости.
+
+    Constituency не грузим: правило V4 считает оценку границы по дереву зависимостей,
+    а модель составляющих добавляла ~1.7 с к старту и память."""
+    try:
+        return stanza.Pipeline(
+            lang=LANGUAGE,  # в Stanza 1.15 параметр называется lang
+            processors=PROCESSORS,
+            download_method=None,  # офлайн: только локальный кэш, без сети
+            verbose=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _load_notes.append(f"Не удалось загрузить '{PROCESSORS}': {exc}")
+        raise RuntimeError("Stanza pipeline не удалось загрузить: " + "; ".join(_load_notes))
 
 
 def get_pipeline() -> stanza.Pipeline:
@@ -248,90 +223,6 @@ def _parse_german_impl(text) -> dict:
 def parse_german(text: str | list[str]) -> dict:
     return _run_tool("parse_german", lambda: _parse_german_impl(text))
 
-def _constituency_german_impl(text) -> dict:
-    """Фразовое дерево Penn Treebank (скобочная запись) по предложениям немецкого текста. Пакет: text = list[str] или JSON-строка списка — все предложения за один вызов; поле item — номер входного текста. Пример: constituency_german(["S1.", "S2."])"""
-    pipe = get_pipeline()
-    out = []
-    for k, t in enumerate(_texts_arg(text)):
-        doc = pipe(t)
-        for s in doc.sentences:
-            tree = s.constituency
-            out.append({
-                "id": len(out) + 1,
-                "item": k + 1,
-                "text": s.text,
-                "tree": str(tree) if tree is not None else None,
-            })
-    res = {"language": LANGUAGE, "count": len(out), "sentences": out}
-    if any(x["tree"] is None for x in out):
-        res["note"] = "constituency недоступен: загружено ядро процессоров без constituency"
-    return res
-
-
-
-
-@mcp.tool()
-def constituency_german(text: str | list[str]) -> dict:
-    return _run_tool("constituency_german", lambda: _constituency_german_impl(text))
-
-def _analyze_german_impl(text) -> dict:
-    """parse_german + constituency_german ОДНИМ вызовом для всего пакета:
-    text = str | list[str] | JSON-строка списка. На каждое предложение:
-    words/tokens (полный разбор) + tree (Penn Treebank). Пример:
-    analyze_german(["S1.", "S2.", "S3."])"""
-    pipe = get_pipeline()
-    out = []
-    for k, t in enumerate(_texts_arg(text)):
-        doc = pipe(t)
-        for s in doc.sentences:
-            tree = s.constituency
-            out.append({
-                "id": len(out) + 1,
-                "item": k + 1,
-                "text": s.text,
-                "words": _sentence_words(doc, s),
-                "tokens": _sentence_tokens(doc, s),
-                "tree": str(tree) if tree is not None else None,
-            })
-    res = {"language": LANGUAGE, "count": len(out), "sentences": out}
-    if any(x["tree"] is None for x in out):
-        res["note"] = "constituency недоступен: загружено ядро процессоров без constituency"
-    return res
-
-
-@mcp.tool()
-def analyze_german(text: str | list[str]) -> dict:
-    return _run_tool("analyze_german", lambda: _analyze_german_impl(text))
-
-def _calc_pause_impl(texts: str | list[str], chars_per_sec: float = DEFAULT_CHARS_PER_SEC) -> dict:
-    """Пауза в секундах: ceil(символы / chars_per_sec), 10/4->3c. Пакетно (list): items + total, тот же ceil. Скорость - симв./сек: по умолч. 4; переопределяется аргументом chars_per_sec или env STANZA_CHARS_PER_SEC. Пример: calc_pause(["..."], chars_per_sec=5)"""
-    if chars_per_sec <= 0:
-        raise ValueError("chars_per_sec должен быть положительным числом")
-    items = [texts] if isinstance(texts, str) else list(texts)
-    per_item = []
-    total_chars = 0
-    for t in items:
-        n = len(t)
-        total_chars += n
-        per_item.append(
-            {"characters": n, "pause_seconds": math.ceil(n / chars_per_sec)}
-        )
-    return {
-        "chars_per_sec": chars_per_sec,
-        "count": len(items),
-        "items": per_item,
-        "total": {
-            "characters": total_chars,
-            "pause_seconds": math.ceil(total_chars / chars_per_sec),
-        },
-    }
-
-
-
-@mcp.tool()
-def calc_pause(texts: str | list[str], chars_per_sec: float = DEFAULT_CHARS_PER_SEC) -> dict:
-    return _run_tool("calc_pause", lambda: _calc_pause_impl(texts, chars_per_sec))
-
 def _pipeline_info_impl() -> dict:
     """Статус сервера: загруженные процессоры, версии, путь к кэшу, offline-статус."""
     import torch
@@ -342,7 +233,6 @@ def _pipeline_info_impl() -> dict:
         "server_version": _get_server_version(),
         "log_file": _SERVER_LOG_FILE,
         "language": LANGUAGE,
-        "chars_per_sec_default": DEFAULT_CHARS_PER_SEC,
         "processors_loaded": sorted(pipe.processors.keys()),
         "download_method": None,
         "offline": True,
@@ -405,6 +295,7 @@ def _load_rule() -> None:
         spec = importlib.util.spec_from_file_location("rule_validator", path)
         mod = importlib.util.module_from_spec(spec)
         sys.modules["rule_validator"] = mod
+        sys.modules.setdefault("validator", mod)   # segment.py делает import validator
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
         _RULE = mod
     except Exception as exc:  # noqa: BLE001
@@ -415,6 +306,37 @@ def get_rule():
     if _RULE is None:
         raise RuntimeError(_RULE_NOTE or "validator.py не подключен")
     return _RULE
+
+
+_SEG = None
+_SEG_NOTE: str | None = None
+
+
+def _load_segmenter() -> None:
+    """Импорт segment.py из RULE_ROOT (нарезчик). Отдельно от судьи: сервер работает,
+    даже если нарезчика нет."""
+    global _SEG, _SEG_NOTE
+    path = os.path.join(_rule_root(), "segment.py")
+    if not os.path.exists(path):
+        _SEG_NOTE = f"нарезчик не подключён: нет {path}"
+        return
+    try:
+        ref_dir = os.path.dirname(path)
+        if ref_dir not in sys.path:
+            sys.path.insert(0, ref_dir)
+        spec = importlib.util.spec_from_file_location("rule_segment", path)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["rule_segment"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        _SEG = mod
+    except Exception as exc:  # noqa: BLE001
+        _SEG_NOTE = f"нарезчик не подключён: {exc}"
+
+
+def get_segmenter():
+    if _SEG is None:
+        raise RuntimeError(_SEG_NOTE or "segment.py не подключен")
+    return _SEG
 
 
 def rule_config():
@@ -539,6 +461,56 @@ def check_segmentation(items) -> dict:
     return _run_tool("check_segmentation", lambda: _check_segmentation_impl(items))
 
 
+def _segment_german_impl(text, with_check: bool = False) -> dict:
+    """Нарезка текста на блоки по правилу V4.
+
+    text — строка или список строк (абзац/страница: делится на предложения сам).
+    with_check=true — дополнительно прогнать валидатор по своей же нарезке
+    (показывает цену штрафов и предупреждения).
+    Блоки возвращаются текстом, ровно как в исходнике (пунктуация на месте).
+    Пример: segment_german("Ich habe bei der Firma gearbeitet.")"""
+    seg, val = get_segmenter(), get_rule()
+    cfg = rule_config()
+    pipe = get_pipeline()
+    out = []
+    for k, t in enumerate(_texts_arg(text)):
+        doc = pipe(t)
+        for sent in doc.sentences:
+            s = val.Sent(t, sent)          # смещения символов — от начала t
+            _, bounds = seg.bounds_of(s, cfg)
+            blocks = val.blocks_text(s, bounds)
+            row = {
+                "id": len(out) + 1,
+                "item": k + 1,
+                "text": sent.text,
+                "blocks": blocks,
+                "block_count": len(blocks),
+                "lens": [s.lex_count(a, b) for a, b in zip(bounds[:-1], bounds[1:])],
+            }
+            if with_check:
+                rep = val.check(sent.text, blocks, cfg, pipeline=pipe)
+                row["verdict"] = rep["verdict"]
+                row["cost"] = rep["cost"]
+                if rep["errors"]:
+                    row["errors"] = [{"type": e["code"], "detail": e["message"]}
+                                     for e in rep["errors"]]
+                if rep["info"]:
+                    row["penalties"] = [i["code"] for i in rep["info"]]
+            out.append(row)
+    return {
+        "language": LANGUAGE,
+        "count": len(out),
+        "blocks_total": sum(r["block_count"] for r in out),
+        "rule_version": cfg.get("_version"),
+        "config_hash": _canonical_hash(cfg),
+        "sentences": out,
+    }
+
+
+def segment_german(text, with_check: bool = False) -> dict:
+    return _run_tool("segment_german", lambda: _segment_german_impl(text, with_check))
+
+
 def _rule_self_test_impl() -> dict:
     """Регресс: разметка bench/sets/corpus52.jsonl должна проходить валидатор
     целиком (гейт G4). Медленно (~30 с): парсит 52 предложения.
@@ -604,6 +576,7 @@ def _rule_info_impl() -> dict:
         "syllables": cfg.get("syllables"),
         "measured": measured,
         "regression_set": _regression_set(),
+        "segmenter_ready": _SEG is not None,
     }
 
 
@@ -634,7 +607,12 @@ def main() -> None:
 # Правило подключаем до регистрации инструментов: нет правила — судьи нет,
 # сервер живёт как раньше.
 _load_rule()
+_load_segmenter()
 if _RULE is not None:
+    if _SEG is not None:
+        mcp.tool(name="segment_german",
+                 description="Нарезать немецкий текст на блоки по правилу V4 (текст или список текстов)"
+                 )(segment_german)
     mcp.tool(name="check_segmentation",
              description="Судья: verdict compliant/non_compliant/invalid_input + подсказки (см. docstring)")(check_segmentation)
     mcp.tool(name="rule_self_test",

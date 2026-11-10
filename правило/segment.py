@@ -192,9 +192,14 @@ def enforce(bounds, s, cfg):
 
 
 def bounds_of(sentence, cfg=None, pipeline=None):
-    """Границы блоков в токенах: [0, c1, ..., n]."""
+    """Границы блоков в токенах: [0, c1, ..., n].
+
+    sentence — текст или уже разобранное V.Sent (тогда разбор не повторяется).
+    """
     cfg = cfg or load_cfg()
-    s = V.parse(sentence, pipeline)
+    # разбор уже есть — не парсим второй раз; иначе парсим текст
+    parsed = hasattr(sentence, "tokens") and hasattr(sentence, "lex_count")
+    s = sentence if parsed else V.parse(sentence, pipeline)
     sc = score_s1(s)
     pen = cfg.get("penalties") or {}
     pos = {"np_inner": V.np_inner_positions(s, cfg["np_inner_deprels"]),
