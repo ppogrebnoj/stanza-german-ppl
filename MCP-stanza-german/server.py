@@ -622,19 +622,30 @@ def rule_info() -> dict:
     return _run_tool("rule_info", lambda: _rule_info_impl())
 
 
+def _torch_version() -> str:
+    """Версия torch для строки START: без импорта torch (он тянет ~200 МБ и секунды старта).
+    importlib.metadata читает метаданные колеса; настоящий torch.__version__ виден в pipeline_info."""
+    try:
+        from importlib.metadata import version
+        return version("torch")
+    except Exception:  # noqa: BLE001
+        return "n/a"
+
+
 def main() -> None:
     rule_status = "rule not connected"
-    if _RULE is not None and os.path.exists(os.path.join(_rule_root(), "reference", "config.json")):
+    if _RULE is not None and os.path.exists(_config_path()):
         try:
             cfg = rule_config()
-            rule_status = "rule v%s, config_hash=%s" % (cfg.get("_version"), _canonical_hash(cfg))
+            rule_status = "rule %s, config_hash=%s" % (cfg.get("_version"), _canonical_hash(cfg))
         except Exception:  # noqa: BLE001
             rule_status = "rule error"
     _log(
-        "START server_version=%s stanza=%s python=%s torch=n/a rule=%s log=%s" % (
+        "START server_version=%s stanza=%s python=%s torch=%s rule=%s log=%s" % (
             _get_server_version(),
             getattr(stanza, "__version__", "n/a"),
             sys.version.split()[0],
+            _torch_version(),
             rule_status,
             _SERVER_LOG_FILE,
         )
