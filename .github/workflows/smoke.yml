@@ -54,7 +54,7 @@ jobs:
     # Самый важный гейт: требования из requirements.txt должны быть ДОСТАТОЧНЫ,
     # чтобы валидатор и стенд работали с нуля (этот job ловит забытые зависимости —
     # так был найден pyphen, которого не было в requirements).
-    name: полный прогон ${{ matrix.python-version }} (requirements.txt + модели из релиза)
+    name: полный прогон ${{ matrix.python-version }} (requirements.txt + модели от Stanford)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
