@@ -21,12 +21,14 @@
     Конфиг MCP-клиента создаёт человек (образец: MCP-stanza-german\mcp.json.example): скрипт
     печатает готовый фрагмент с путями этой машины и проверяет, есть ли запись в конфиге
     (-McpConfig, по умолчанию %USERPROFILE%\.lmstudio\mcp.json); если её нет — код 2.
-    Токен для gh берётся из GH_TOKEN/GITHUB_TOKEN (сначала процесс, потом User-реестр —
-    setx в текущем окне не виден), печать токена исключена.
+    gh и токен не нужны: репозиторий публичный, а модели качает Stanford. Если человек всё же дал
+    токен (GH_TOKEN/GITHUB_TOKEN: сначала процесс, потом User-реестр — setx в текущем окне не
+    виден), Test-Gh им авторизуется; это информация, не условие установки. Печать токена исключена
+    (маскируется github_pat_***).
 
     Коды выхода (контракт, см. УСТАНОВКА.md):
         0  ГОТОВО
-        2  НУЖЕН ЧЕЛОВЕК: нет Python 3.15 x64 / gh не авторизован и токена нет / нет сети / мало места
+        2  НУЖЕН ЧЕЛОВЕК: нет Python 3.15 x64 / нет сети / мало места / в конфиге MCP нет записи
         3  ШАГ УПАЛ: pip, распаковка моделей, doctor (FAIL) — лечится повтором того же шага
         4  СЛОМАН ЗАПУСК: нет файлов скриптов, чужие ключи, не Windows
 
@@ -227,10 +229,7 @@ if ($py) {
     $depsOk = Test-Deps $VenvPy
     $gh = Test-Gh $py
     if (-not $gh.ok) {
-        $why = $gh.why
-        if ($why -eq "no-gh") { $blockers += "нет gh CLI: winget install --id GitHub.cli -e" }
-        elseif ($why -eq "no-token") { $blockers += "gh не авторизован и GH_TOKEN/GITHUB_TOKEN пусты: [Environment]::SetEnvironmentVariable('GH_TOKEN','<токен>','User') (fine-grained PAT, Contents: Read-only)" }
-        else { $blockers += "gh: $why" }
+        Add-Step "preflight" "NOTE" 0 ("gh: $($gh.why) — репозиторий публичный, установке это не мешает") ""
     }
     if ($want -contains "deps" -and -not $DryRun -and -not $CheckOnly) {
         $bad = Test-Net
