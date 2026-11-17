@@ -43,11 +43,10 @@ KI_WORK/
 │
 ├─ requirements.txt             ← прямые зависимости (пины) и requirements.lock (полное замыкание)
 │
-├─ bench/                       ← стенд: сравнение алгоритмов
-│   ├─ sets/*.jsonl             … данные в машинном виде (corpus52 / heldout_51 / heldout_150)
-│   ├─ results/                 … актуальные цифры (experiments_all.txt, audit.json, предсказания)
-│   └─ *.py                     … core, scorers, run_bench, experiments, audit, build_sets
-└─ АРХИВ/                       ← история: прошлые прогоны и черновики
+└─ bench/                       ← стенд: сравнение алгоритмов
+    ├─ sets/*.jsonl             … данные в машинном виде (corpus52 / heldout_51 / heldout_150)
+    ├─ results/                 … актуальные цифры (experiments_all.txt, audit.json, предсказания)
+   └─ *.py                     … core, scorers, run_bench, experiments, audit, build_sets
 ```
 
 ## Как запустить
