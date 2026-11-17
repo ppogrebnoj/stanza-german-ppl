@@ -220,7 +220,11 @@ if ($Zip -and -not (Test-Path $Zip)) {
 }
 $py = Find-Py315 $Python
 if (-not $py) {
-    $blockers += "нет Python 3.15 x64: winget install --id Python.Python.3.15 -e --accept-package-agreements"
+    $blockers += "нет Python 3.15 x64: winget install --id Python.Python.3.15 -e --accept-package-agreements, без winget — " +
+                 "https://www.python.org/ftp/python/3.15.2/python-3.15.2-amd64.exe (/quiet InstallAllUsers=0 PrependPath=1); не даунгрейдить до 3.12/3.13"
+}
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Add-Step "preflight" "NOTE" 0 "git не найден в PATH" "winget install --id Git.Git -e, без winget — https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/Git-2.56.1-64-bit.exe (/VERYSILENT)"
 }
 if ($env:OS -notlike "Windows*") { $blockers += "all.ps1 рассчитан на Windows (PowerShell 5.1+)" }
 foreach ($f in @("scripts\setup.ps1", "scripts\unpack_models.py", "scripts\doctor.py", "requirements.txt",

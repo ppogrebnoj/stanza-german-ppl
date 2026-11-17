@@ -96,6 +96,10 @@ if (-not $cands.ContainsKey($WANT)) {
     Fail ("нужен Python $WANT x64. Найдено: $have.`n" +
           "  Поставьте, текущие версии это не затронет:`n" +
           "    winget install --id Python.Python.3.15 -e --accept-package-agreements`n" +
+          "  без winget (нет Магазина) — прямой ссылкой:`n" +
+          "    curl.exe -L -o %TEMP%\py315.exe https://www.python.org/ftp/python/3.15.2/python-3.15.2-amd64.exe`n" +
+          "    %TEMP%\py315.exe /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0`n" +
+          "  версии 3.12/3.13 не подходят (колёса torch cp315, эталонные цифры на 3.15)`n" +
           "  затем запустите этот скрипт снова.")
 }
 
