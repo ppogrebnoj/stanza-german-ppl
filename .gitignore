@@ -11,3 +11,6 @@ stanza-models-*.zip
 stanza-models-*-*.zip.sha256
 .pi-tmp.*
 bench/cache/
+
+.pi-tmp/
+.pi-install.json
