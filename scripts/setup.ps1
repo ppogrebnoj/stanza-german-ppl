@@ -12,8 +12,9 @@
     Поддерживается только Python 3.15 x64 (эталон проекта: torch 2.15.0 / numpy 2.5.5).
     Версия проверяется ДО создания venv; если 3.15 нет — печатается команда winget.
 
-    Модели Stanza этим скриптом не качаются: см. scripts\unpack_models.py
-    (ассет models-v1 в GitHub Releases) — затем повторите doctor.
+    Модели Stanza этим скриптом не качаются: их тянет сам Stanza (stanza.download('de'),
+    официальный источник Stanford). Офлайн-архив распаковывает scripts\unpack_models.py --zip.
+    После моделей повторите doctor.
 #>
 [CmdletBinding()]
 param(
@@ -170,6 +171,6 @@ Write-Host ""
 if ($DryRun) {
     Write-Host "dry-run завершён: команды выше будут выполнены без -DryRun." -ForegroundColor Green
 } else {
-    Write-Host "готово. Дальше: python scripts\unpack_models.py --release models-v1 --check (модели)," -ForegroundColor Green
+    Write-Host "готово. Дальше: модели — .venv\Scripts\python.exe -c \"import stanza; stanza.download('de')\" (или unpack_models.py --zip <офлайн-архив>)," -ForegroundColor Green
     Write-Host "конфиг MCP-клиента кладёт человек: образец MCP-stanza-german\mcp.json.example (УСТАНОВКА.md §1.3a)." -ForegroundColor Green
 }

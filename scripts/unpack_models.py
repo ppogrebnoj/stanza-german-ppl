@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
-"""unpack_models.py — развернуть архив моделей Stanza на этой машине.
+r"""unpack_models.py — развернуть ЛОКАЛЬНЫЙ архив моделей Stanza (офлайн-путь установки).
 
-Дополняет pack_models.py: качает (или берёт локальный) архив, проверяет
-контрольную сумму, безопасно распаковывает в каталог кэша Stanza и — по флагу
---check — сразу проверяет, что пайплайн и правило работают.
+Модели в этом проекте не хранятся: официальный источник — Stanford (список ресурсов
+`raw.githubusercontent.com/stanfordnlp/stanza-resources`, файлы
+`huggingface.co/stanfordnlp/stanza-de`). Обычная установка качает их сама:
+`.venv\Scripts\python.exe -c "import stanza; stanza.download('de')"`. Этот скрипт нужен для
+офлайна: берёт архив, собранный на машине с сетью (`pack_models.py`), проверяет контрольную
+сумму, безопасно распаковывает в каталог кэша Stanza и — по флагу --check — проверяет правило.
 
 Запуск:
-    python scripts/unpack_models.py --release models-v1        # скачать ассет через gh и развернуть
-    python scripts/unpack_models.py --zip stanza-models-de-1.15.0.zip
-    python scripts/unpack_models.py --zip ... --dest D:\\stanza-models   # нестандартный каталог
-    python scripts/unpack_models.py --zip ... --check          # + проверка правила 52/52
+    python scripts/unpack_models.py --zip stanza-models-de-1.15.0.zip --check
+    python scripts/unpack_models.py --zip ... --dest D:\stanza-models   # нестандартный каталог
+    python scripts/unpack_models.py --release <тег>   # стороннее зеркало в GitHub Releases
 
 Если каталог не стандартный, скрипт напечатает переменную STANZA_RESOURCES_DIR,
 которую нужно прописать серверу (mcp.json) и doctor.py.
@@ -116,7 +118,7 @@ def safe_members(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Развернуть архив моделей Stanza")
     ap.add_argument("--zip", help="локальный архив")
-    ap.add_argument("--release", help="тег GitHub Releases (скачать через gh)")
+    ap.add_argument("--release", help="тег стороннего зеркала в GitHub Releases (скачать через gh)")
     ap.add_argument("--pattern", default="stanza-models-*.zip*",
                     help="шаблон ассетов в релизе (по умолчанию zip + его .sha256)")
     ap.add_argument("--dest", default="", help="каталог назначения (по умолчанию кэш Stanza)")

@@ -92,12 +92,12 @@ def check_models():
     models = P.model_dir()
     bad = warn if SOFT_MODELS else fail      # на первом шаге установки моделей ещё нет
     if not cache.exists():
-        bad("stanza_cache", f"нет каталога {cache} (модели: scripts/unpack_models.py)")
+        bad("stanza_cache", f"нет каталога {cache} (модели качает Stanford: .venv\\Scripts\\python.exe -c \"import stanza; stanza.download('de')\")")
         return
     if not (models / "resources.json").exists() and not (cache / "resources.json").exists():
         warn("stanza_cache", f"нет resources.json в {cache}")
     if not models.exists():
-        bad("stanza_de", f"нет моделей de в {models} (scripts/unpack_models.py)")
+        bad("stanza_de", f"нет моделей de в {models} (stanza.download('de') или офлайн: scripts/unpack_models.py --zip <архив>)")
         return
     parts = sorted(p.name for p in models.iterdir() if p.is_dir())
     size = sum(f.stat().st_size for f in models.rglob("*") if f.is_file()) / 2**30

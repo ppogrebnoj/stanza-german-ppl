@@ -10,12 +10,14 @@
         -DryRun      напечатать команды, которые будут выполнены
         -Json        машинный вывод (шаги, коды, подсказки) вместо человеческого
         -Steps       список шагов: venv,deps,models,mcp,doctor
-        -Zip         архив моделей локально (по умолчанию ищем stanza-models-de-*.zip в корне)
-        -Release     тег релиза для скачивания моделей через gh (по умолчанию models-v1)
+        -Zip         архив моделей локально (офлайн); по умолчанию ищем stanza-models-de-*.zip в корне
         -Python      явный путь к python.exe 3.15 (если py-лаунчер его не нашёл)
         -MinFreeGB   сколько ГБ просить на диске (по умолчанию 7)
 
-    Порядок поиска моделей: локальный zip рядом с .sha256 -> релиз models-v1 через gh.
+    Порядок моделей: локальный архив stanza-models-de-*.zip рядом с .sha256 (офлайн, быстро) ->
+    иначе официальная загрузка Stanford: stanza.download() тянет список ресурсов со
+    raw.githubusercontent.com (stanza-resources) и файлы с huggingface.co (stanfordnlp/stanza-de).
+    Своих архивов моделей в этом репозитории нет и не будет.
     Конфиг MCP-клиента создаёт человек (образец: MCP-stanza-german\mcp.json.example): скрипт
     печатает готовый фрагмент с путями этой машины и проверяет, есть ли запись в конфиге
     (-McpConfig, по умолчанию %USERPROFILE%\.lmstudio\mcp.json); если её нет — код 2.
@@ -34,7 +36,6 @@
 param(
     [string]$Steps = "venv,deps,models,mcp,doctor",
     [string]$Zip = "",
-    [string]$Release = "models-v1",
     [string]$Python = "",
     [long]$MinFreeGB = 7,
     [string]$McpConfig = "",
@@ -261,7 +262,7 @@ if ($code -eq 0) {
         if ($rc -ne 0) { $code = $Code_Step }
     }
 
-    # 3. модели: локальный zip -> релиз через gh
+    # 3. модели: локальный архив -> официальная загрузка Stanford (stanza.download)
     if ($code -eq 0 -and $want -contains "models") {
         $pyFor = $(if (Test-Path $VenvPy) { $VenvPy } else { $py })
         $haveModels = $true
@@ -272,14 +273,15 @@ if ($code -eq 0) {
             $local = if ($Zip) { $Zip } else { (Get-ChildItem (Join-Path $Root "stanza-models-de-*.zip") -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
             if ($local -and (Test-Path $local)) {
                 $rc = Run-Cmd $pyFor @((Join-Path $Root "scripts\unpack_models.py"), "--zip", $local, "--check") "models" "распаковка не вышла на 52/52: проверьте .sha256 рядом с архивом" (-not $DryRun -and -not $CheckOnly)
-            } elseif ($gh -and $gh.ok) {
-                $rc = Run-Cmd $pyFor @((Join-Path $Root "scripts\unpack_models.py"), "--release", $Release, "--check") "models" "gh release download не дал архив: обновите токен или принесите zip файлом (-Zip)" (-not $DryRun -and -not $CheckOnly)
             } elseif ($CheckOnly -or $DryRun) {
                 $rc = 0
-                Add-Step "models" "plan" 0 "распакуем локальный zip, при его отсутствии скачаем из релиза $Release" ""
+                Add-Step "models" "plan" 0 "локального архива нет — модели качает stanza.download (huggingface.co + stanza-resources)" ""
+            } elseif (Test-Deps $VenvPy) {
+                $dl = "import stanza; stanza.download('de', verbose=False); print('модели de скачаны')"
+                $rc = Run-Cmd $VenvPy @("-c", $dl) "models" "stanza.download не отдаёт модели: huggingface.co и raw.githubusercontent.com должны быть доступны (порт 443)" $true
             } else {
                 $rc = 1
-                Add-Step "models" "BLOCK" 0 "нет локального архива моделей и нет авторизованного gh" "принесите stanza-models-de-1.15.0.zip в корень или задайте GH_TOKEN"
+                Add-Step "models" "BLOCK" 0 "нет локального архива моделей, а пакеты (stanza) ещё не установлены" "сначала шаг deps, затем модели: stanza.download('de') или unpack_models.py --zip <архив>"
             }
             if ($rc -ne 0 -and $code -eq 0) { $code = $Code_Step }
         }

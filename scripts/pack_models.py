@@ -25,7 +25,8 @@
     коду не нужен;
   * не берёт constituency, ner, sentiment — их в коде нет с версии 4.0.0.
 
-После упаковки скрипт печатает готовую команду загрузки в GitHub Releases.
+Архив нужен только для офлайн-переноса: человек делает его из своего кэша и сам же приносит
+на целевую машину (`unpack_models.py --zip`). В репозитории и в релизах модели не лежат.
 """
 from __future__ import annotations
 
@@ -136,10 +137,9 @@ def main() -> int:
     print(f"архив   : {out} ({out.stat().st_size / 2**30:.2f} ГБ)")
     print(f"sha256  : {digest}")
     print(f"сумма   : {sum_path.name}")
-    print("\nЗагрузка в GitHub Releases (репозиторий проекта):")
-    print(f'  gh release create models-v1 "{out}" "{sum_path}" '
-          f'-t "Stanza {P.LANG} models {P.STANZA_VERSION}" '
-          f'-n "Кэш моделей Stanza {P.STANZA_VERSION} для {P.LANG} (без default.zip)"')
+    print("\nОфлайн-путь: скопируйте архив и .sha256 на целевую машину (в корень проекта), затем:")
+    print(f"  .venv\\Scripts\\python.exe scripts\\unpack_models.py --zip \"{out.name}\" --check")
+    print("Хранить эти файлы в репозитории/релизах не нужно: официальный источник моделей — Stanford.")
     return 0
 
 
