@@ -5,7 +5,8 @@ server.log*
 # развёртывание
 .venv/
 install.log
-# сами архивы моделей — в GitHub Releases; файл .zip.sha256 остаётся в git как эталон
+# архивы моделей и их .sha256 — локальные файлы (офлайн-кэш этой машины): модели качает
+# Stanford, в git и в релизах их нет
 stanza-models-*.zip
 stanza-models-*-*.zip.sha256
 .pi-tmp.*
