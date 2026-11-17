@@ -92,6 +92,11 @@ jobs:
           PYTHONUTF8: "1"
         run: python scripts/doctor.py
 
+      - name: MCP-сервер по stdio — handshake, инструменты, гейт, судья
+        env:
+          PYTHONUTF8: "1"
+        run: python scripts/mcp_probe.py
+
   powershell:
     name: setup.ps1 разбирается и планирует шаги (dry-run)
     runs-on: windows-latest

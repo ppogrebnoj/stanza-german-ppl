@@ -39,6 +39,7 @@ KI_WORK/
 ├─ scripts/                     ← установка и проверка окружения (см. УСТАНОВКА.md)
 │   ├─ all.ps1                  ← установка ОДНОЙ командой: префлайт + шаги + коды 0/2/3/4
 │   ├─ doctor.py                … что готово, что нет (FAIL/OK, --json)
+│   ├─ mcp_probe.py             … проверить MCP-сервер по stdio без клиента (код 0/1)
 │   ├─ setup.ps1                … venv + пины + git-хук + doctor
 │   ├─ unpack_models.py         … распаковать офлайн-архив моделей (свой, из кэша Stanza)
 │   └─ pack_models.py           … собрать офлайн-архив моделей из кэша Stanza (для переноса)
@@ -78,6 +79,9 @@ python bench/build_sets.py
 # гейт целостности (быстро / с проверкой живого кода)
 python правило/smoke_test.py
 python правило/smoke_test.py --full
+
+# MCP-сервер: handshake, инструменты, гейт, судья — без запущенного клиента
+python scripts/mcp_probe.py
 ```
 
 Числа правила живут только в `config.json` → правка правила = правка JSON, без кода.
