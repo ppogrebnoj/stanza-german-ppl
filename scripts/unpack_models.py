@@ -19,9 +19,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -37,6 +39,34 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
+def short_err(text: str, limit: int = 300) -> str:
+    """Короткая версия ошибки: без служебных URL с токенами."""
+    lines = [l for l in text.splitlines() if l.strip() and "https://" not in l]
+    s = " | ".join(lines) or text.strip()
+    return s[:limit]
+
+
+def gh_download(release: str, pattern: str, dest: Path, attempts: int = 3) -> None:
+    """gh release download с повторами: сеть на переносе бывает нестабильной."""
+    last = ""
+    for i in range(1, attempts + 1):
+        cmd = ["gh", "release", "download", release, "-D", str(dest)]
+        if pattern:
+            cmd += ["-p", pattern]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode == 0:
+            return
+        last = (r.stderr or r.stdout).strip()
+        for f in dest.glob("*.zip"):            # недокачанный обрубок не должен мешать
+            if f.stat().st_size < 50 * 2**20:
+                f.unlink()
+        if i < attempts:
+            pause = 5 * i
+            print(f"  попытка {i} не удалась ({short_err(last, 120)}), повтор через {pause} с")
+            time.sleep(pause)
+    raise SystemExit("ОШИБКА gh release download: " + short_err(last))
+
+
 def resolve_zip(args) -> Path:
     if args.zip:
         p = Path(args.zip)
@@ -47,12 +77,7 @@ def resolve_zip(args) -> Path:
         raise SystemExit("укажите --zip <файл> или --release <тег>")
     tmp = Path(tempfile.mkdtemp(prefix="stanza-models-"))
     print(f"качаю ассет {args.release} через gh -> {tmp}")
-    cmd = ["gh", "release", "download", args.release, "-D", str(tmp)]
-    if args.pattern:
-        cmd += ["-p", args.pattern]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise SystemExit(f"ОШИБКА gh: {r.stderr.strip() or r.stdout.strip()}")
+    gh_download(args.release, args.pattern, tmp)
     zips = sorted(tmp.glob("*.zip"))
     if not zips:
         raise SystemExit(f"ОШИБКА: в релизе {args.release} нет .zip")
