@@ -49,7 +49,9 @@ param(
     [string]$Log = ""
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"   # не Stop: нативные команды (pip, gh, python) пишут в stderr
+                                       # штатные предупреждения, и PowerShell превращает их в
+                                       # NativeCommandError и обрывает шаг. Решение — только $LASTEXITCODE.
 $Code_Ready, $Code_Human, $Code_Step, $Code_Broken = 0, 2, 3, 4
 
 try {
