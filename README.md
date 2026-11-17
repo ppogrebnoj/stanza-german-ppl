@@ -108,6 +108,11 @@ MCP-клиент настраивает сам человек: копирует 
 клиента и меняет пути (УСТАНОВКА.md §1.3a); `all.ps1` печатает готовый фрагмент с путями машины.
 Модели de (~1.6 ГБ) качает сам Stanza с официального источника Stanford (`stanza-resources` +
 `huggingface.co`); в репозитории их нет. Офлайн — архив из своего кэша: `pack_models.py` → `--zip`.
+Запись на GitHub (кому нужны пуши): `gh auth login --hostname github.com --git-protocol https --web`
++ `gh auth setup-git`, либо fine-grained PAT (Contents: Read and write) в User-окружение:
+`[Environment]::SetEnvironmentVariable("GH_TOKEN", "<токен>", "User")` (окно перезапустить);
+проверки `gh auth status` и `git push --dry-run` — `УСТАНОВКА.md` §1.2. Для клона и установки
+токен не нужен.
 Коды выхода: 0 готово · 2 нужен человек · 3 шаг упал · 4 сломан запуск.
 Приёмка (F1 0.777 / 0.686, 52/52), ручные шаги, доступ, офлайн и разбор сбоев — `УСТАНОВКА.md`
 (§1 человеку, §2 агенту).

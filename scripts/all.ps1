@@ -123,7 +123,11 @@ function Test-Gh($py) {
     $gh = Get-Command gh -ErrorAction SilentlyContinue
     if (-not $gh) { return @{ ok = $false; why = "no-gh" } }
     & gh auth status *> $null
-    if ($LASTEXITCODE -eq 0) { return @{ ok = $true; why = "gh keyring" } }
+    if ($LASTEXITCODE -eq 0) {
+        # честный источник: gh сам берёт GH_TOKEN/GITHUB_TOKEN из окружения, keyring при этом молчит
+        $src = $(if ($env:GH_TOKEN -or $env:GITHUB_TOKEN) { "токен из Process" } else { "keyring" })
+        return @{ ok = $true; why = "gh $src" }
+    }
     $t = Get-EnvToken
     if (-not $t) { return @{ ok = $false; why = "no-token" } }
     if ($DryRun -or $CheckOnly) {
