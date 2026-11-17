@@ -118,7 +118,7 @@ def main():
 
     path = a.out or os.path.join(os.path.dirname(os.path.abspath(__file__)), "results",
                                  f"review_{a.set}.md")
-    open(path, "w", encoding="utf-8").write("".join(out))
+    open(path, "w", encoding="utf-8", newline="\n").write("".join(out))
     print("записано:", path, "| примеров:", len(parsed))
 
 

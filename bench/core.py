@@ -9,7 +9,7 @@ import os
 import re
 import time
 
-ROOT = r"E:\KI_WORK"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # корень проекта
 SETS = os.path.join(ROOT, "bench", "sets")
 CORPUS = os.path.join(SETS, "corpus52.jsonl")     # разметка заказчика, 52 (настройка)
 HELDOUT = os.path.join(SETS, "heldout_150.jsonl")    # 150 предложений (список для разметки)

@@ -79,7 +79,7 @@ def safe(name):
 
 
 def set_key(name: str) -> str:
-    """Короткое имя набора для файлов: file:E:/.../corpus52.jsonl -> corpus52."""
+    """Короткое имя набора для файлов: file:bench/sets/corpus52.jsonl -> corpus52."""
     if name.startswith("file:"):
         return os.path.splitext(os.path.basename(name.split(":", 1)[1]))[0]
     return name
@@ -102,7 +102,7 @@ def get_scores(algo, set_name, parses):
             sc = None
         ok.append(sc is not None)
         scores.append(sc if sc is not None else [0.0] * (p.n + 1))
-    json.dump({"scores": scores, "ok": ok}, open(path, "w", encoding="utf-8"))
+    json.dump({"scores": scores, "ok": ok}, open(path, "w", encoding="utf-8", newline="\n"))
     return scores, ok
 
 
@@ -217,7 +217,7 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
             pass
         elif algo in SCORERS:
             scores, _ = get_scores(algo, set_name, parses)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
             for i, (rid, s, p) in enumerate(parses):
                 f4 = constraint_chain(p, "strict" if use_constraints else "off",
                                       False, q4=use_constraints)[0]
@@ -241,7 +241,7 @@ def write_predictions(set_name, parses, truth, algos, use_constraints, params, p
 def write_summary(set_name, summary, blind, use_constraints=False, use_syl=False, use_pen=False):
     suffix = ("_c" if use_constraints else "") + ("_syl" if use_syl else "") +              ("_pen" if use_pen else "") + ("_blind" if blind else "")
     json.dump(summary, open(os.path.join(RESULTS, f"summary_{safe(set_key(set_name))}{suffix}.json"), "w",
-                            encoding="utf-8"), ensure_ascii=False, indent=1)
+                            encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)
     md = [f"# Сравнение алгоритмов: {set_name}{' (слепой режим)' if blind else ''}\n",
           "| алгоритм | вариант | exact | P | R | **F1** | блоков | вне 2–7 | кончается служ. | рез после предлога | PP-определение | ср. длина |",
           "|---|---|---|---|---|---|---|---|---|---|---|---|"]
@@ -249,7 +249,8 @@ def write_summary(set_name, summary, blind, use_constraints=False, use_syl=False
         md.append(f"| {r['algo']} {r['name']} | {r['variant']} | {r['exact']}/{r['n']} | {r['P']} | "
                   f"{r['R']} | **{r['F1']}** | {r['blocks']} | {r['blocks_out_of_range']} | "
                   f"{r['func_end']} | {r['pp_strict']} | {r['ppmod']} | {r['mean_len']} |")
-    open(os.path.join(RESULTS, f"summary_{safe(set_key(set_name))}{suffix}.md"), "w", encoding="utf-8").write(
+    open(os.path.join(RESULTS, f"summary_{safe(set_key(set_name))}{suffix}.md"), "w", encoding="utf-8",
+         newline="\n").write(
         "\n".join(md) + "\n")
 
 

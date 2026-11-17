@@ -27,8 +27,8 @@ python bench/experiments.py --stage all       # все замеры (вариа�
 python правило/validator.py --set bench/sets/heldout_51.jsonl
 
 # новые наборы из ИТЕРАЦИИ_3 (новая разметка заказчика)
-python bench/run_bench.py --set file:E:/KI_WORK/bench/sets/corpus52.jsonl        --algo all --grid --constraints --syl --pen
-python bench/run_bench.py --set file:E:/KI_WORK/bench/sets/heldout_51.jsonl        --algo S1,S2,S3,S4,S11,B1 --constraints --syl --pen        --params-json bench/results/best_params.json
+python bench/run_bench.py --set file:bench/sets/corpus52.jsonl   --algo all --grid --constraints --syl --pen
+python bench/run_bench.py --set file:bench/sets/heldout_51.jsonl --algo S1,S2,S3,S4,S11,B1 --constraints --syl --pen --params-json bench/results/best_params.json
 
 # статистика эталонной разметки (длины, слоги, где резать нельзя)
 python bench/analyze_gold.py --set bench/sets/corpus52.jsonl

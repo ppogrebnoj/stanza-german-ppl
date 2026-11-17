@@ -54,7 +54,7 @@ def get_parses(path, force=False):
         out.append([r["id"], s, p.to_dict()])
     os.makedirs(CACHE, exist_ok=True)
     json.dump({"ids": [r["id"] for r in rows], "parses": out},
-              open(cp, "w", encoding="utf-8"), ensure_ascii=False)
+              open(cp, "w", encoding="utf-8", newline="\n"), ensure_ascii=False)
     return rows, parses
 
 

@@ -21,7 +21,7 @@ import os
 import re
 import sys
 
-ROOT = r"E:\KI_WORK"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # корень проекта
 SRC52 = os.path.join(ROOT, "данные", "РАЗМЕТКА_52.md")
 SRC51 = os.path.join(ROOT, "данные", "РАЗМЕТКА_51.md")
 OUT52 = os.path.join(ROOT, "bench", "sets", "corpus52.jsonl")
@@ -195,10 +195,10 @@ def main():
     r52 = parse_52(SRC52)
     bad = qa(r51, "heldout_51") + qa(r52, "corpus52")
     os.makedirs(os.path.dirname(OUT51), exist_ok=True)
-    with open(OUT51, "w", encoding="utf-8") as f:
+    with open(OUT51, "w", encoding="utf-8", newline="\n") as f:
         for r in r51:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    with open(OUT52, "w", encoding="utf-8") as f:
+    with open(OUT52, "w", encoding="utf-8", newline="\n") as f:
         for r in r52:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     print(f"\nзаписано: {OUT51} ({len(r51)}), {OUT52} ({len(r52)})")

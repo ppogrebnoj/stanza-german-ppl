@@ -14,7 +14,7 @@
 
 CLI:
   python правило/validator.py --text "Ich habe bei der Firma gearbeitet." --blocks "Ich habe|bei der Firma gearbeitet."
-  python правило/validator.py --set E:/KI_WORK/bench/sets/heldout_51.jsonl
+  python правило/validator.py --set bench/sets/heldout_51.jsonl
   python правило/validator.py --self-test
 """
 import argparse

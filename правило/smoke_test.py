@@ -22,8 +22,8 @@ import json
 import os
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))   # E:\KI_WORK\правило
-WORK = os.path.dirname(HERE)                        # E:\KI_WORK
+HERE = os.path.dirname(os.path.abspath(__file__))   # <корень проекта>\правило
+WORK = os.path.dirname(HERE)                        # <корень проекта>
 CONFIG = os.path.join(HERE, "config.json")
 SETS = os.path.join(WORK, "bench", "sets")
 DATA = os.path.join(WORK, "данные")

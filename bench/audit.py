@@ -165,7 +165,7 @@ def main():
     out = [audit(n, p) for n, p in SETS]
     out.append(audit("all_103", None) if False else None)
     json.dump([o for o in out if o], open(os.path.join(HERE, "results", "audit.json"), "w",
-                                          encoding="utf-8"), ensure_ascii=False, indent=1)
+                                          encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)
     print("\nсохранено: bench/results/audit.json")
 
 

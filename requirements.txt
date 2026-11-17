@@ -1,0 +1,18 @@
+# Зависимости проекта (прямые, с точными пинами).
+#
+# Установка (Windows):
+#   python -m venv .venv
+#   .venv\Scripts\python -m pip install -U pip
+#   .venv\Scripts\python -m pip install -r requirements.txt
+#
+# Linux/macOS: те же три команды, только .venv/bin/python.
+#
+# Пины соответствуют окружению, на котором получены цифры F1 (итерация 27,
+# stanza 1.15.0 / torch 2.14.0 / numpy 2.4.6 / mcp 1.27.2, Python 3.11.x).
+# torch 2.14.0 есть обычным колесом на PyPI — отдельный CPU-индекс не нужен.
+# Полное транзитивное замыкание — в requirements.lock.
+
+stanza==1.15.0
+torch==2.14.0
+numpy==2.4.6
+mcp==1.27.2
