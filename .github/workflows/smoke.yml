@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13", "3.14", "3.15"]   # 3.11 — эталон; 3.13-3.15 — новые (3.15 со своими пинами)
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]   # 3.15 — эталон; 3.11 — legacy-набор
     steps:
       - uses: actions/checkout@v4
 
@@ -70,8 +70,7 @@ jobs:
 
       - name: Зависимости (файл пинов по версии Python)
         run: |
-          REQ=requirements.txt
-          python -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3, 15) else 1)" && REQ=requirements-py315.txt
+          REQ=$(python -c "import sys; sys.path.insert(0, 'scripts'); import _paths; print(_paths.requirements_path().name)")
           echo "ставим: $REQ"
           python -m pip install -q -r "$REQ"
 

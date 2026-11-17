@@ -85,7 +85,9 @@ python правило/smoke_test.py --full
 
 ## Установка (новая машина)
 
-Нужны Python 3.11.x, git и авторизованный `gh`; полный чек-лист и разбор сбоев — в `ПЕРЕНОС.md`.
+Нужны Python **3.12–3.15 x64** (отправная точка — **3.15**; 3.11 работает на legacy-пинах), git и авторизованный `gh`.
+Полный чек-лист и разбор сбоев — `ПЕРЕНОС.md`, требования и версии — `ТРЕБОВАНИЯ.md`.
+Поддержка версий зависимостей и обновления: `python scripts/pins.py [--latest]`.
 
 ```powershell
 git clone https://github.com/ppogrebnoj/stanza-german-ppl.git C:\KI_WORK && cd C:\KI_WORK

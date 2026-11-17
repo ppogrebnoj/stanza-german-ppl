@@ -16,8 +16,8 @@ RULE_DIR = ROOT / "правило"
 MCP_DIR = ROOT / "MCP-stanza-german"
 SETS_DIR = ROOT / "bench" / "sets"
 DATA_DIR = ROOT / "данные"
-REQS = ROOT / "requirements.txt"
-REQS_PY315 = ROOT / "requirements-py315.txt"   # torch 2.15 / numpy 2.5 — единственные с колёсами под cp315
+REQS = ROOT / "requirements.txt"          # основной набор (последние версии), Python 3.12-3.15
+REQS_PY311 = ROOT / "requirements-py311.txt"   # legacy для 3.11: у numpy 2.5.x нет колёс под cp311
 LOCK = ROOT / "requirements.lock"
 
 STANZA_VERSION = "1.15.0"     # версия, под которую снят кэш моделей
@@ -70,14 +70,19 @@ def hook_dst() -> Path:
     return ROOT / ".git" / "hooks" / "pre-commit"
 
 
+BASELINE_MINOR = 15                      # отправная точка: 3.15 (здесь сняты цифры F1)
+SUPPORTED_MINORS = (12, 13, 14, 15)     # основной набор
+LEGACY_MINOR = 11                       # старый набор (torch 2.14.0 / numpy 2.4.6)
+
+
 def requirements_path() -> Path:
     """Файл пинов под текущий интерпретатор.
 
-    С Python 3.15 ядро torch 2.14.0/numpy 2.4.6 не имеет колёс (cp310..cp314),
-    поэтому используется requirements-py315.txt с torch 2.15.0/numpy 2.5.5.
+    3.12-3.15 — основной набор (последние версии зависимостей).
+    3.11 — legacy: numpy 2.5.x не имеет колёс под cp311.
     """
-    if sys.version_info[:2] >= (3, 15) and REQS_PY315.exists():
-        return REQS_PY315
+    if sys.version_info[:2] == (3, LEGACY_MINOR) and REQS_PY311.exists():
+        return REQS_PY311
     return REQS
 
 

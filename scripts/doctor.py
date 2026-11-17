@@ -49,7 +49,9 @@ def fail(name, detail=""):
 
 # ------------------------------------------------------------------ проверки
 
-SUPPORTED_MINOR = (11, 12, 13, 14, 15)   # 3.15 — с отдельными пинами (torch 2.15.0 / numpy 2.5.5)
+BASELINE_MINOR = P.BASELINE_MINOR      # 3.15 — отправная точка (цифры F1 сняты здесь)
+SUPPORTED_MINOR = P.SUPPORTED_MINORS   # 3.12-3.15 — основной набор пинов
+LEGACY_MINOR = P.LEGACY_MINOR          # 3.11 — legacy-пины (torch 2.14.0 / numpy 2.4.6)
 
 
 def check_python():
@@ -59,13 +61,14 @@ def check_python():
     ver = f"{v.major}.{v.minor}.{v.micro}"
     bits = platform.architecture()[0]
     minor = v.minor if v.major == 3 else None
-    if minor == 11:
-        ok("python", f"{ver} {bits} — эталон (цифры F1 сняты здесь)")
+    if minor == BASELINE_MINOR:
+        ok("python", f"{ver} {bits} — эталон: отправная точка, здесь проверены цифры F1")
     elif minor in SUPPORTED_MINOR:
-        pkg = "torch 2.15.0/numpy 2.5.5" if minor >= 15 else "torch 2.14.0/numpy 2.4.6"
-        ok("python", f"{ver} {bits} — поддерживается ({pkg}); цифры совпадают с эталоном 3.11")
+        ok("python", f"{ver} {bits} — поддерживается (пины как на эталоне 3.15)")
+    elif minor == LEGACY_MINOR:
+        warn("python", f"{ver} {bits} — legacy-набор requirements-py311.txt; рекомендуется 3.12+")
     else:
-        fail("python", f"{ver} {bits} — поддерживаются 3.11-3.15; поставить рядом: "
+        fail("python", f"{ver} {bits} — поддерживаются 3.12-3.15 (3.11 legacy); поставить: "
                        f"winget install --id Python.Python.3.15 -e")
     if bits != "64bit":
         fail("python_bits", f"{bits} — нужен x64 (32-bit колёс torch нет)")

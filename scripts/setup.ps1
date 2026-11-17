@@ -36,7 +36,7 @@ try {
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $VenvDir) { $VenvDir = Join-Path $Root ".venv" }
 $Reqs = if ($UseLock) { Join-Path $Root "requirements.lock" } else { Join-Path $Root "requirements.txt" }
-$ReqsPy315 = Join-Path $Root "requirements-py315.txt"   # torch 2.15/numpy 2.5 — единственные с колёсами под cp315
+$ReqsPy311 = Join-Path $Root "requirements-py311.txt"   # legacy для 3.11: numpy 2.5.x без колёс под cp311
 
 function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan }
 function Fail($text) { Write-Host "ОШИБКА: $text" -ForegroundColor Red; exit 1 }
@@ -78,11 +78,14 @@ if ($Python) {
     # 1) все версии через py launcher (py -0p: " -V:3.13 *  C:\...\python.exe")
     try {
         foreach ($line in (& py -0p 2>$null)) {
-            if ($line -match '-V:(\d+)\.(\d+)\*?\s+(.+)$') {
-                $maj = [int]$Matches[1]; $min = [int]$Matches[2]; $path = $Matches[3].Trim()
-                $seen += "$maj.$min"
-                if ($maj -eq 3 -and $min -ge $MIN -and $min -le $MAX -and (Test-Path $path)) {
-                    $cands["$maj.$min"] = $path
+            # формат: " -V:3.15 *        C:\...\python.exe" — '*' у версии по умолчанию
+            $pVer = $null; $pPath = $null
+            if ($line -match '-V:(\d+)\.(\d+)') { $pVer = @([int]$Matches[1], [int]$Matches[2]) }
+            if ($line -match 'python\.exe') { $pPath = ($line -split '\s+')[-1].Trim() }
+            if ($pVer -and $pPath) {
+                $seen += "$($pVer[0]).$($pVer[1])"
+                if ($pVer[0] -eq 3 -and $pVer[1] -ge $MIN -and $pVer[1] -le $MAX -and (Test-Path $pPath)) {
+                    $cands["$($pVer[0]).$($pVer[1])"] = $pPath
                 }
             }
         }
@@ -97,12 +100,10 @@ if ($Python) {
     } catch { }
 }
 
-# выбор: эталон 3.11, иначе самая новая из поддерживаемых
+# выбор: эталон 3.15, иначе самая новая из поддерживаемых (3.14 -> 3.12), 3.11 — legacy
 $pick = $null
-if ($cands.ContainsKey("3.11")) {
-    $pick = "3.11"
-} elseif ($cands.Keys.Count -gt 0) {
-    $pick = ($cands.Keys | Sort-Object { [double]$_ } -Descending | Select-Object -First 1)
+foreach ($pref in @("3.15", "3.14", "3.13", "3.12", "3.11")) {
+    if ($cands.ContainsKey($pref)) { $pick = $pref; break }
 }
 
 if (-not $pick) {
@@ -114,16 +115,19 @@ if (-not $pick) {
 }
 
 $py = $cands[$pick]
-if ([double]$pick -ge 3.15 -and (Test-Path $ReqsPy315)) {
-    # на 3.15 ядро torch 2.14.0/numpy 2.4.6 колёс не имеет
-    if ($UseLock) { Write-Host "  ВНИМАНИЕ: requirements.lock снят на 3.11 — для 3.15 беру requirements-py315.txt" -ForegroundColor Yellow }
-    $Reqs = $ReqsPy315
-    Write-Host "  пины: requirements-py315.txt (torch 2.15.0 / numpy 2.5.5)"
+if ($pick -eq "3.11" -and (Test-Path $ReqsPy311)) {
+    # у numpy 2.5.x нет колёс под cp311 -> legacy-набор
+    if ($UseLock) { Write-Host "  ВНИМАНИЕ: requirements.lock снят на 3.15 — для 3.11 беру requirements-py311.txt" -ForegroundColor Yellow }
+    $Reqs = $ReqsPy311
+    Write-Host "  пины: requirements-py311.txt (legacy: torch 2.14.0 / numpy 2.4.6)" -ForegroundColor Yellow
+    Write-Host "  для новых зависимостей рекомендуется Python 3.12+ (эталон проекта — 3.15)" -ForegroundColor Yellow
+} else {
+    Write-Host "  пины: requirements.txt (torch 2.15.0 / numpy 2.5.5)"
 }
 $ver = & $py -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
 Write-Host "  выбран: $py ($ver)"
-if ($ver -notlike "3.11.*") {
-    Write-Host "  ВНИМАНИЕ: эталон цифр — 3.11; 3.13, 3.14 и 3.15 проверены прогоном (52/52, F1 0.777/0.686), 3.12 допустим." -ForegroundColor Yellow
+if ($pick -ne "3.15") {
+    Write-Host "  ВНИМАНИЕ: отправная точка проекта — 3.15; на $pick цифры совпадают (CI проверяет 3.12-3.15)." -ForegroundColor Yellow
 }
 
 # ---------------------------------------------------------------- 2. venv

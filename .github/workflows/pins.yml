@@ -1,0 +1,35 @@
+name: pins
+
+# Сторож зависимостей для дальнейших разработок.
+# Раз в неделю (и по кнопке) проверяет две вещи, не устанавливая ничего:
+#   1) под какие версии Python существуют колёса у текущих пинов;
+#   2) вышли ли новые версии на PyPI.
+# Если покрытие колёс перестало соответствовать заявленному диапазону — job падает,
+# это сигнал: обновлять пины нельзя без проверки (или наоборот, пора обновлять).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"      # каждый понедельник, 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  support:
+    name: поддержка версий и обновления
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+
+      - name: Матрица поддержки (wheel по версиям Python)
+        env:
+          PYTHONUTF8: "1"
+        run: python scripts/pins.py
+
+      - name: Доступные обновления на PyPI
+        env:
+          PYTHONUTF8: "1"
+        run: python scripts/pins.py --latest
