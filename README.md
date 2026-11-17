@@ -85,15 +85,17 @@ python правило/smoke_test.py --full
 
 Нужны **Python 3.15 x64** (эталон проекта: torch 2.15.0 / numpy 2.5.5) и git. Свободно ≥ 7 ГБ.
 Ставятся двумя командами (`winget install --id Python.Python.3.15 -e`, `--id Git.Git`); права
-админа не нужны. `gh`, токены и SSH-ключи **не нужны**: репозиторий публичный, модели качает
-Stanford. Дальше — одна команда, она неинтерактивна:
+админа не нужны. `gh` и токены нужны **только тем, кто правит репозиторий** (push): клон и
+установка — без них, репозиторий публичный, модели качает Stanford. Дальше — одна команда,
+она неинтерактивна:
 
 ```powershell
 git clone https://github.com/ppogrebnoj/stanza-german-ppl.git C:\KI_WORK && cd C:\KI_WORK
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\all.ps1   # → «ГОТОВО» (код 0)
 ```
 
-Шаги внутри: префлайт (Python 3.15 x64 через `py -0p`, git, диск, сеть PyPI/GitHub/HF) →
+Шаги внутри: префлайт (Python 3.15 x64 через `py -0p`, git, диск, сеть PyPI/GitHub/HF; `gh` —
+справочно, шаг `NOTE`) →
 → `.venv` → пины `requirements.txt` → git-хук `pre-commit` → модели → проверка конфига MCP →
 `doctor.py`. Системный `python` может быть любым (скрипты ищут 3.15); готовые шаги помечаются
 `SKIP`, повторный запуск безопасен. Логи: `-Json`, `-CheckOnly` (ничего не ставить), `-DryRun`,
