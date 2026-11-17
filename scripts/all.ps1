@@ -180,8 +180,13 @@ function Run-Cmd($exe, [string[]]$argv, $id, $hint, $execute) {
     }
     Say ("  > {0} {1}" -f (Split-Path -Leaf $exe), ($argv -join " "))
     $t0 = Get-Date
+    # stderr нативной команды — не авария: pip печатает в него «WARNING: Retrying …» на временных
+    # обрывах, и с EAP=Stop это превращалось в NativeCommandError и рвало шаг. Решает код выхода.
+    $prevEA = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     $lines = @(& $exe @argv 2>&1 | ForEach-Object { "$_" })
     $rc = $LASTEXITCODE
+    $ErrorActionPreference = $prevEA
     try { [IO.File]::AppendAllText($Log, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding $false)) } catch { }
     if (-not $Json) { foreach ($l in $lines) { Write-Host "  | $l" } }
     $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)

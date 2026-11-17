@@ -119,8 +119,8 @@ if ($SkipDeps) {
     Write-Host "  пропущено (-SkipDeps)"
 } else {
     if (-not (Test-Path $Reqs)) { Fail "нет файла $Reqs" }
-    Run $vp @("-m", "pip", "install", "-q", "-U", "pip") "не удалось обновить pip"
-    Run $vp @("-m", "pip", "install", "-q", "-r", $Reqs) "не удалось установить зависимости"
+    Run $vp @("-m", "pip", "install", "-q", "--retries", "5", "--timeout", "60", "-U", "pip") "не удалось обновить pip"
+    Run $vp @("-m", "pip", "install", "-q", "--retries", "5", "--timeout", "60", "-r", $Reqs) "не удалось установить зависимости"
 }
 
 # ---------------------------------------------------------------- 4. git-хук
