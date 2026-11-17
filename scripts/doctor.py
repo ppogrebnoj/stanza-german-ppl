@@ -49,15 +49,25 @@ def fail(name, detail=""):
 
 # ------------------------------------------------------------------ проверки
 
+SUPPORTED_MINOR = (11, 12, 13, 14)   # диапазон, под который есть колёса torch/numpy
+
+
 def check_python():
+    import platform
+
     v = sys.version_info
     ver = f"{v.major}.{v.minor}.{v.micro}"
-    if (v.major, v.minor) == (3, 11):
-        ok("python", f"{ver} ({sys.executable})")
-    elif (v.major, v.minor) >= (3, 10):
-        warn("python", f"{ver} — проект проверен на 3.11 ({sys.executable})")
+    bits = platform.architecture()[0]
+    minor = v.minor if v.major == 3 else None
+    if minor == 11:
+        ok("python", f"{ver} {bits} — эталон (цифры F1 сняты здесь)")
+    elif minor in SUPPORTED_MINOR:
+        ok("python", f"{ver} {bits} — поддерживается (на 3.13 цифры совпали с 3.11)")
     else:
-        fail("python", f"{ver} — нужен 3.11.x ({sys.executable})")
+        fail("python", f"{ver} {bits} — поддерживаются 3.11-3.14; поставить рядом: "
+                       f"winget install --id Python.Python.3.13 -e")
+    if bits != "64bit":
+        fail("python_bits", f"{bits} — нужен x64 (32-bit колёс torch нет)")
 
 
 def check_pins():
