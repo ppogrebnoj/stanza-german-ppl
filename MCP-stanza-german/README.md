@@ -17,8 +17,11 @@ MCP-сервер (stdio) для **синтаксического анализа 
 | numpy   | 2.4.6        |
 | mcp     | 1.27.2       |
 
-Каталог кэша моделей:
-`C:\Users\BIGTER\AppData\Local\StanfordNLP\stanza\Cache\1.15.0\resources`
+Каталог кэша моделей (по умолчанию для Windows):
+`%LOCALAPPDATA%\StanfordNLP\stanza\Cache\1.15.0\resources`
+
+Переопределяется переменной `STANZA_RESOURCES_DIR` — ею же пользуется
+`scripts/unpack_models.py`, если модели распакованы не в стандартный каталог.
 
 В кэше на данный момент: только немецкий (`de`, ~809 МБ).
 
@@ -29,7 +32,8 @@ Windows).
 ## Запуск
 
 ```bat
-python E:\KI_WORK\MCP-stanza-german\server.py
+REM из корня проекта (путь к проекту любой: E:\KI_WORK, C:\KI_WORK, ...)
+python MCP-stanza-german\server.py
 ```
 
 ## Подключение к MCP-клиенту
@@ -41,14 +45,17 @@ python E:\KI_WORK\MCP-stanza-german\server.py
   "mcpServers": {
     "stanza": {
       "command": "python",
-      "args": ["E:\\KI_WORK\\MCP-stanza-german\\server.py"]
+      "args": ["<КОРЕНЬ ПРОЕКТА>\\MCP-stanza-german\\server.py"]
     }
   }
 }
 ```
 
+Замените `<КОРЕНЬ ПРОЕКТА>` на каталог, куда склонирован проект (в JSON нужен
+абсолютный путь — в конфиге клиента относительные не работают).
+
 **LM Studio:** Settings → MCP Servers → Add — укажите `command: python` и
-`args: E:\KI_WORK\MCP-stanza-german\server.py`.
+`args: <КОРЕНЬ ПРОЕКТА>\MCP-stanza-german\server.py`.
 
 ## Инструменты
 
@@ -86,7 +93,8 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
 
 Инструменты судьи (`check_segmentation`, `rule_self_test`, `rule_info`) работают поверх
 отдельного проекта правила — `правило` (`validator.py`, `config.json`). Путь задаётся переменной `RULE_ROOT`
-(дефолт `E:\KI_WORK\правило`). **Правила нет — сервер работает как раньше:**
+(дефолт — папка `правило` рядом с сервером, то есть `<КОРЕНЬ ПРОЕКТА>\правило`:
+`server.py` вычисляет его от своего расположения, `E:\...` в коде не зашит). **Правила нет — сервер работает как раньше:**
 инструменты судьи просто не регистрируются, причина — в `pipeline_info().notes`.
 
 `config.json` перечитывается на **каждый** вызов: цикл «дельта → перепроверка» работает без
@@ -98,8 +106,8 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
   "mcpServers": {
     "stanza-german": {
       "command": "python",
-      "args": ["E:\\KI_WORK\\MCP-stanza-german\\server.py"],
-      "env": { "RULE_ROOT": "E:\\KI_WORK\\правило" }
+      "args": ["<КОРЕНЬ ПРОЕКТА>\\MCP-stanza-german\\server.py"],
+      "env": { "RULE_ROOT": "<КОРЕНЬ ПРОЕКТА>\\правило", "PYTHONUTF8": "1" }
     }
   }
 }

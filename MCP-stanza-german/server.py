@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import datetime
+from pathlib import Path
 
 # stdout должен оставаться чистым для MCP-протокола (stdio) и быть UTF-8
 for _stream in (sys.stdout, sys.stderr):
@@ -85,8 +86,10 @@ PROCESSORS = "tokenize,mwt,pos,lemma,depparse"   # правило работае
 DEFAULT_CHARS_PER_SEC = 4.0
 
 # Правило сегментации (validator.py + config.json) живёт отдельно от сервера.
-# Путь — переменная окружения RULE_ROOT (поле env в mcp.json), иначе — дефолт.
-RULE_ROOT_DEFAULT = r"E:\KI_WORK\правило"
+# Путь — переменная окружения RULE_ROOT (поле env в mcp.json), иначе — дефолт:
+# папка «правило» рядом с этим файлом (MCP-stanza-german/../правило). Так сервер
+# работает после переноса проекта в любой каталог, без правки кода.
+RULE_ROOT_DEFAULT = str(Path(__file__).resolve().parent.parent / "правило")
 
 mcp = FastMCP(
     "stanza-german",
@@ -286,7 +289,9 @@ def _load_rule() -> None:
     if not os.path.exists(path):          # старое имя (reference/validator_v3.py)
         path = os.path.join(root, "reference", "validator_v3.py")
     if not os.path.exists(path):
-        _RULE_NOTE = f"правило не подключено: нет {path} (задайте RULE_ROOT)"
+        _RULE_NOTE = (
+            f"правило не подключено: в {root} нет validator.py "
+            f"(искали также reference/validator_v3.py); проверьте RULE_ROOT")
         return
     try:
         ref_dir = os.path.dirname(path)
