@@ -127,16 +127,28 @@ jobs:
           if ($err.Count) { $err | ForEach-Object { $_.ToString() }; exit 1 }
           "разбирается без ошибок"
 
-      - name: all.ps1 -DryRun
+      - name: all.ps1 -DryRun (план без шага mcp)
         shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun -Steps venv,deps,models,doctor
 
-      - name: all.ps1 -CheckOnly -Json (префлайт + что готово)
+      - name: "all.ps1 шаг mcp: образец конфига как фикстура"
+        shell: bash
+        run: |
+          out="${RUNNER_TEMP:-.}/mcp-check.json"
+          code=0
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -CheckOnly -Steps mcp -McpConfig MCP-stanza-german/mcp.json.example -Json > "$out" || code=$?
+          echo "код выхода: $code"
+          [ "$code" -le 1 ] || { echo "::error::шаг mcp на валидном образце дал код $code"; exit 1; }
+          grep -q 'mcp_snippet' "$out" || { echo "::error::в -Json нет mcp_snippet"; exit 1; }
+          grep -q 'stanza-german' "$out" && echo "mcp: запись в образце найдена, фрагмент печатается"
+
+      - name: all.ps1 -CheckOnly -Json (префлайт на чистой машине)
         shell: bash
         run: |
           code=0
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -CheckOnly -Json || code=$?
           echo "код выхода all.ps1: $code"
           if [ "$code" -ge 4 ]; then echo "::error::all.ps1 сломан: код 4 (СЛОМАН ЗАПУСК)"; exit 1; fi
-          if [ "$code" -eq 2 ]; then echo "::error::префлайт на раннере дал код 2 (нет Python/gh/места)"; exit 1; fi
-          echo "ok: all.ps1 отработал (0 = среда готова, 3 = список FAIL на свежей машине)"
+          # 2 = нет клиента MCP / gh / места — на свежем раннере это норма,
+          # 3 = doctor FAIL (venv на раннере не ставится) — тоже норма
+          echo "ok: all.ps1 отработал и ответил машинно (код $code)"
