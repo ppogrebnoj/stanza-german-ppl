@@ -297,18 +297,39 @@ if ($code -eq 0) {
             env     = [ordered]@{ RULE_ROOT = (Join-Path $Root "правило"); PYTHONUTF8 = "1" }
         }
         $mcpSnippet = [ordered]@{ mcpServers = [ordered]@{ "stanza-german" = $entry } } | ConvertTo-Json -Depth 5
-        $found = $false
+        $found = $false; $srv = $null
         if (Test-Path $cfgPath) {
             try {
                 $servers = (Get-Content -Raw -Encoding UTF8 $cfgPath | ConvertFrom-Json).$McpKey
-                $found = $null -ne $servers.'stanza-german'
+                $srv = $servers.'stanza-german'
+                $found = $null -ne $srv
             } catch { $found = $false }
         }
         Say "MCP-конфиг: $cfgPath (создаёт человек; образец — MCP-stanza-german\mcp.json.example)"
         Say "вставь в секцию `"$McpKey`":"
         foreach ($l in ($mcpSnippet -split "`n")) { Say ("  " + $l) }
         if ($found) {
-            Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath" ""
+            # запись есть — но клиент её не запустит, если enabled:false или command — python без пакетов
+            $on = $true
+            if ($srv.PSObject.Properties['enabled'] -and $srv.enabled -is [bool]) { $on = $srv.enabled }
+            $cmd = [string]$srv.command
+            if (-not $on) {
+                Add-Step "mcp" "BLOCK" 0 "в $cfgPath запись stanza-german есть, но enabled: false" "поставь `"enabled": true" (или убери поле) и перезапусти клиент — иначе сервер не стартует"
+                $code = $Code_Human
+            } elseif ($cmd -and -not (Test-Path $cmd)) {
+                if (Test-Path $VenvPy) {
+                    Add-Step "mcp" "BLOCK" 0 "command в конфиге не найден: $cmd" "правь command на $pyFor (venv уже есть) и перезапусти клиент"
+                    $code = $Code_Human
+                } else {
+                    Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd, на этой машине его нет" "установка не сделана: после шага venv поставь command = $pyFor и перезапусти клиент"
+                    Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath" ""
+                }
+            } elseif ($cmd -and ($cmd -ne $pyFor)) {
+                Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd (ожидался $pyFor)" "в этом python пакетов mcp/stanza может не быть: поставь command = $pyFor"
+                Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath" ""
+            } else {
+                Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath (command $cmd)" ""
+            }
         } else {
             Add-Step "mcp" "BLOCK" 0 "в $cfgPath записи stanza-german нет" "вставь напечатанный фрагмент (образец MCP-stanza-german\mcp.json.example) и перезапусти клиент"
             $code = $Code_Human
