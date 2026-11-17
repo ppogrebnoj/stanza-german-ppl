@@ -17,6 +17,8 @@ jobs:
     name: поддержка версий и обновления
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write        # один коммит снимка deps.json в неделю
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +35,20 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: python scripts/pins.py --latest
+
+      - name: Снимок обновлений (bench/results/deps.json)
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python scripts/pins.py --latest --write bench/results/deps.json \
+            || echo "::warning::нет данных PyPI — снимок не обновлён, сервер покажет available: false"
+
+      - name: Коммит снимка в master
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- bench/results/deps.json; then echo "снимок не изменился"; exit 0; fi
+          git add bench/results/deps.json
+          git commit -m "deps: снимок обновлений $(date -u +%Y-%m-%d)"
+          git push

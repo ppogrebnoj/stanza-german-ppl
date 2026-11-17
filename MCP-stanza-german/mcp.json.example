@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "stanza-german": {
+      "command": "C:\\KI_WORK\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\KI_WORK\\MCP-stanza-german\\server.py"],
+      "env": {
+        "RULE_ROOT": "C:\\KI_WORK\\правило",
+        "PYTHONUTF8": "1"
+      }
+    }
+  }
+}

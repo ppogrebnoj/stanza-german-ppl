@@ -227,6 +227,34 @@ def _parse_german_impl(text) -> dict:
 def parse_german(text: str | list[str]) -> dict:
     return _run_tool("parse_german", lambda: _parse_german_impl(text))
 
+def _updates_info() -> dict:
+    """Обновления зависимостей — по снимку, без сети и без оценок.
+
+    bench/results/deps.json пишет `python scripts/pins.py --latest --write` (CI раз в неделю).
+    Файла нет или он битый -> {"available": false}: сервер не падает и ничего не выдумывает.
+    """
+    try:
+        path = Path(_BASE_DIR).parent / "bench" / "results" / "deps.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        as_of = str(data.get("as_of") or "")
+        stale = None
+        try:
+            when = datetime.datetime.strptime(as_of, "%Y-%m-%dT%H:%M:%SZ")
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            stale = max(0, (now - when).days)
+        except ValueError:
+            pass
+        outdated = [{"name": n, "current": (v or {}).get("current"), "latest": (v or {}).get("latest")}
+                    for n, v in (data.get("packages") or {}).items()
+                    if (v or {}).get("latest") and v.get("latest") != v.get("current")]
+        m = data.get("models") or {}
+        return {"available": True, "as_of": as_of, "stale_days": stale, "python": data.get("python"),
+                "outdated": sorted(outdated, key=lambda x: x["name"]),
+                "models_stanza": m.get("stanza"), "models_ok": m.get("pack_ok")}
+    except Exception:  # noqa: BLE001
+        return {"available": False}
+
+
 def _pipeline_info_impl() -> dict:
     """Статус сервера: загруженные процессоры, версии, путь к кэшу, offline-статус."""
     import torch
@@ -248,6 +276,7 @@ def _pipeline_info_impl() -> dict:
         },
         "rule_root": _rule_root(),
         "rule_registered": _RULE is not None,
+        "updates": _updates_info(),
         "notes": list(_load_notes) + ([_RULE_NOTE] if _RULE_NOTE else []),
     }
 

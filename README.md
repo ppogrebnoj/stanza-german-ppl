@@ -11,6 +11,7 @@
 | `ПРАВИЛО.md` | **как резать**: запреты и их коды, длины, исключения, цифры |
 | `ВОПРОСЫ.md` | только открытые вопросы к заказчику |
 | `УСТАНОВКА.md` | требования, доступ к репозиторию, установка, приёмка, разбор сбоев, обновление зависимостей |
+| `ПЛАН-ОБНОВЛЕНИЯ.md` | план: единая проверка актуальности всех зависимостей (CLI + MCP-инструмент + CI) |
 | `README.md` | этот файл: карта проекта и команды |
 
 Истории решений отдельным файлом нет: принятое воплощено в `ПРАВИЛО.md` и `config.json`,
@@ -34,12 +35,13 @@ KI_WORK/
 │   └─ git-hooks/pre-commit     … хук, который вызывает smoke_test
 │
 ├─ MCP-stanza-german/           ← MCP-сервер: нарезка, разбор, судья (для чата)
+│   └─ mcp.json.example         ← образец конфига: человек кладёт его в свой клиент сам
 ├─ scripts/                     ← установка и проверка окружения (см. УСТАНОВКА.md)
-│   ├─ doctor.py                … preflight: что готово, что нет (FAIL/OK)
+│   ├─ all.ps1                  ← установка ОДНОЙ командой: префлайт + шаги + коды 0/2/3/4
+│   ├─ doctor.py                … что готово, что нет (FAIL/OK, --json)
 │   ├─ setup.ps1                … venv + пины + git-хук + doctor
 │   ├─ unpack_models.py         … скачать/распаковать модели Stanza из Releases
-│   ├─ pack_models.py           … собрать архив моделей для нового релиза
-│   └─ install_mcp.py           … прописать сервер в mcp.json клиента
+│   └─ pack_models.py           … собрать архив моделей для нового релиза
 │
 ├─ requirements.txt             ← прямые зависимости (пины) и requirements.lock (полное замыкание)
 │
@@ -82,17 +84,20 @@ python правило/smoke_test.py --full
 
 ## Установка (новая машина)
 
-Нужны **Python 3.15 x64** (эталон проекта: torch 2.15.0 / numpy 2.5.5), git и авторизованный `gh`.
-Все шаги, приёмка и разбор сбоев — `УСТАНОВКА.md`. Поддержка версий и обновления:
-`python scripts/pins.py [--latest]`.
+Нужны **Python 3.15 x64** (эталон проекта: torch 2.15.0 / numpy 2.5.5), git и авторизованный `gh`
+(или токен в `GH_TOKEN`). Свободно ≥ 7 ГБ. Дальше — одна команда, она неинтерактивна:
 
 ```powershell
 git clone https://github.com/ppogrebnoj/stanza-german-ppl.git C:\KI_WORK && cd C:\KI_WORK
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1                       # venv + пины + хук
-.venv\Scripts\python.exe scripts\unpack_models.py --release models-v1 --check   # модели 315 МБ + 52/52
-.venv\Scripts\python.exe scripts\install_mcp.py                                 # запись в mcp.json клиента
-.venv\Scripts\python.exe scripts\doctor.py                                      # ожидается FAIL 0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\all.ps1   # → «ГОТОВО» (код 0)
 ```
+
+MCP-клиент настраивает сам человек: копирует `MCP-stanza-german\mcp.json.example` в конфиг своего
+клиента и меняет пути (УСТАНОВКА.md §1.3a); `all.ps1` печатает готовый фрагмент с путями машины.
+Коды выхода: 0 готово · 2 нужен человек · 3 шаг упал · 4 сломан запуск.
+Приёмка (F1 0.777 / 0.686, 52/52), ручные шаги, доступ, офлайн и разбор сбоев — `УСТАНОВКА.md`
+(§1 человеку, §2 агенту).
+Поддержка версий и обновления: `python scripts/pins.py [--latest]`.
 
 ## Как пополнять разметку
 

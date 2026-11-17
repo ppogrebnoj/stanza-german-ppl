@@ -6,7 +6,8 @@
 после скачивания гигабайтов. Скрипт отвечает на два вопроса заранее и без установки:
 
     python scripts/pins.py             # матрица: какой пин под какой Python существует (wheel)
-    python scripts/pins.py --latest    # вышли ли новые версии пинов на PyPI
+    python scripts/pins.py --latest    # вышли ли новые версии на PyPI
+    python scripts/pins.py --latest --write bench/results/deps.json   # снимок для сервера
     python scripts/pins.py --json      # то же машинно (для CI)
 
 Что проверяется:
@@ -17,10 +18,14 @@
   * sdist (сборка из исходников) отмечается отдельно: это значит «собирать компилятором».
 
 Сеть: только pypi.org (JSON API). Без сети скрипт сообщает об этом и выходит с кодом 2.
+
+Снимок (--write): файл вида {as_of, python, packages:{пин/последняя}, models:{stanza, pack_ok}} —
+его читает MCP-сервер в pipeline_info().updates. Снимок = только факты, без оценок и вердиктов.
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import sys
@@ -36,8 +41,10 @@ PLATFORM = "win_amd64"
 CACHE = P.ROOT / "bench" / "cache"
 CACHE_FILE = CACHE / "pypi_index.json"
 CACHE_TTL = 6 * 3600           # сутки/6 часов — чтобы не дёргать PyPI при каждом запуске
+_PYPI_DEAD = {"until": 0.0}    # после первого сбоя: не ползать по сети за каждым пакетом
 
 FILES = [("requirements.txt", (P.REQUIRED_MINOR,), "пины проекта")]
+SNAPSHOT_DEFAULT = P.ROOT / "bench" / "results" / "deps.json"
 
 
 # ------------------------------------------------------------------ PyPI
@@ -64,6 +71,9 @@ def fetch_release(pkg: str, ver: str | None = None, cache: dict | None = None) -
     entry = cache.get(key)
     if entry and time.time() - entry.get("ts", 0) < CACHE_TTL:
         return entry["data"]
+    if time.time() < _PYPI_DEAD["until"]:
+        # сеть уже легла: не дёргать её по разу на каждый пакет (иначе офлайн = минуты ожидания)
+        return {"error": "PyPI недоступен (сеть не отвечает, кэш пуст)"}
     url = f"https://pypi.org/pypi/{pkg}/{ver}/json" if ver else f"https://pypi.org/pypi/{pkg}/json"
     last = None
     for attempt in range(3):
@@ -75,10 +85,12 @@ def fetch_release(pkg: str, ver: str | None = None, cache: dict | None = None) -
                 "files": [f["filename"] for f in raw.get("urls", [])],
             }
             cache[key] = {"ts": time.time(), "data": data}
+            _PYPI_DEAD["until"] = 0.0
             return data
         except Exception as exc:  # noqa: BLE001
             last = exc
             time.sleep(1.0 + attempt)
+    _PYPI_DEAD["until"] = time.time() + 1800
     return {"error": str(last)}
 
 
@@ -117,6 +129,32 @@ def latest_version(pkg: str, cache: dict) -> str | None:
     return data.get("version") if "error" not in data else None
 
 
+# ------------------------------------------------------------------ снимок для сервера
+
+def build_snapshot(cache: dict) -> dict:
+    """Только факты: пин, последняя версия на PyPI, версия python, есть ли набор моделей de."""
+    pins = P.parse_pins()
+    pkgs = {}
+    for pkg, ver in sorted(pins.items()):
+        latest = latest_version(pkg, cache)
+        if latest:
+            pkgs[pkg] = {"current": ver, "latest": latest}
+    models = {"stanza": P.installed_version("stanza") or pins.get("stanza"),
+              "pack_ok": (P.model_dir() / "depparse").exists()}
+    return {
+        "as_of": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "python": "%d.%d" % sys.version_info[:2],
+        "packages": pkgs,
+        "models": models,
+    }
+
+
+def write_snapshot(path: Path, snapshot: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
 # ------------------------------------------------------------------ матрица
 
 def build_matrix(files, cache):
@@ -138,7 +176,8 @@ def build_matrix(files, cache):
             rows.append({"package": pkg, "version": ver, "cells": cells,
                          "pure": all(t.startswith("py") for t, _ in info["wheels"]) if info["wheels"] else False})
         good = [py for py in PY_TARGETS
-                if rows and all(r["cells"].get(py) == "yes" for r in rows if "cells" in r and r["cells"])]
+                if rows and all(r["cells"].get(py) == "yes" for r in rows if "cells" in r)]
+        # строка без cells = нет данных PyPI: покрытие не считается «зелёным»
         # непрерывный диапазон (сравниваем минорные версии как целые)
         def minor(py: str) -> int:
             return int(py.split(".")[1])
@@ -212,11 +251,22 @@ def main() -> int:
     ap.add_argument("--latest", action="store_true", help="показать, вышли ли новые версии пинов")
     ap.add_argument("--json", action="store_true", help="машинный вывод")
     ap.add_argument("--no-cache", action="store_true", help="не использовать кэш PyPI")
+    ap.add_argument("--write", metavar="ФАЙЛ", nargs="?", const=str(SNAPSHOT_DEFAULT), default="",
+                    help="записать снимок обновлений (по умолчанию bench/results/deps.json)")
     a = ap.parse_args()
 
     cache = {} if a.no_cache else _load_cache()
     matrix = build_matrix(FILES, cache)
     _save_cache(cache)
+    snap_rc = 0
+    if a.write:
+        snap = build_snapshot(cache)
+        if not snap["packages"]:
+            print("нет данных PyPI (офлайн?) — снимок не записан", file=sys.stderr)
+            snap_rc = 2
+        else:
+            write_snapshot(Path(a.write), snap)
+            print(f"снимок записан: {a.write}  пакетов {len(snap['packages'])}  as_of {snap['as_of']}")
 
     if a.json:
         out = {"targets": PY_TARGETS, "matrix": matrix}
@@ -235,7 +285,7 @@ def main() -> int:
 
     if any(not b.get("ok") for b in matrix if not b.get("missing")):
         return 1
-    return 0
+    return snap_rc
 
 
 if __name__ == "__main__":

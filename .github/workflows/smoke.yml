@@ -48,7 +48,7 @@ jobs:
           python scripts/doctor.py --help
           python scripts/unpack_models.py --help
           python scripts/pack_models.py --help
-          python scripts/install_mcp.py --help
+          python -c "import json;json.load(open('MCP-stanza-german/mcp.json.example',encoding='utf-8'))"
 
   full:
     # Самый важный гейт: требования из requirements.txt должны быть ДОСТАТОЧНЫ,
@@ -103,3 +103,40 @@ jobs:
       - name: setup.ps1 -DryRun
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1 -DryRun
+
+  all_ps1:
+    # Контракт «одной команды» (scripts/all.ps1): код разбирается, план печатается,
+    # префлайт отвечает машинно. На свежем раннере venv и моделей нет — это ожидаемый
+    # код 3 (есть FAIL в doctor), а не падение: скрипт честно говорит «среда не готова».
+    name: all.ps1 — dry-run и префлайт (Windows)
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+
+      - name: Синтаксис all.ps1 (PowerShell 5.1)
+        shell: powershell
+        run: |
+          $err = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$env:GITHUB_WORKSPACE\scripts\all.ps1", [ref]$null, [ref]$err)
+          if ($err.Count) { $err | ForEach-Object { $_.ToString() }; exit 1 }
+          "разбирается без ошибок"
+
+      - name: all.ps1 -DryRun
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun
+
+      - name: all.ps1 -CheckOnly -Json (префлайт + что готово)
+        shell: bash
+        run: |
+          code=0
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -CheckOnly -Json || code=$?
+          echo "код выхода all.ps1: $code"
+          if [ "$code" -ge 4 ]; then echo "::error::all.ps1 сломан: код 4 (СЛОМАН ЗАПУСК)"; exit 1; fi
+          if [ "$code" -eq 2 ]; then echo "::error::префлайт на раннере дал код 2 (нет Python/gh/места)"; exit 1; fi
+          echo "ok: all.ps1 отработал (0 = среда готова, 3 = список FAIL на свежей машине)"

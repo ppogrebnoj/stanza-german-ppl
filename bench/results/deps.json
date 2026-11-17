@@ -1,0 +1,30 @@
+{
+  "as_of": "2026-11-17T16:42:41Z",
+  "python": "3.15",
+  "packages": {
+    "mcp": {
+      "current": "1.27.2",
+      "latest": "2.3.0"
+    },
+    "numpy": {
+      "current": "2.5.5",
+      "latest": "2.5.5"
+    },
+    "pyphen": {
+      "current": "0.18.1",
+      "latest": "0.18.1"
+    },
+    "stanza": {
+      "current": "1.15.0",
+      "latest": "1.15.1"
+    },
+    "torch": {
+      "current": "2.15.0",
+      "latest": "2.15.0"
+    }
+  },
+  "models": {
+    "stanza": "1.15.0",
+    "pack_ok": true
+  }
+}
