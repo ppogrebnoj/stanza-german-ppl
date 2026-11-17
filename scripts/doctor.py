@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _paths as P  # noqa: E402
 
 results = []   # (status, name, detail)
+SOFT_MODELS = False   # --soft-models: нет моделей — это WARN, а не FAIL (до распаковки архива)
 
 
 def add(status: str, name: str, detail: str = "") -> None:
@@ -79,18 +80,19 @@ def check_pins():
 def check_models():
     cache = P.stanza_cache_dir()
     models = P.model_dir()
+    bad = warn if SOFT_MODELS else fail      # на первом шаге установки моделей ещё нет
     if not cache.exists():
-        fail("stanza_cache", f"нет каталога {cache}")
+        bad("stanza_cache", f"нет каталога {cache} (модели: scripts/unpack_models.py)")
         return
     if not (models / "resources.json").exists() and not (cache / "resources.json").exists():
         warn("stanza_cache", f"нет resources.json в {cache}")
     if not models.exists():
-        fail("stanza_de", f"нет моделей de в {models}")
+        bad("stanza_de", f"нет моделей de в {models} (scripts/unpack_models.py)")
         return
     parts = sorted(p.name for p in models.iterdir() if p.is_dir())
     size = sum(f.stat().st_size for f in models.rglob("*") if f.is_file()) / 2**30
     if not parts and not (models / "default.zip").exists():
-        fail("stanza_de", f"каталог {models} пуст")
+        bad("stanza_de", f"каталог {models} пуст")
         return
     ok("stanza_de", f"{size:.2f} ГБ, процессоры: {', '.join(parts) or 'архив'}")
     ok("stanza_cache", str(cache))
@@ -175,7 +177,11 @@ def check_venv():
 def main() -> int:
     ap = argparse.ArgumentParser(description="Проверка готовности машины к работе с проектом")
     ap.add_argument("--json", action="store_true", help="машинный вывод")
+    ap.add_argument("--soft-models", action="store_true",
+                    help="отсутствие моделей Stanza — WARN, не FAIL (шаг установки до распаковки)")
     a = ap.parse_args()
+    global SOFT_MODELS
+    SOFT_MODELS = a.soft_models
 
     check_python()
     check_pins()

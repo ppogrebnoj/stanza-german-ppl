@@ -122,7 +122,7 @@ if (Test-Path $doctor) {
         }
     }
     $env:PYTHONUTF8 = "1"
-    Run $pyDoctor @($doctor) "doctor нашёл блокеры (FAIL)"
+    Run $pyDoctor @($doctor, "--soft-models") "doctor нашёл блокеры (FAIL)"
 } else {
     Write-Host "  нет scripts\doctor.py — пропущено" -ForegroundColor Yellow
 }
@@ -131,5 +131,6 @@ Write-Host ""
 if ($DryRun) {
     Write-Host "dry-run завершён: команды выше будут выполнены без -DryRun." -ForegroundColor Green
 } else {
-    Write-Host "готово. Дальше: python scripts\install_mcp.py (прописать сервер в клиенте)." -ForegroundColor Green
+    Write-Host "готово. Дальше: python scripts\unpack_models.py --release models-v1 --check (модели)," -ForegroundColor Green
+    Write-Host "затем python scripts\install_mcp.py (прописать сервер в клиенте)." -ForegroundColor Green
 }

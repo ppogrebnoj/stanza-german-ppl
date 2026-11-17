@@ -1,0 +1,65 @@
+name: smoke
+
+# Дёшево и по делу: проект должен собираться и проверяться на чистой машине
+# БЕЗ моделей Stanza (fast-гейт не требует Stanza) — это гарантия, что клон рабочий,
+# а данные воспроизводятся из markdown байт в байт на любой платформе.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Синтаксис всех файлов (только stdlib)
+        run: python -m compileall -q правило bench scripts MCP-stanza-german
+
+      - name: Гейт целостности (fast, без Stanza)
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
+        run: python правило/smoke_test.py
+
+      - name: Наборы воспроизводятся из разметки (байт в байт)
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
+        run: |
+          python bench/build_sets.py
+          git diff --exit-code -- bench/sets
+
+      - name: Скрипты отвечают --help
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python scripts/doctor.py --help
+          python scripts/unpack_models.py --help
+          python scripts/pack_models.py --help
+          python scripts/install_mcp.py --help
+
+  powershell:
+    name: setup.ps1 разбирается и планирует шаги (dry-run)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: setup.ps1 -DryRun
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1 -DryRun
