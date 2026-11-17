@@ -41,7 +41,7 @@ async def _checks(s, report: dict, bad: list[str]) -> None:
     report["pipeline"]["torch"] = d.get("versions", {}).get("torch")
     report["pipeline"]["updates"] = d.get("updates", {}).get("available")
     if not d.get("rule_registered"):
-        bad.append("правило не подключено: проверь RULE_ROOT в конфиге клиента (УСТАНОВКА.md §1.3a, §1.7)")
+        bad.append("правило не подключено: проверь RULE_ROOT в конфиге клиента (УСТАНОВКА.md §1.3, §1.6)")
     if not d.get("offline"):
         bad.append("pipeline не офлайн: модель берётся не из локального кэша")
 
@@ -91,7 +91,7 @@ def _probe() -> dict:
         asyncio.run(go())
     except Exception as e:  # noqa: BLE001
         bad.append(f"сервер не ответил ({type(e).__name__}) — вероятно, умер при старте; "
-                   f"смотри {LOG.name} и УСТАНОВКА.md §1.7")
+                   f"смотри {LOG.name} и УСТАНОВКА.md §1.6")
     report["ok"] = not bad
     report["problems"] = bad
     return report
