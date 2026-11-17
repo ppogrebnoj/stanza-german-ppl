@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.15"
 
       - name: Синтаксис всех файлов (только stdlib)
         run: python -m compileall -q правило bench scripts MCP-stanza-german
@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]   # 3.15 — эталон; 3.11 — legacy-набор
+        python-version: ["3.15"]   # единственная поддерживаемая версия (эталон)
     steps:
       - uses: actions/checkout@v4
 
@@ -68,11 +68,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Зависимости (файл пинов по версии Python)
-        run: |
-          REQ=$(python -c "import sys; sys.path.insert(0, 'scripts'); import _paths; print(_paths.requirements_path().name)")
-          echo "ставим: $REQ"
-          python -m pip install -q -r "$REQ"
+      - name: Зависимости
+        run: python -m pip install -q -r requirements.txt
 
       - name: Модели Stanza из релиза models-v1
         env:
@@ -101,7 +98,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.15"
 
       - name: setup.ps1 -DryRun
         shell: powershell

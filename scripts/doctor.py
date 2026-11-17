@@ -49,9 +49,7 @@ def fail(name, detail=""):
 
 # ------------------------------------------------------------------ проверки
 
-BASELINE_MINOR = P.BASELINE_MINOR      # 3.15 — отправная точка (цифры F1 сняты здесь)
-SUPPORTED_MINOR = P.SUPPORTED_MINORS   # 3.12-3.15 — основной набор пинов
-LEGACY_MINOR = P.LEGACY_MINOR          # 3.11 — legacy-пины (torch 2.14.0 / numpy 2.4.6)
+REQUIRED_MINOR = P.REQUIRED_MINOR       # 3.15 — единственная поддерживаемая версия
 
 
 def check_python():
@@ -61,26 +59,22 @@ def check_python():
     ver = f"{v.major}.{v.minor}.{v.micro}"
     bits = platform.architecture()[0]
     minor = v.minor if v.major == 3 else None
-    if minor == BASELINE_MINOR:
-        ok("python", f"{ver} {bits} — эталон: отправная точка, здесь проверены цифры F1")
-    elif minor in SUPPORTED_MINOR:
-        ok("python", f"{ver} {bits} — поддерживается (пины как на эталоне 3.15)")
-    elif minor == LEGACY_MINOR:
-        warn("python", f"{ver} {bits} — legacy-набор requirements-py311.txt; рекомендуется 3.12+")
+    if minor == REQUIRED_MINOR:
+        ok("python", f"{ver} {bits} — эталон проекта (здесь проверены цифры F1)")
     else:
-        fail("python", f"{ver} {bits} — поддерживаются 3.12-3.15 (3.11 legacy); поставить: "
+        fail("python", f"{ver} {bits} — нужен Python 3.15; поставить: "
                        f"winget install --id Python.Python.3.15 -e")
     if bits != "64bit":
         fail("python_bits", f"{bits} — нужен x64 (32-bit колёс torch нет)")
 
 
 def check_pins():
-    req = P.requirements_path()
+    req = P.REQS
     pins = P.parse_pins(req)
     if not pins:
         fail("requirements", f"не прочитать {req}")
         return
-    ok("requirements", f"{req.name} (по версии Python)")
+    ok("requirements", req.name)
     hard = {"stanza", "torch", "mcp"}
     for name in sorted(pins):
         want = pins[name]

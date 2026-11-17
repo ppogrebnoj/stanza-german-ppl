@@ -10,10 +10,10 @@
     python scripts/pins.py --json      # то же машинно (для CI)
 
 Что проверяется:
-  * для каждого пина (requirements.txt, requirements-py311.txt) — наличие wheel
-    под Python 3.11..3.17 на win_amd64 (или universal py3);
+  * для каждого пина (requirements.txt) — наличие wheel под Python 3.15..3.17
+    на win_amd64 (или universal py3);
   * вывод «чистого» диапазона Python для каждого файла пинов и сверка
-    с заявленным диапазоном (тот, что обещан в ТРЕБОВАНИЯ.md);
+    с требуемой версией Python (3.15 — эталон, см. УСТАНОВКА.md);
   * sdist (сборка из исходников) отмечается отдельно: это значит «собирать компилятором».
 
 Сеть: только pypi.org (JSON API). Без сети скрипт сообщает об этом и выходит с кодом 2.
@@ -31,14 +31,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _paths as P  # noqa: E402
 
-PY_TARGETS = ["3.11", "3.12", "3.13", "3.14", "3.15", "3.16", "3.17"]
+PY_TARGETS = ["3.15", "3.16", "3.17"]     # 3.15 — эталон; остальные — на будущее
 PLATFORM = "win_amd64"
 CACHE = P.ROOT / "bench" / "cache"
 CACHE_FILE = CACHE / "pypi_index.json"
 CACHE_TTL = 6 * 3600           # сутки/6 часов — чтобы не дёргать PyPI при каждом запуске
 
-FILES = [("requirements.txt", P.SUPPORTED_MINORS, "основной"),
-         ("requirements-py311.txt", (P.LEGACY_MINOR,), "legacy")]
+FILES = [("requirements.txt", (P.REQUIRED_MINOR,), "пины проекта")]
 
 
 # ------------------------------------------------------------------ PyPI

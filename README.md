@@ -3,16 +3,14 @@
 Предложение режется на смысловые фразы по 2–6 слов. В руках — **правило** (что считается
 хорошей паузой) и **программа** (нарезает сама) + **валидатор** (проверяет вашу разметку).
 
-## Документы (их шесть)
+## Документы (их пять)
 
 | Файл | Что внутри |
 |---|---|
 | `ТЗ.md` | что нужно, рамки, как устроено, как проверяем качество |
 | `ПРАВИЛО.md` | **как резать**: запреты и их коды, длины, исключения, цифры |
 | `ВОПРОСЫ.md` | только открытые вопросы к заказчику |
-| `ПЕРЕНОС.md` | развернуть на новой машине / обновить / приёмка / что делать при сбоях |
-| `НОВАЯ_МАШИНА.md` | отчёт-план: что ломается при чистой установке (нет ПО, прав, сети) и как это упростить |
-| `ТРЕБОВАНИЯ.md` | что должно стоять на машине: версии Python/Git/gh, сеть, диск, доступ к приватному репо по API |
+| `УСТАНОВКА.md` | требования, доступ к репозиторию, установка, приёмка, разбор сбоев, обновление зависимостей |
 | `README.md` | этот файл: карта проекта и команды |
 
 Истории решений отдельным файлом нет: принятое воплощено в `ПРАВИЛО.md` и `config.json`,
@@ -36,7 +34,7 @@ KI_WORK/
 │   └─ git-hooks/pre-commit     … хук, который вызывает smoke_test
 │
 ├─ MCP-stanza-german/           ← MCP-сервер: нарезка, разбор, судья (для чата)
-├─ scripts/                     ← установка и проверка окружения (см. ПЕРЕНОС.md)
+├─ scripts/                     ← установка и проверка окружения (см. УСТАНОВКА.md)
 │   ├─ doctor.py                … preflight: что готово, что нет (FAIL/OK)
 │   ├─ setup.ps1                … venv + пины + git-хук + doctor
 │   ├─ unpack_models.py         … скачать/распаковать модели Stanza из Releases
@@ -85,16 +83,16 @@ python правило/smoke_test.py --full
 
 ## Установка (новая машина)
 
-Нужны Python **3.12–3.15 x64** (отправная точка — **3.15**; 3.11 работает на legacy-пинах), git и авторизованный `gh`.
-Полный чек-лист и разбор сбоев — `ПЕРЕНОС.md`, требования и версии — `ТРЕБОВАНИЯ.md`.
-Поддержка версий зависимостей и обновления: `python scripts/pins.py [--latest]`.
+Нужны **Python 3.15 x64** (эталон проекта: torch 2.15.0 / numpy 2.5.5), git и авторизованный `gh`.
+Все шаги, приёмка и разбор сбоев — `УСТАНОВКА.md`. Поддержка версий и обновления:
+`python scripts/pins.py [--latest]`.
 
 ```powershell
 git clone https://github.com/ppogrebnoj/stanza-german-ppl.git C:\KI_WORK && cd C:\KI_WORK
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1                 # venv + пины + хук
-python scripts\unpack_models.py --release models-v1 --check                # модели 315 МБ + 52/52
-python scripts\install_mcp.py                                              # прописать сервер в клиенте
-python scripts\doctor.py                                                   # should be FAIL 0
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1                       # venv + пины + хук
+.venv\Scripts\python.exe scripts\unpack_models.py --release models-v1 --check   # модели 315 МБ + 52/52
+.venv\Scripts\python.exe scripts\install_mcp.py                                 # запись в mcp.json клиента
+.venv\Scripts\python.exe scripts\doctor.py                                      # ожидается FAIL 0
 ```
 
 ## Как пополнять разметку

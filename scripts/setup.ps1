@@ -7,11 +7,10 @@
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -UseLock    # точные пины (requirements.lock)
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -SkipDeps   # без сети: только хуки и проверки
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -DryRun     # показать команды, ничего не делать
-        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Python "C:\...\Python313\python.exe"
+        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Python "C:\...\Python315\python.exe"
 
-    Python выбирается из диапазона 3.11-3.14 (нужен x64): сначала 3.11 (эталон цифр),
-    иначе самая новая поддерживаемая найденная версия. Если стоят только 3.15+ или <=3.10,
-    скрипт останавливается ДО создания venv и печатает команду winget для установки 3.14 рядом.
+    Поддерживается только Python 3.15 x64 (эталон проекта: torch 2.15.0 / numpy 2.5.5).
+    Версия проверяется ДО создания venv; если 3.15 нет — печатается команда winget.
 
     Модели Stanza этим скриптом не качаются: см. scripts\unpack_models.py
     (ассет models-v1 в GitHub Releases) — затем повторите doctor.
@@ -36,7 +35,6 @@ try {
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $VenvDir) { $VenvDir = Join-Path $Root ".venv" }
 $Reqs = if ($UseLock) { Join-Path $Root "requirements.lock" } else { Join-Path $Root "requirements.txt" }
-$ReqsPy311 = Join-Path $Root "requirements-py311.txt"   # legacy для 3.11: numpy 2.5.x без колёс под cp311
 
 function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan }
 function Fail($text) { Write-Host "ОШИБКА: $text" -ForegroundColor Red; exit 1 }
@@ -53,14 +51,12 @@ Write-Host "пины   : $(Split-Path -Leaf $Reqs)"
 if ($DryRun) { Write-Host "режим  : dry-run (ничего не меняется)" }
 
 # ---------------------------------------------------------------- 1. Python
-Step 1 "поиск Python 3.11-3.15"
-# Поддерживаемый диапазон: 3.11-3.14. Он определяется колёсами зависимостей
-# (torch 2.14.0 — cp310..cp314, numpy 2.4.6 — cp311..cp314). На 3.15+ установка упадёт,
-# поэтому проверяем версию ДО создания venv и подсказываем команду.
-$MIN = 11
-$MAX = 15
-$cands = @{}       # "3.13" -> путь
-$seen  = @()       # всё, что нашли (для сообщения)
+Step 1 "поиск Python 3.15"
+# Поддерживается только 3.15: под неё есть колёса torch 2.15.0 / numpy 2.5.5,
+# и на ней сняты эталонные цифры F1 (0.777 / 0.686).
+$WANT = "3.15"
+$cands = @{}
+$seen  = @()
 
 function Get-PyVer($exe) {
     try {
@@ -75,60 +71,37 @@ if ($Python) {
     $v = Get-PyVer $Python
     if ($v) { $cands[$v] = (Resolve-Path $Python).Path }
 } else {
-    # 1) все версии через py launcher (py -0p: " -V:3.13 *  C:\...\python.exe")
+    # все версии через py launcher: " -V:3.15 *        C:\...\python.exe"
     try {
         foreach ($line in (& py -0p 2>$null)) {
-            # формат: " -V:3.15 *        C:\...\python.exe" — '*' у версии по умолчанию
             $pVer = $null; $pPath = $null
-            if ($line -match '-V:(\d+)\.(\d+)') { $pVer = @([int]$Matches[1], [int]$Matches[2]) }
+            if ($line -match '-V:(\d+)\.(\d+)') { $pVer = "$($Matches[1]).$($Matches[2])" }
             if ($line -match 'python\.exe') { $pPath = ($line -split '\s+')[-1].Trim() }
-            if ($pVer -and $pPath) {
-                $seen += "$($pVer[0]).$($pVer[1])"
-                if ($pVer[0] -eq 3 -and $pVer[1] -ge $MIN -and $pVer[1] -le $MAX -and (Test-Path $pPath)) {
-                    $cands["$($pVer[0]).$($pVer[1])"] = $pPath
-                }
-            }
+            if ($pVer -and $pPath) { $seen += $pVer; if (Test-Path $pPath) { $cands[$pVer] = $pPath } }
         }
     } catch { }
-    # 2) python из PATH
+    # python из PATH
     try {
         $out = & python -c "import sys; print(sys.executable)" 2>$null
         if ($LASTEXITCODE -eq 0 -and $out) {
             $p = "$out".Trim(); $v = Get-PyVer $p
-            if ($v) { $seen += $v; if (-not $cands.ContainsKey($v) -and [int]($v.Split('.')[1]) -ge $MIN -and [int]($v.Split('.')[1]) -le $MAX) { $cands[$v] = $p } }
+            if ($v) { $seen += $v; if (-not $cands.ContainsKey($v)) { $cands[$v] = $p } }
         }
     } catch { }
 }
 
-# выбор: эталон 3.15, иначе самая новая из поддерживаемых (3.14 -> 3.12), 3.11 — legacy
-$pick = $null
-foreach ($pref in @("3.15", "3.14", "3.13", "3.12", "3.11")) {
-    if ($cands.ContainsKey($pref)) { $pick = $pref; break }
-}
-
-if (-not $pick) {
+if (-not $cands.ContainsKey($WANT)) {
     $have = if ($seen.Count) { ($seen | Sort-Object -Unique) -join ', ' } else { 'не найдено ни одного' }
-    Fail ("нет поддерживаемого Python (нужен 3.11-3.15 x64). Найдено: $have.`n" +
-          "  Поставьте рядом, текущую версию это не затронет:`n" +
+    Fail ("нужен Python $WANT x64. Найдено: $have.`n" +
+          "  Поставьте, текущие версии это не затронет:`n" +
           "    winget install --id Python.Python.3.15 -e --accept-package-agreements`n" +
           "  затем запустите этот скрипт снова.")
 }
 
-$py = $cands[$pick]
-if ($pick -eq "3.11" -and (Test-Path $ReqsPy311)) {
-    # у numpy 2.5.x нет колёс под cp311 -> legacy-набор
-    if ($UseLock) { Write-Host "  ВНИМАНИЕ: requirements.lock снят на 3.15 — для 3.11 беру requirements-py311.txt" -ForegroundColor Yellow }
-    $Reqs = $ReqsPy311
-    Write-Host "  пины: requirements-py311.txt (legacy: torch 2.14.0 / numpy 2.4.6)" -ForegroundColor Yellow
-    Write-Host "  для новых зависимостей рекомендуется Python 3.12+ (эталон проекта — 3.15)" -ForegroundColor Yellow
-} else {
-    Write-Host "  пины: requirements.txt (torch 2.15.0 / numpy 2.5.5)"
-}
+$py = $cands[$WANT]
 $ver = & $py -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
 Write-Host "  выбран: $py ($ver)"
-if ($pick -ne "3.15") {
-    Write-Host "  ВНИМАНИЕ: отправная точка проекта — 3.15; на $pick цифры совпадают (CI проверяет 3.12-3.15)." -ForegroundColor Yellow
-}
+Write-Host "  пины: requirements.txt (torch 2.15.0 / numpy 2.5.5)"
 
 # ---------------------------------------------------------------- 2. venv
 Step 2 "виртуальное окружение"
