@@ -49,7 +49,7 @@ def fail(name, detail=""):
 
 # ------------------------------------------------------------------ проверки
 
-SUPPORTED_MINOR = (11, 12, 13, 14)   # диапазон, под который есть колёса torch/numpy
+SUPPORTED_MINOR = (11, 12, 13, 14, 15)   # 3.15 — с отдельными пинами (torch 2.15.0 / numpy 2.5.5)
 
 
 def check_python():
@@ -62,19 +62,22 @@ def check_python():
     if minor == 11:
         ok("python", f"{ver} {bits} — эталон (цифры F1 сняты здесь)")
     elif minor in SUPPORTED_MINOR:
-        ok("python", f"{ver} {bits} — поддерживается (на 3.13 цифры совпали с 3.11)")
+        pkg = "torch 2.15.0/numpy 2.5.5" if minor >= 15 else "torch 2.14.0/numpy 2.4.6"
+        ok("python", f"{ver} {bits} — поддерживается ({pkg}); цифры совпадают с эталоном 3.11")
     else:
-        fail("python", f"{ver} {bits} — поддерживаются 3.11-3.14; поставить рядом: "
-                       f"winget install --id Python.Python.3.13 -e")
+        fail("python", f"{ver} {bits} — поддерживаются 3.11-3.15; поставить рядом: "
+                       f"winget install --id Python.Python.3.15 -e")
     if bits != "64bit":
         fail("python_bits", f"{bits} — нужен x64 (32-bit колёс torch нет)")
 
 
 def check_pins():
-    pins = P.parse_pins()
+    req = P.requirements_path()
+    pins = P.parse_pins(req)
     if not pins:
-        fail("requirements", f"не прочитать {P.REQS}")
+        fail("requirements", f"не прочитать {req}")
         return
+    ok("requirements", f"{req.name} (по версии Python)")
     hard = {"stanza", "torch", "mcp"}
     for name in sorted(pins):
         want = pins[name]

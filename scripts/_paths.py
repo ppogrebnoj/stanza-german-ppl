@@ -17,6 +17,7 @@ MCP_DIR = ROOT / "MCP-stanza-german"
 SETS_DIR = ROOT / "bench" / "sets"
 DATA_DIR = ROOT / "данные"
 REQS = ROOT / "requirements.txt"
+REQS_PY315 = ROOT / "requirements-py315.txt"   # torch 2.15 / numpy 2.5 — единственные с колёсами под cp315
 LOCK = ROOT / "requirements.lock"
 
 STANZA_VERSION = "1.15.0"     # версия, под которую снят кэш моделей
@@ -69,12 +70,24 @@ def hook_dst() -> Path:
     return ROOT / ".git" / "hooks" / "pre-commit"
 
 
-def parse_pins(path: Path = REQS) -> dict:
-    """Пины прямых зависимостей из requirements.txt (комментарии и флаги пропускаются)."""
+def requirements_path() -> Path:
+    """Файл пинов под текущий интерпретатор.
+
+    С Python 3.15 ядро torch 2.14.0/numpy 2.4.6 не имеет колёс (cp310..cp314),
+    поэтому используется requirements-py315.txt с torch 2.15.0/numpy 2.5.5.
+    """
+    if sys.version_info[:2] >= (3, 15) and REQS_PY315.exists():
+        return REQS_PY315
+    return REQS
+
+
+def parse_pins(path: Path | None = None) -> dict:
+    """Пины прямых зависимостей (по умолчанию — файл под текущий Python)."""
+    path = path or requirements_path()
     import re
 
     pins = {}
-    if not path.exists():
+    if path is None or not path.exists():
         return pins
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.split("#", 1)[0].strip()

@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]   # 3.11 — эталон; 3.13 — «последний поддерживаемый»
+        python-version: ["3.11", "3.13", "3.14", "3.15"]   # 3.11 — эталон; 3.13-3.15 — новые (3.15 со своими пинами)
     steps:
       - uses: actions/checkout@v4
 
@@ -68,8 +68,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Зависимости строго по requirements.txt
-        run: python -m pip install -q -r requirements.txt
+      - name: Зависимости (файл пинов по версии Python)
+        run: |
+          REQ=requirements.txt
+          python -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3, 15) else 1)" && REQ=requirements-py315.txt
+          echo "ставим: $REQ"
+          python -m pip install -q -r "$REQ"
 
       - name: Модели Stanza из релиза models-v1
         env:

@@ -11,7 +11,7 @@
 
     Python выбирается из диапазона 3.11-3.14 (нужен x64): сначала 3.11 (эталон цифр),
     иначе самая новая поддерживаемая найденная версия. Если стоят только 3.15+ или <=3.10,
-    скрипт останавливается ДО создания venv и печатает команду winget для установки 3.13 рядом.
+    скрипт останавливается ДО создания venv и печатает команду winget для установки 3.14 рядом.
 
     Модели Stanza этим скриптом не качаются: см. scripts\unpack_models.py
     (ассет models-v1 в GitHub Releases) — затем повторите doctor.
@@ -36,6 +36,7 @@ try {
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $VenvDir) { $VenvDir = Join-Path $Root ".venv" }
 $Reqs = if ($UseLock) { Join-Path $Root "requirements.lock" } else { Join-Path $Root "requirements.txt" }
+$ReqsPy315 = Join-Path $Root "requirements-py315.txt"   # torch 2.15/numpy 2.5 — единственные с колёсами под cp315
 
 function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan }
 function Fail($text) { Write-Host "ОШИБКА: $text" -ForegroundColor Red; exit 1 }
@@ -52,12 +53,12 @@ Write-Host "пины   : $(Split-Path -Leaf $Reqs)"
 if ($DryRun) { Write-Host "режим  : dry-run (ничего не меняется)" }
 
 # ---------------------------------------------------------------- 1. Python
-Step 1 "поиск Python 3.11-3.14"
+Step 1 "поиск Python 3.11-3.15"
 # Поддерживаемый диапазон: 3.11-3.14. Он определяется колёсами зависимостей
 # (torch 2.14.0 — cp310..cp314, numpy 2.4.6 — cp311..cp314). На 3.15+ установка упадёт,
 # поэтому проверяем версию ДО создания venv и подсказываем команду.
 $MIN = 11
-$MAX = 14
+$MAX = 15
 $cands = @{}       # "3.13" -> путь
 $seen  = @()       # всё, что нашли (для сообщения)
 
@@ -106,17 +107,23 @@ if ($cands.ContainsKey("3.11")) {
 
 if (-not $pick) {
     $have = if ($seen.Count) { ($seen | Sort-Object -Unique) -join ', ' } else { 'не найдено ни одного' }
-    Fail ("нет поддерживаемого Python (нужен 3.11-3.14 x64). Найдено: $have.`n" +
+    Fail ("нет поддерживаемого Python (нужен 3.11-3.15 x64). Найдено: $have.`n" +
           "  Поставьте рядом, текущую версию это не затронет:`n" +
-          "    winget install --id Python.Python.3.13 -e --accept-package-agreements`n" +
+          "    winget install --id Python.Python.3.15 -e --accept-package-agreements`n" +
           "  затем запустите этот скрипт снова.")
 }
 
 $py = $cands[$pick]
+if ([double]$pick -ge 3.15 -and (Test-Path $ReqsPy315)) {
+    # на 3.15 ядро torch 2.14.0/numpy 2.4.6 колёс не имеет
+    if ($UseLock) { Write-Host "  ВНИМАНИЕ: requirements.lock снят на 3.11 — для 3.15 беру requirements-py315.txt" -ForegroundColor Yellow }
+    $Reqs = $ReqsPy315
+    Write-Host "  пины: requirements-py315.txt (torch 2.15.0 / numpy 2.5.5)"
+}
 $ver = & $py -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
 Write-Host "  выбран: $py ($ver)"
 if ($ver -notlike "3.11.*") {
-    Write-Host "  ВНИМАНИЕ: цифры F1 сняты на 3.11; на 3.13 проект проверен (52/52, F1 0.777/0.686), на 3.12/3.14 допустимо." -ForegroundColor Yellow
+    Write-Host "  ВНИМАНИЕ: эталон цифр — 3.11; 3.13, 3.14 и 3.15 проверены прогоном (52/52, F1 0.777/0.686), 3.12 допустим." -ForegroundColor Yellow
 }
 
 # ---------------------------------------------------------------- 2. venv
