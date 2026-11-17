@@ -117,7 +117,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Развернуть архив моделей Stanza")
     ap.add_argument("--zip", help="локальный архив")
     ap.add_argument("--release", help="тег GitHub Releases (скачать через gh)")
-    ap.add_argument("--pattern", default="stanza-models-*.zip", help="шаблон ассета в релизе")
+    ap.add_argument("--pattern", default="stanza-models-*.zip*",
+                    help="шаблон ассетов в релизе (по умолчанию zip + его .sha256)")
     ap.add_argument("--dest", default="", help="каталог назначения (по умолчанию кэш Stanza)")
     ap.add_argument("--sha256", default="", help="ожидаемая контрольная сумма")
     ap.add_argument("--skip-verify", action="store_true", help="не проверять sha256")

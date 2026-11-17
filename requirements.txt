@@ -12,6 +12,14 @@
 # torch 2.14.0 есть обычным колесом на PyPI — отдельный CPU-индекс не нужен.
 # Полное транзитивное замыкание — в requirements.lock.
 
+# Слоги для правила MAX/SYL (validator.py, bench/core.py). Импортируется лениво,
+# поэтому без него fast-гейт зелёный, а валидатор падает на первой же проверке.
+pyphen==0.18.1
+
+# Опционально (только для BERT-подобных алгоритмов стенда bench/scorers.py: S12+):
+#   python -m pip install sentence-transformers transformers
+# Для правила, валидатора и MCP-сервера они не нужны.
+
 stanza==1.15.0
 torch==2.14.0
 numpy==2.4.6

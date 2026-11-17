@@ -50,6 +50,42 @@ jobs:
           python scripts/pack_models.py --help
           python scripts/install_mcp.py --help
 
+  full:
+    # Самый важный гейт: требования из requirements.txt должны быть ДОСТАТОЧНЫ,
+    # чтобы валидатор и стенд работали с нуля (этот job ловит забытые зависимости —
+    # так был найден pyphen, которого не было в requirements).
+    name: полный прогон (venv из requirements.txt + модели из релиза)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Зависимости строго по requirements.txt
+        run: python -m pip install -q -r requirements.txt
+
+      - name: Модели Stanza из релиза models-v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/models
+          gh release download models-v1 -p "stanza-models-*.zip" -D /tmp/models
+          python scripts/unpack_models.py --zip /tmp/models/*.zip --check
+
+      - name: Живой прогон (F1, валидатор, нарезчик)
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
+        run: python правило/smoke_test.py --full
+
+      - name: doctor (FAIL 0 ожидается)
+        env:
+          PYTHONUTF8: "1"
+        run: python scripts/doctor.py
+
   powershell:
     name: setup.ps1 разбирается и планирует шаги (dry-run)
     runs-on: windows-latest
