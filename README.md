@@ -88,38 +88,59 @@ python scripts/mcp_probe.py
 
 ## Установка (новая машина)
 
-Нужны **Python 3.15 x64** (эталон проекта: torch 2.15.0 / numpy 2.5.5) и git. Свободно ≥ 7 ГБ.
-`winget` не обязателен: на машине без Магазина те же два компонента ставятся официальными
-установщиками по прямой ссылке (`python-3.15.2-amd64.exe /quiet`, `Git-2.56.1-64-bit.exe
-/VERYSILENT`); бутстрап winget — `УСТАНОВКА.md` §1.1. Версия Python строго 3.15 — даунгрейд
-стека запрещён (колёса torch cp315, цифры приёмки на 3.15). Права админа не нужны. `gh` и токены
-нужны **только тем, кто правит репозиторий** (push): клон и установка — без них, репозиторий
-публичный, модели качает Stanford. Дальше — одна команда, она неинтерактивна:
+Нужны **Python 3.15 x64** (эталон проекта: torch 2.15.0 / numpy 2.5.5), **git** и
+**MSVC Build Tools с workload `VCTools`** (у `pyyaml` нет колеса `cp315` — без `cl.exe`
+`pip install` упирается в тупик). Свободно **≥ 11 ГБ**. Права администратора нужны только на
+Build Tools (остальное — от своего пользователя, `--scope user`). `winget` не обязателен: на машине
+без Магазина те же компоненты ставятся официальными установщиками по прямой ссылке
+(`python-3.15.2-amd64.exe /quiet`, `Git-2.56.1-64-bit.exe /VERYSILENT`), а сам winget поднимается
+бутстрапом из zip `microsoft/winget-cli` — `УСТАНОВКА.md` §1.1 (замер 19.11: среда «с нуля» за
+41 мин, всё через winget). Версия Python строго 3.15 — даунгрейд стека запрещён (колёса torch
+cp315, цифры приёмки на 3.15). `gh` и токены нужны **только тем, кто правит репозиторий** (push):
+клон и установка — без них, репозиторий публичный, модели качает Stanford.
+
+Сначала — замер среды (одна команда, ничего не меняет; «нет в PATH» ≠ «не установлено»):
+
+```powershell
+.\install.ps1 -Inventory          # 19 позиций: OK / MISSING / WRONG / BASE_ONLY / LOW / NOTE, у каждой — команда доустановки
+```
+
+Дальше — одна команда, она неинтерактивна (пакеты и модели с ретраями, живой прогресс на консоль,
+подробности в `install-report.txt` / `install-report.json`):
 
 ```powershell
 git clone https://github.com/ppogrebnoj/stanza-german-ppl.git C:\KI_WORK && cd C:\KI_WORK
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\all.ps1   # → «ГОТОВО» (код 0)
+.\install.ps1                     # = scripts\all.ps1; «ГОТОВО за N мин» (код 0)
+# агенту/журналу: .\install.ps1 -Json -ProgressJson -Log install.log   (NDJSON-события → итоговый объект)
 ```
 
-Шаги внутри: префлайт (Python 3.15 x64 через `py -0p`, git, диск, сеть PyPI/GitHub/HF; `gh` —
-справочно, шаг `NOTE`) →
-→ `.venv` → пины `requirements.txt` → git-хук `pre-commit` → модели → проверка конфига MCP →
-`doctor.py`. Системный `python` может быть любым (скрипты ищут 3.15); готовые шаги помечаются
-`SKIP`, повторный запуск безопасен. Логи: `-Json`, `-CheckOnly` (ничего не ставить), `-DryRun`,
-`-Log <файл>`.
+В консоли видно шаги `[3/5]` и подшаги: `[2/5] deps · pip torch 2.15.0 · 1.2/2.4 ГБ · 43% ·
+ETA 6 мин` (torch ~2.4 ГБ, модели de ~1.6 ГБ). Шаги идемпотентны: готовые дают `SKIP`, повторный
+запуск безопасен. Ключи: `-CheckOnly` (ничего не ставить), `-DryRun` (проверить шаги без записи),
+`-Steps venv,deps,models,mcp,doctor`, `-SetupArgs`, `-Zip stanza-models-de-*.zip` (офлайн),
+`-InventoryOnly -Json`, `-InstallPython -InstallGit -InstallBuildTools -Yes` (автоустановка
+отсутствующего, админ — на Build Tools; для скачивания не нужны), `-NoProgress`, `-ProgressFile`,
+`-Log <файл>`, `-Retries <n>`.
 
-MCP-клиент настраивает сам человек: копирует `MCP-stanza-german\mcp.json.example` в конфиг своего
-клиента и меняет пути (УСТАНОВКА.md §1.3); `all.ps1` печатает готовый фрагмент с путями машины.
-Модели de (~1.6 ГБ) качает сам Stanza с официального источника Stanford (`stanza-resources` +
-`huggingface.co`); в репозитории их нет. Офлайн — архив из своего кэша: `pack_models.py` → `--zip`.
-Запись на GitHub (кому нужны пуши): `gh auth login --hostname github.com --git-protocol https --web`
-+ `gh auth setup-git`, либо fine-grained PAT (Contents: Read and write) в User-окружение:
+**Коды выхода:** 0 готово · 2 нужен человек (доустановить по `fix`) · 3 шаг упал (повторить ту же
+команду) · 4 сломан запуск (ключ/синтаксис) · **5 всё стоит, осталось ОДНО действие человека** —
+положить запись `stanza-german` в `mcp.json` своего клиента и перезапустить его (установщик конфиг
+клиента **не пишет**, только печатает готовый фрагмент с путями этой машины).
+
+MCP-клиент настраивает сам человек: `MCP-stanza-german\mcp.json.example` или напечатанный
+фрагмент (УСТАНОВКА.md §1.3, §«Осталось одно действие»). Модели de (~1.6 ГБ) качает сам Stanza с
+официального источника Stanford (`stanza-resources` + `huggingface.co`); в репозитории их нет.
+Офлайн — архив из своего кэша: `pack_models.py` → `-Zip`. Запись на GitHub (кому нужны пуши):
+`gh auth login --hostname github.com --git-protocol https --web` + `gh auth setup-git`, либо
+fine-grained PAT (Contents: Read and write) в User-окружение:
 `[Environment]::SetEnvironmentVariable("GH_TOKEN", "<токен>", "User")` (окно перезапустить);
 проверки `gh auth status` и `git push --dry-run` — `УСТАНОВКА.md` §1.2. Для клона и установки
 токен не нужен.
-Коды выхода: 0 готово · 2 нужен человек · 3 шаг упал · 4 сломан запуск.
-Приёмка (F1 0.777 / 0.686, 52/52), доступ, офлайн и разбор сбоев — `УСТАНОВКА.md`
-(§1 человеку, §2 агенту).
+Приёмка (дословно: `doctor: OK 18, WARN 0, FAIL 0`, smoke `OK 11 … SKIP 2`, `--full OK 14`,
+`segment_f1_corpus52 F1 0.777`, `segment_f1_heldout_51 F1 0.686`, `compliant 52 / 45`,
+`ИТОГ: MCP живой`), доступ, офлайн, разбор сбоев и замеренные времена (среда 41 мин, установка
+12 мин, приёмка 18 мин на VMware-шаре) — `УСТАНОВКА.md` (§1 человеку, §2 агенту, §2.6 замеры).
+Проект на сетевом/VMware-диске — установка и MCP-вызовы в 4–7 раз дольше (§1.8).
 Поддержка версий и обновления: `python scripts/pins.py --latest --write bench/results/deps.json`;
 снимок читает MCP-сервер (`pipeline_info().updates`).
 
