@@ -243,9 +243,24 @@ function Get-Inventory {
         $psVer = $PSVersionTable.PSVersion.ToString()
         $psBits = "x86"; try { if ([Environment]::Is64BitProcess) { $psBits = "x64" } } catch { }
         $osName = ""
+        $osBuild = 0; $osDisp = ""
         try {
             $cv = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -ErrorAction SilentlyContinue
-            if ($cv -and $cv.ProductName) { $osName = "$($cv.ProductName) $($cv.DisplayVersion)" }
+            # ProductName в реестре остаётся «Windows 10 …» даже на Windows 11 (замер 19.11:
+            # машина Windows 11 IoT Enterprise LTSC, ядро 26100, а ProductName = «Windows 10 IoT …»).
+            # Правильное деление 10/11 — по номеру сборки (CurrentBuildNumber ≥ 22000 → Windows 11).
+            if ($cv) {
+                $raw = "" + $cv.ProductName
+                $b = 0; try { $b = [int]"$($cv.CurrentBuildNumber)" } catch { }
+                $ub = "" + $cv.UBR
+                if ($b -ge 22000) { $raw = $raw -replace "^Windows 10", "Windows 11" }
+                $osBuild = $b
+                $osDisp = ("" + $cv.DisplayVersion).Trim()
+                $raw = ("$raw $($cv.EditionID)").Trim()
+                if ($osDisp) { $raw += " $osDisp" }
+                if ($ub) { $raw += " build $b.$ub" } elseif ($b) { $raw += " build $b" }
+                $osName = $raw
+            }
         } catch { }
         if (-not $osName) { $osName = [System.Environment]::OSVersion.VersionString }
         $cp = 0; try { $cp = [Console]::OutputEncoding.CodePage } catch { }
