@@ -6,8 +6,11 @@
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -UseLock    # точные пины (requirements.lock)
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -SkipDeps   # без сети: только хуки и проверки
+        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -SkipDoctor # без финальной проверки (её делает all.ps1)
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -DryRun     # показать команды, ничего не делать
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Python "C:\...\Python315\python.exe"
+        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -ProgressFile C:\temp\p.ndjson   # NDJSON-события прогресса (их читает all.ps1)
+        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Retries 4                        # попыток pip на сетевых прогонах
 
     Поддерживается только Python 3.15 x64 (эталон проекта: torch 2.15.0 / numpy 2.5.5).
     Версия проверяется ДО создания venv; если 3.15 нет — печатается команда winget.
@@ -22,6 +25,9 @@ param(
     [string]$Python = "",      # явный путь к python.exe (если нужную версию не нашли автоматически)
     [switch]$UseLock,
     [switch]$SkipDeps,
+    [switch]$SkipDoctor,
+    [int]$Retries = 3,
+    [string]$ProgressFile = "",
     [switch]$DryRun
 )
 
@@ -37,13 +43,79 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $VenvDir) { $VenvDir = Join-Path $Root ".venv" }
 $Reqs = if ($UseLock) { Join-Path $Root "requirements.lock" } else { Join-Path $Root "requirements.txt" }
 
-function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan }
-function Fail($text) { Write-Host "ОШИБКА: $text" -ForegroundColor Red; exit 1 }
+function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan; Prog @{ ev = "step_start"; step = "$n"; sub = $text } }
+function Fail($text) { Write-Host "ОШИБКА: $text" -ForegroundColor Red; Prog @{ ev = "step_fail"; step = "setup"; msg = $text }; exit 1 }
+
+# NDJSON-события прогресса: их читает all.ps1 (Write-Progress2) и печатает живую строку.
+# Формат — одна компактная JSON-строка: {t, ev, step, sub, pct, bytes, total, eta, msg}
+$script:ProgLast = [datetime]::MinValue
+function Prog($o) {
+    if (-not $ProgressFile) { return }
+    try {
+        $now = Get-Date
+        if ($o.ev -eq "progress") {
+            if (($now - $script:ProgLast).TotalMilliseconds -lt 300) { return }
+            $script:ProgLast = $now
+        }
+        $o.t = $now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        [IO.File]::AppendAllText($ProgressFile, ($o | ConvertTo-Json -Compress -Depth 4) + "`n", (New-Object System.Text.UTF8Encoding $false))
+    } catch { }
+}
+function Convert-Size($num, $unit) {
+    $n = 0.0
+    try { $n = [double]("$num" -replace ',', '.') } catch { return 0 }
+    switch ($unit) { "bytes" { return $n } "KB" { return $n * 1KB } "MB" { return $n * 1MB } "GB" { return $n * 1GB } default { return 0 } }
+}
+
 function Run($exe, [string[]]$argv, $hint) {
     Write-Host ("  > {0} {1}" -f $exe, ($argv -join " "))
     if ($DryRun) { return }
     & $exe @argv
     if ($LASTEXITCODE -ne 0) { Fail "$hint (код выхода $LASTEXITCODE)" }
+}
+
+# pip с подшагами и ретраями (FR-3/FR-5): вывод читается построчно — «Collecting X»,
+# «Downloading f.whl (1.2 MB)», «Building wheel for X», «Installing collected packages:» — и по ним
+# идут события прогресса. -q не ставим: с ним подшагов не видно, а установка torch занимает минуты
+# полной немотой. Пины при повторах не меняются: та же команда, та же requirements.txt.
+function Run-Pip([string[]]$pipArgs, [string]$id, $hint) {
+    $attempt = 0
+    $bytes = 0
+    $collected = @{}
+    while ($true) {
+        $attempt++
+        Write-Host ("  > python -m pip {0} (попытка {1}/{2})" -f ($pipArgs -join " "), $attempt, $Retries)
+        Prog @{ ev = "progress"; step = "deps"; sub = ("pip попытка $attempt/$Retries"); bytes = $bytes }
+        if ($DryRun) { return }
+        $prevEA = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & $vp @pipArgs --progress-bar off 2>&1 | ForEach-Object {
+            $l = "$_"
+            Write-Host "  | $l"
+            if ($l -match '^Collecting ([A-Za-z0-9_.\-]+)') {
+                $collected[$matches[1].ToLower()] = $true
+                # requirements.txt — это 5 пинов, а Collecting строк десятки (зависимии): знаменатель
+                # имеет смысл только пока счётчик в его пределах, иначе «pip: X [7/5]» выглядит обманом
+                $lbl = $(if ($collected.Count -le $reqCount) { ("pip: " + $matches[1] + " [" + $collected.Count + "/" + $reqCount + "]") } else { ("pip: " + $matches[1] + " (собрано " + $collected.Count + " пакетов, пинов " + $reqCount + ")") })
+                $pctv = [math]::Min(95, [math]::Round(100 * $collected.Count / [math]::Max(1, $reqCount), 1))
+                Prog @{ ev = "progress"; step = "deps"; sub = $lbl; pct = $pctv; bytes = $bytes }
+            } elseif ($l -match '^Downloading \S+ \(([\d\.,]+) (bytes|KB|MB|GB)\)') {
+                $bytes += Convert-Size $matches[1] $matches[2]
+                Prog @{ ev = "progress"; step = "deps"; sub = ("качаю: " + (($l -split ' ')[1] -split '/')[(-1)]); bytes = $bytes }
+            } elseif ($l -match '^Building wheel for ([A-Za-z0-9_.\-]+)') {
+                Prog @{ ev = "progress"; step = "deps"; sub = ("сборка из sdist: " + $matches[1] + " (нужен MSVC VCTools)"); bytes = $bytes }
+            } elseif ($l -match '^Installing collected packages:') {
+                Prog @{ ev = "progress"; step = "deps"; sub = "установка колёс в .venv"; bytes = $bytes; pct = 95 }
+            }
+        }
+        $rc = $LASTEXITCODE
+        $ErrorActionPreference = $prevEA
+        if ($rc -eq 0) { Prog @{ ev = "step_ok"; step = $id; pct = 100; bytes = $bytes }; return }
+        Prog @{ ev = "step_fail"; step = $id; msg = ("pip rc=$rc, попытка $attempt/$Retries") }
+        if ($attempt -ge $Retries) { Fail ("$hint (код выхода $rc за $attempt попыток; причины: сеть/прокси, пин-конфликт, нет MSVC VCTools — см. -Inventory)") }
+        Write-Host "  повтор через 15 с (пины не меняем)" -ForegroundColor Yellow
+        Start-Sleep -Seconds 15
+    }
 }
 
 Write-Host "проект : $Root"
@@ -113,8 +185,10 @@ Step 2 "виртуальное окружение"
 $vp = Join-Path $VenvDir "Scripts\python.exe"
 if (Test-Path $vp) {
     Write-Host "  уже есть: $vp"
+    Prog @{ ev = "step_skip"; step = "venv"; sub = "venv уже есть" }
 } else {
     Run $py @("-m", "venv", $VenvDir) "не удалось создать venv"
+    Prog @{ ev = "step_ok"; step = "venv"; sub = $VenvDir }
 }
 
 # ---------------------------------------------------------------- 3. зависимости
@@ -123,8 +197,9 @@ if ($SkipDeps) {
     Write-Host "  пропущено (-SkipDeps)"
 } else {
     if (-not (Test-Path $Reqs)) { Fail "нет файла $Reqs" }
-    Run $vp @("-m", "pip", "install", "-q", "--retries", "5", "--timeout", "60", "-U", "pip") "не удалось обновить pip"
-    Run $vp @("-m", "pip", "install", "-q", "--retries", "5", "--timeout", "60", "-r", $Reqs) "не удалось установить зависимости"
+    $reqCount = @(Get-Content $Reqs | Where-Object { $_ -match '^\s*[A-Za-z]' }).Count
+    Run-Pip @("-m", "pip", "install", "--retries", "5", "--timeout", "60", "-U", "pip") "deps-pip" "не удалось обновить pip"
+    Run-Pip @("-m", "pip", "install", "--retries", "5", "--timeout", "60", "-r", $Reqs) "deps" "не удалось установить зависимости"
 }
 
 # ---------------------------------------------------------------- 4. git-хук
@@ -149,7 +224,12 @@ if (-not (Test-Path $gitDir)) {
 # ---------------------------------------------------------------- 5. проверка
 Step 5 "проверка окружения (doctor)"
 $doctor = Join-Path $Root "scripts\doctor.py"
-if (Test-Path $doctor) {
+if ($SkipDoctor) {
+    # all.ps1 вызывает setup.ps1 как подшаг и сам делает doctor финальным шагом: на медленных
+    # дисках (сетевые шары) импорт torch внутри doctor стоит минуты, двойная проверка дороговата
+    Write-Host "  пропущено (-SkipDoctor): финальную проверку делает all.ps1"
+    Prog @{ ev = "step_skip"; step = "doctor"; sub = "-SkipDoctor" }
+} elseif (Test-Path $doctor) {
     $pyDoctor = $py
     if (Test-Path $vp) {
         $venvOk = $false
