@@ -232,7 +232,11 @@ if ($tok) {
     $allText = @($items | ForEach-Object { "$($_.version) $($_.path) $($_.fix) $($_.note)" }) -join " "
     if ($allText -like ("*" + $tok + "*")) { $leak = $true }
     $tokItem = @($items | Where-Object { $_.name -eq "GH_TOKEN" })[0]
-    Check "GH_TOKEN: статус set, значение не печатается" (($tokItem.status -eq "set") -and ("$($tokItem.version)" -like "github_pat_***") -and (-not $leak)) ("version={0}" -f $tokItem.version)
+    # маска обязана скрывать токен и показывать длину; форма маски зависит от типа токена
+    # (fine-grained PAT → «github_pat_*** len=N», токен Actions/ghs_* → «*** len=N»),
+    # поэтому проверяется маска «len=<число>» и отсутствие самого токена в выводе
+    $mask = "" + $tokItem.version
+    Check "GH_TOKEN: статус set, значение не печатается (маска с длиной)" (($tokItem.status -eq "set") -and ($mask -match 'len=\d+$') -and (-not $leak)) ("version={0}" -f $mask)
 } else {
     $tokStatus = "" + (@($items | Where-Object { $_.name -eq "GH_TOKEN" })[0]).status
     Check "GH_TOKEN: токена нет — статус NOT_SET" ($tokStatus -eq "NOT_SET") "токен в окружении не задан"
@@ -256,7 +260,21 @@ if ($wingetOnDisk) {
     Check "winget нет на диске → статус не OK" ($wingetItem.status -ne "OK") ("status={0}" -f $wingetItem.status)
 }
 
-$pyOnDisk = (Test-Path -LiteralPath "$env:LOCALAPPDATA\Programs\Python\Python315\python.exe") -or (Test-Path -LiteralPath "C:\Program Files\Python315\python.exe")
+# Оракул: где python 3.15 может стоять. Полный список мест: per-user (winget --scope user),
+# «Program Files», hostedtoolcache (GitHub-раннер: setup-python кладёт в
+# C:\hostedtoolcache\windows\Python\3.15.x\x64), плюс показания запускаителя py -0p.
+# Прежний оракул (два пути) на раннере давал ложный FAIL: python там OK по замеру, а файла
+# по двум ожидаемым путям нет (замер CI 19.11).
+$pyCands = @("$env:LOCALAPPDATA\Programs\Python\Python315\python.exe", "C:\Program Files\Python315\python.exe")
+$pyCands += @(Get-ChildItem -Path "C:\hostedtoolcache\windows\Python" -Filter "python.exe" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$pyCands += @(Get-ChildItem -Path "C:\Python315","C:\Program Files\Python315" -Filter "python.exe" -Recurse -Depth 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$pyOnDisk = @($pyCands | Where-Object { Test-Path -LiteralPath $_ }).Count -gt 0
+if (-not $pyOnDisk) {
+    # py -0p: список установленных CPython (« -V:3.15 *  C:\...\python.exe») — считаем, что 3.15 стоит
+    $pyList = ""
+    try { $pyList = (& py -0p 2>&1 | Out-String) } catch { }
+    if ($pyList -match '3\.15') { $pyOnDisk = $true }
+}
 $pyItem = @($items | Where-Object { $_.name -eq "python" })[0]
 if ($pyOnDisk) {
     Check "python 3.15 есть на диске → статус не MISSING" ($pyItem.status -ne "MISSING") ("status={0} version={1}" -f $pyItem.status, $pyItem.version)
