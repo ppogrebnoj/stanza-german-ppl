@@ -148,7 +148,7 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-progress.ps1 -Fast
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: all.ps1 -DryRun (по умолчанию — глобально, без .venv)
+      - name: "all.ps1 -DryRun (по умолчанию — глобально, без .venv)"
         shell: powershell
         run: |
           # дефолт: зависимости в системный Python, venv не создаётся (setup.ps1 без -Venv)
@@ -158,7 +158,7 @@ jobs:
           if ($out -match '-Venv') { "::error::в глобальном режиме setup.ps1 получил -Venv"; exit 1 }
           "глобальный режим: -Venv не передаётся — верно"
 
-      - name: all.ps1 -DryRun -Venv (опция: в .venv)
+      - name: "all.ps1 -DryRun -Venv (опция — в .venv)"
         shell: powershell
         run: |
           $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun -Steps venv,deps -Venv 2>&1
