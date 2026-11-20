@@ -848,6 +848,10 @@ if ($code -eq 0) {
         $a = @((Join-Path $Root "scripts\doctor.py"))
         if ($CheckOnly) { $a += "--soft-models" }
         $rc = Run-Cmd $pyFor $a "doctor" "doctor нашёл FAIL: список и лечение — УСТАНОВКА.md (окружение: setup.ps1, модели: unpack_models.py)" (-not $DryRun)
+        # подсказка «нашёл FAIL» печатается только когда шаг действительно упал: при code 5
+        # doctor = OK, а фраза в строке шага путала бы («OK 1 мин · doctor нашёл FAIL»).
+        # $done — это List[OrderedDictionary]: в PS 5.1 у него нет свойства hint — только ключ.
+        if ($rc -eq 0 -and $done.Count -gt 0) { $done[$done.Count - 1]["hint"] = "окружение в порядке (doctor: 18 позиций — окружение, модели, данные, git)" }
         if ($rc -ne 0 -and $code -eq 0) { $code = $Code_Step }
     }
 }
