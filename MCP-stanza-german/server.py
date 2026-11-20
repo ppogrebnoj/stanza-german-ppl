@@ -20,7 +20,10 @@ import sys
 import threading
 import time
 import datetime
+import functools
 from pathlib import Path
+
+import anyio
 
 # stdout должен оставаться чистым для MCP-протокола (stdio) и быть UTF-8
 for _stream in (sys.stdout, sys.stderr):
@@ -78,6 +81,28 @@ def _run_tool(name: str, fn) -> dict:
     return res
 
 from mcp.server.fastmcp import FastMCP
+
+# ---------------------------------------------------------------------------
+# ВАЖНО (замер 20.11): синхронный инструмент FastMCP вызывает
+# `fn(**args)` ПРЯМО ВНУТРИ asyncio-петли (func_metadata.py: `return fn(...)`), без
+# переноса в поток. Долгая синхронная работа блокирует event loop stdio-транспорта:
+# сервер не читает stdin и не пишет ответ → клиент получает таймаут, хотя в server.log
+# всё «висит на TOOL ... start».
+#
+# Замер на локальном диске (D:\KI_WORK): pipeline_info 27–40 с, rule_self_test 105–130 с.
+# Клиент pi ждёт initialize 8 с, а на вызов инструмента — секунды. Поэтому каждый
+# инструмент — async-обёртка над `anyio.to_thread.run_sync`: пока поток считает, петля
+# свободна и stdio продолжает работать.
+def _async_tool(name: str, description: str):
+    """Регистрирует синхронный `fn` как async-инструмент (работа в отдельном потоке)."""
+    def deco(fn):
+        @functools.wraps(fn)
+        async def wrapper(**kwargs):
+            return await anyio.to_thread.run_sync(functools.partial(fn, **kwargs))
+        wrapper.__name__ = fn.__name__
+        wrapper.__doc__ = fn.__doc__
+        return mcp.tool(name=name, description=description)(wrapper)
+    return deco
 
 LANGUAGE = "de"
 PROCESSORS = "tokenize,mwt,pos,lemma,depparse"   # правило работает на зависимостях
@@ -234,7 +259,8 @@ def _parse_german_impl(text) -> dict:
     return {"language": LANGUAGE, "count": len(sentences), "sentences": sentences}
 
 
-@mcp.tool()
+@_async_tool("parse_german",
+               "Синтаксис немецкого текста: предложения, токены, леммы, POS, зависимости (MWT)")
 def parse_german(text: str | list[str]) -> dict:
     return _run_tool("parse_german", lambda: _parse_german_impl(text))
 
@@ -301,7 +327,8 @@ _RULE = None
 _RULE_NOTE: str | None = None
 
 
-@mcp.tool()
+@_async_tool("pipeline_info",
+               "Статус сервера: процессоры, версии, путь кэша, offline, правило, обновления")
 def pipeline_info() -> dict:
     return _run_tool("pipeline_info", lambda: _pipeline_info_impl())
 
@@ -653,6 +680,32 @@ def _stanza_version() -> str:
         return "n/a"
 
 
+def _warmup() -> None:
+    """Импорт тяжёлых зависимостей ДО старта event loop.
+
+    ЗАМЕР 20.11 (воспроизведено на мини-сервере в 40 строк): `import torch` внутри уже
+    работающего MCP-сервера (event loop поднят, stdio-пайпы открыты) ВИСНЕТ НАВСЕГДА —
+    ни в главном потоке, ни в anyio.to_thread. Причина: torch при первом импорте поднимает
+    пул потоков (OpenMP/intra-op) и конфликтует с asyncio-петлёй и stdio-обёртками anyio
+    на Windows. Признак в логе — «TOOL pipeline_info start» без «ok».
+
+    Тот же тест, но с импортом до mcp.run(): 0.1 с на вызов, пайплайн 24.5 с — всё отвечает.
+    Поэтому нагружаем torch и stanza синхронно на старте (вне петли) и только потом отдаём
+    управление stdio-транспорту.
+    """
+    t0 = time.perf_counter()
+    try:
+        _stanza()
+    except Exception as exc:  # noqa: BLE001
+        _log("WARN: import stanza failed at warmup: %s" % exc)
+    try:
+        import torch  # noqa: F401
+    except Exception as exc:  # noqa: BLE001
+        _log("WARN: import torch failed at warmup: %s" % exc)
+    _log("WARMUP done %.1f ms (torch+stanza импортированы до старта event loop)"
+         % ((time.perf_counter() - t0) * 1000))
+
+
 def main() -> None:
     rule_status = "rule not connected"
     if _RULE is not None and os.path.exists(_config_path()):
@@ -673,6 +726,8 @@ def main() -> None:
             _SERVER_LOG_FILE,
         )
     )
+    # ВАЖНО: до mcp.run() — иначе первый же import torch внутри инструмента вешает сервер
+    _warmup()
     mcp.run()  # stdio transport
 
 
@@ -682,15 +737,14 @@ _load_rule()
 _load_segmenter()
 if _RULE is not None:
     if _SEG is not None:
-        mcp.tool(name="segment_german",
-                 description="Нарезать немецкий текст на блоки по правилу V4 (текст или список текстов)"
-                 )(segment_german)
-    mcp.tool(name="check_segmentation",
-             description="Судья: verdict compliant/non_compliant/invalid_input + подсказки (см. docstring)")(check_segmentation)
-    mcp.tool(name="rule_self_test",
-             description="Регресс: разметка 52 проходит валидатор целиком (52/52)")(rule_self_test)
-    mcp.tool(name="rule_info",
-             description="Версия правила, config_hash, параметры нарезки, запреты, штрафы, цифры")(rule_info)
+        _async_tool("segment_german",
+                    "Нарезать немецкий текст на блоки по правилу V4 (текст или список текстов)")(segment_german)
+    _async_tool("check_segmentation",
+                "Судья: verdict compliant/non_compliant/invalid_input + подсказки (см. docstring)")(check_segmentation)
+    _async_tool("rule_self_test",
+                "Регресс: разметка 52 проходит валидатор целиком (52/52)")(rule_self_test)
+    _async_tool("rule_info",
+                "Версия правила, config_hash, параметры нарезки, запреты, штрафы, цифры")(rule_info)
 
 
 if __name__ == "__main__":
