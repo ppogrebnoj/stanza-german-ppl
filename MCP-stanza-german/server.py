@@ -77,7 +77,6 @@ def _run_tool(name: str, fn) -> dict:
     _log("TOOL %s ok %.1f ms%s" % (name, ms, extra))
     return res
 
-import stanza
 from mcp.server.fastmcp import FastMCP
 
 LANGUAGE = "de"
@@ -102,17 +101,29 @@ mcp = FastMCP(
     ),
 )
 
-_pipeline: stanza.Pipeline | None = None
+# ВАЖНО (замер 20.11): `import stanza` на верхнем уровне стоит 63 с на сетевой/VMware-шаре
+# (сам пакет читается с Z:\...\.venv), а MCP-клиент ждёт ответа на initialize 8 с
+# (pi-web-ui: mcp-bridge.js, start(timeoutMs = 8000) — не настраивается из mcp.json).
+# Handshake обязан отвечать быстро, поэтому stanza импортируется лениво — при первой
+# загрузке пайплайна, а не при старте сервера.
+def _stanza():
+    """Модуль stanza (ленивый импорт). Аннотации ниже — строковые, чтобы не тянуть импорт."""
+    import stanza
+    return stanza
+
+
+_pipeline: "stanza.Pipeline | None" = None
 _pipeline_lock = threading.Lock()
 _load_notes: list[str] = []
 
 
-def _load_pipeline() -> stanza.Pipeline:
+def _load_pipeline() -> "stanza.Pipeline":
     """Пайплайн из локального кэша (без сети): tokenize, MWT, POS, леммы, зависимости.
 
     Constituency не грузим: правило V4 считает оценку границы по дереву зависимостей,
     а модель составляющих добавляла ~1.7 с к старту и память."""
     try:
+        stanza = _stanza()
         return stanza.Pipeline(
             lang=LANGUAGE,  # в Stanza 1.15 параметр называется lang
             processors=PROCESSORS,
@@ -124,7 +135,7 @@ def _load_pipeline() -> stanza.Pipeline:
         raise RuntimeError("Stanza pipeline не удалось загрузить: " + "; ".join(_load_notes))
 
 
-def get_pipeline() -> stanza.Pipeline:
+def get_pipeline() -> "stanza.Pipeline":
     """Ленивый singleton: пайплайн грузится один раз при первом вызове инструмента."""
     global _pipeline
     if _pipeline is None:
@@ -271,7 +282,7 @@ def _pipeline_info_impl() -> dict:
         "model_dir": str(pipe.dir),
         "versions": {
             "python": sys.version.split()[0],
-            "stanza": stanza.__version__,
+            "stanza": _stanza().__version__,
             "torch": torch.__version__,
         },
         "rule_root": _rule_root(),
@@ -632,6 +643,16 @@ def _torch_version() -> str:
         return "n/a"
 
 
+def _stanza_version() -> str:
+    """Версия stanza для строки START — без импорта stanza (на сетевом диске это ~63 с,
+    а initialize клиента ждёт секунды). importlib.metadata читает метаданные колеса."""
+    try:
+        from importlib.metadata import version
+        return version("stanza")
+    except Exception:  # noqa: BLE001
+        return "n/a"
+
+
 def main() -> None:
     rule_status = "rule not connected"
     if _RULE is not None and os.path.exists(_config_path()):
@@ -640,10 +661,12 @@ def main() -> None:
             rule_status = "rule %s, config_hash=%s" % (cfg.get("_version"), _canonical_hash(cfg))
         except Exception:  # noqa: BLE001
             rule_status = "rule error"
+    # stanza импортируется лениво (см. _stanza): на старте сервера его ещё нет, а в баннере
+    # нужна только версия — берём её из importlib.metadata, без импорта 63-секундного пакета
     _log(
         "START server_version=%s stanza=%s python=%s torch=%s rule=%s log=%s" % (
             _get_server_version(),
-            getattr(stanza, "__version__", "n/a"),
+            _stanza_version(),
             sys.version.split()[0],
             _torch_version(),
             rule_status,

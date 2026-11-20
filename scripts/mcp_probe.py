@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import os
 import sys
@@ -21,6 +22,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SERVER = ROOT / "MCP-stanza-german" / "server.py"
 LOG = ROOT / "MCP-stanza-german" / "server.log"
+# Таймаут на ОДИН вызов инструмента. pipeline_info поднимает пайплайн Stanza (torch + stanza +
+# HF-кэш), и на сетевой/VMware-шаре это 65–135 с вместо ~6 с на локальном диске (§1.8 УСТАНОВКА.md).
+# Дефолт MCP-клиента для such вызова — секунды, поэтому проба падала с ExceptionGroup именно на
+# pipeline_info: «сервер не ответил», хотя сервер был жив (замер 20.11: шаг стартовал, но не уложился).
+READ_TIMEOUT_S = float(os.environ.get("MCP_PROBE_TIMEOUT", "300"))
 NEED = {"parse_german", "pipeline_info", "segment_german", "check_segmentation",
         "rule_self_test", "rule_info"}
 SENT = "Ich habe bei der Firma gearbeitet."
@@ -84,14 +90,26 @@ def _probe() -> dict:
 
     async def go() -> None:
         async with stdio_client(params) as (read, write):
-            async with ClientSession(read, write) as s:
+            # без явного таймаута медленный диск = «сервер не ответил» на живом сервере
+            async with ClientSession(read, write,
+                                     read_timeout_seconds=datetime.timedelta(seconds=READ_TIMEOUT_S)) as s:
                 await _checks(s, report, bad)
 
     try:
         asyncio.run(go())
     except Exception as e:  # noqa: BLE001
-        bad.append(f"сервер не ответил ({type(e).__name__}) — вероятно, умер при старте; "
-                   f"смотри {LOG.name} и УСТАНОВКА.md §1.6")
+        # ExceptionGroup от anyio неинформативен сам по себе: показываем вложенные причины
+        causes = []
+        stack = [e]
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, BaseExceptionGroup):
+                stack.extend(cur.exceptions)
+            elif cur is not e:
+                causes.append(f"{type(cur).__name__}: {cur}")
+        detail = "; ".join(causes[:3]) if causes else str(e)
+        bad.append(f"сервер не ответил ({type(e).__name__}) — {detail}; "
+                   f"ждали до {READ_TIMEOUT_S:.0f} с на вызов; смотри {LOG.name} и УСТАНОВКА.md §1.6")
     report["ok"] = not bad
     report["problems"] = bad
     return report
