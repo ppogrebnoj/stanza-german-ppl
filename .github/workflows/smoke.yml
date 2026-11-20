@@ -155,7 +155,8 @@ jobs:
           $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun -Steps venv,deps,models,doctor 2>&1
           $out | ForEach-Object { $_ }
           if ($LASTEXITCODE -ge 4) { "all.ps1 сломан: код $LASTEXITCODE"; exit 1 }
-          if ($out -match '-Venv') { "::error::в глобальном режиме setup.ps1 получил -Venv"; exit 1 }
+          $txt = ($out -join "`n")
+          if ($txt -match '-Venv') { "::error::в глобальном режиме setup.ps1 получил -Venv"; exit 1 }
           "глобальный режим: -Venv не передаётся, верно"
 
       - name: "all.ps1 -DryRun -Venv (опция — в .venv)"
@@ -164,7 +165,10 @@ jobs:
           $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun -Steps venv,deps -Venv 2>&1
           $out | ForEach-Object { $_ }
           if ($LASTEXITCODE -ge 4) { "all.ps1 -Venv сломан: код $LASTEXITCODE"; exit 1 }
-          if ($out -notmatch '-Venv') { "::error::-Venv не доехал до setup.ps1"; exit 1 }
+          # -match/-notmatch по массиву строк возвращает ОТБОР строк (истина, если хоть одна не совпала),
+          # поэтому сравниваем склейку, а не массив
+          $txt = ($out -join "`n")
+          if ($txt -notmatch '-Venv') { "::error::-Venv не доехал до setup.ps1"; exit 1 }
           "-Venv доехал до setup.ps1, верно"
 
       - name: "all.ps1 шаг mcp: образец конфига как фикстура"
