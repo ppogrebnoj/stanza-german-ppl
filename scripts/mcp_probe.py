@@ -5,8 +5,8 @@
 не нужен запущенный клиент и его перезапуск. Полезно на новой машине и в CI.
 
 Запуск из корня проекта:
-    .venv\\Scripts\\python.exe scripts\\mcp_probe.py
-    .venv\\Scripts\\python.exe scripts\\mcp_probe.py --json
+    python scripts\\mcp_probe.py
+    python scripts\\mcp_probe.py --json
 
 Коды выхода: 0 всё в порядке · 1 что-то не так (напечатано что) · 2 в этом python нет пакета mcp.
 """
@@ -123,8 +123,9 @@ def main() -> int:
     try:
         report = _probe()
     except ImportError as e:
-        print(f"нет пакета mcp в этом python: {e}\n"
-              "нужен интерпретатор из .venv: .venv\\Scripts\\python.exe scripts\\mcp_probe.py")
+        print(f"нет пакета mcp в этом python ({sys.executable}): {e}\n"
+              "поставьте зависимости тем же интерпретатором: python -m pip install -r requirements.txt\n"
+              "(в режиме .venv — .venv\\Scripts\\python.exe scripts\\mcp_probe.py)")
         return 2
 
     if "--json" in sys.argv[1:]:

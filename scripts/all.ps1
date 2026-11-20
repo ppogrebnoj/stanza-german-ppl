@@ -14,6 +14,10 @@
         -Inventory     напечатать инвентаризацию среды и продолжить (префлайт её делает сам)
         -InventoryOnly только инвентаризация: «чего не хватает → одна команда на каждое»
         -Steps         список шагов: venv,deps,models,mcp,doctor
+        -Venv          ставить зависимости в .venv (ОПЦИЯ). По умолчанию — глобально в системный
+                       Python 3.15 (doctor.py: «нет .venv — работа идёт на системном Python
+                       (допустимо)»). Если .venv уже есть, шаг venv так и так его подхватит
+                       (чтобы не ставить torch дважды) — см. -CheckOnly.
         -Zip           архив моделей локально (офлайн); по умолчанию ищем stanza-models-de-*.zip в корне
         -Python        явный путь к python.exe 3.15 (если py-лаунчер его не нашёл)
         -MinFreeGB     сколько ГБ просить на диске (по умолчанию 12: venv+torch, модели, Build Tools, кэш)
@@ -78,6 +82,7 @@ param(
     [switch]$InstallPython,
     [switch]$InstallGit,
     [switch]$InstallBuildTools,
+    [switch]$Venv,
     [switch]$Help
 )
 
@@ -85,6 +90,12 @@ $ErrorActionPreference = "Continue"   # не Stop: нативные команд
                                        # штатные предупреждения, и PowerShell превращает их в
                                        # NativeCommandError и обрывает шаг. Решение — только $LASTEXITCODE.
 $Code_Ready, $Code_Human, $Code_Step, $Code_Broken, $Code_ReadyHuman = 0, 2, 3, 4, 5
+
+# Глобально (в системный Python) — поведение по умолчанию; venv — опция (см. -Venv в справке).
+# Если .venv уже создан (раньше ставили в него), используем его — иначе получилось бы две копии
+# torch по 2.4 ГБ. Явный -Venv — создать/использовать venv; явного «-force global» нет:
+# удалить .venv и запустить снова — самый понятный способ вернуться к глобальной установке.
+$UseVenv = [bool]$Venv
 
 try {
     # дети (doctor/setup/unpack) печатают UTF-8 — читать их тоже надо по-UTF-8
@@ -272,9 +283,20 @@ print(json.dumps({'cache': str(P.stanza_cache_dir()), 'model': str(m),
 }
 
 function Test-Deps($py) {
-    if (-not (Test-Path $VenvPy)) { return $false }
+    # проверяем ИМЕННО тот интерпретатор, который будет использован:
+    # в режиме venv — venv-питон (и venv должен существовать),
+    # по умолчанию (глобально) — системный Python 3.15.
+    if (-not $py) { return $false }
+    if ($UseVenv -and -not (Test-Path $VenvPy)) { return $false }
     & $py -c "import stanza, torch, mcp, pyphen" *> $null
     return ($LASTEXITCODE -eq 0)
+}
+
+function Get-PyUse {
+    # единственный источник правды «какой python работает»: venv-питон при -Venv,
+    # иначе системный. Все шаги (deps, models, mcp-snippet, doctor) берут его.
+    if ($UseVenv -and (Test-Path $VenvPy)) { return $VenvPy }
+    return $py
 }
 
 function Find-McpConfig() {
@@ -532,7 +554,16 @@ function Run-SetupWithProgress([string[]]$setupArgs, $id, $hint) {
     $inner = ('powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" {1} -ProgressFile "{2}" > "{3}" 2> "{4}"' -f (Join-Path $PSScriptRoot "setup.ps1"), ($setupArgs -join " "), $pf, $outF, $errF)
     $p = Start-KiChild $inner $rcF
     $tOut = New-TailState $outF; $tErr = New-TailState $errF; $tPf = New-TailState $pf
-    $venvDir = Join-Path $Root ".venv"
+    # что показывать как «растёт»: в режиме venv — .venv; по умолчанию (глобально) — site-packages
+    # системного Python, иначе прогресс стоял бы на нуле. Если не вышло определить — .venv (как было).
+    $growDir = Join-Path $Root ".venv"
+    $growLabel = "размер .venv (эталон 874 МБ)"
+    $growTotal = 874 * 1MB
+    if (-not $UseVenv) {
+        $sp = ""
+        try { $sp = (& $py -c "import site;print(site.getsitepackages()[0])" 2>$null | Select-Object -First 1) } catch { }
+        if ($sp -and (Test-Path $sp)) { $growDir = "" + $sp; $growLabel = "site-packages (глобально)" }
+    }
     while (-not $p.HasExited) {
         foreach ($l in (Read-Appended $tPf)) {
             if (-not $l.Trim()) { continue }
@@ -551,8 +582,8 @@ function Run-SetupWithProgress([string[]]$setupArgs, $id, $hint) {
         foreach ($l in (Read-Appended $tOut)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { }; if (-not $Json) { Write-Host "  | $l" } }
         foreach ($l in (Read-Appended $tErr)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { } }
         # Measure-DirSize отдаёт БАЙТЫ (кэш 2 с) — их и передаём в Write-Progress2
-        $venvBytes = Measure-DirSize -Path $venvDir -MinIntervalSec 2
-        Write-Progress2 -Step $id -Sub "venv на диске" -BytesDone ([double]$venvBytes) -BytesTotal (874 * 1MB) -Msg "размер .venv (эталон 874 МБ)"
+        $grownBytes = Measure-DirSize -Path $growDir -MinIntervalSec 2
+        Write-Progress2 -Step $id -Sub $growLabel -BytesDone ([double]$grownBytes) -BytesTotal ([double]$growTotal) -Msg $growLabel
         Start-Sleep -Milliseconds 800
     }
     foreach ($l in (Read-Appended $tPf)) {
@@ -593,7 +624,8 @@ function Invoke-ModelsStep($id, $hint) {
         $errF = Join-Path $env:TEMP ("ki-models-err-" + [guid]::NewGuid().ToString("N") + ".log")
         $rcF = Join-Path $env:TEMP ("ki-models-rc-" + [guid]::NewGuid().ToString("N") + ".txt")
         $pyFile = New-PyFile "import stanza`nstanza.download('de', verbose=False)`nprint('MODELS_DOWNLOADED')`n"
-        $inner = ('"{0}" "{1}" > "{2}" 2> "{3}"' -f $VenvPy, $pyFile, $outF, $errF)
+        $pyFor = Get-PyUse
+        $inner = ('"{0}" "{1}" > "{2}" 2> "{3}"' -f $pyFor, $pyFile, $outF, $errF)
         $p = Start-KiChild $inner $rcF
         $tOut = New-TailState $outF; $tErr = New-TailState $errF
         while (-not $p.HasExited) {
@@ -625,7 +657,7 @@ if ($Help) { Get-Help $MyInvocation.MyCommand.Path -Detailed | Out-String -Width
 $want = @($Steps -Split ',' | ForEach-Object { $_.Trim().ToLower() })
 $known = @("venv", "deps", "models", "mcp", "doctor")
 $willRun = (-not $CheckOnly) -and (-not $DryRun) -and (-not $InventoryOnly)
-$needDeps = ($want -contains "deps") -and -not (Test-Deps $VenvPy)
+$needDeps = ($want -contains "deps") -and -not (Test-Deps (Get-PyUse))
 $needModels = ($want -contains "models")
 $netNeeded = $willRun -and (($want -contains "deps") -or ($want -contains "models"))
 
@@ -708,7 +740,7 @@ if ($itRights -and $itRights.status -eq 'USER') { Add-Step "preflight" "NOTE" 0 
 $freeGB = Get-FreeGB $Root
 if ($freeGB -ge 0 -and $freeGB -lt $MinFreeGB) { $blockers += "на диске $freeGB ГБ, просим >= $MinFreeGB ГБ (venv+torch ~4, модели ~1.6, Build Tools 3–4, кэш)" }
 
-$depsOk = Test-Deps $VenvPy
+$depsOk = Test-Deps (Get-PyUse)
 if ($py) { $paths = Probe-Paths $py }
 $gh = Test-Gh $py
 if (-not $gh.ok) { Add-Step "preflight" "NOTE" 0 ("gh: $($gh.why) — для установки не нужен (репозиторий публичный)") "для push: gh auth login + gh auth setup-git (УСТАНОВКА.md §1.2)" }
@@ -726,7 +758,7 @@ if ($blockers.Count) {
 } elseif ($done | Where-Object { $_.status -eq "FAIL" }) {
     $code = $Code_Broken
 } else {
-    $det = "python $py; диск $freeGB ГБ; gh: $($gh.why); пакеты: " + $(if ($depsOk) { "в .venv есть" } else { "нет" }) + "; инвентаризация: блокирующих $invBlocking"
+    $det = "python $py; диск $freeGB ГБ; gh: $($gh.why); пакеты: " + $(if ($depsOk) { "есть (" + $(if ($UseVenv) { ".venv" } else { "глобально" }) + ")" } else { "нет" }) + "; инвентаризация: блокирующих $invBlocking"
     if ($paths) { $det += "; модели: " + $(if ($paths.depparse) { "есть" } else { "нет" }) }
     Add-Step "preflight" "OK" ([math]::Round(((Get-Date) - $t0).TotalSeconds, 1)) $det ""
     $code = 0
@@ -735,7 +767,7 @@ if ($blockers.Count) {
 # ------------------------------------------------------------------ шаги
 
 if ($code -eq 0) {
-    # 1+2. venv и зависимости — силами setup.ps1 (свою логику не дублируем)
+    # 1+2. интерпретатор/venv и зависимости — силами setup.ps1 (свою логику не дублируем)
     if ($want -contains "venv" -or $want -contains "deps") {
         $sa = @()
         if ($Python) { $sa += @("-Python", "`"$Python`"") }
@@ -743,7 +775,8 @@ if ($code -eq 0) {
         # doctor внутри setup.ps1 — лишняя тяжёлая работа на медленном диске (import torch с Z: —
         # минуты); финальный doctor делает all.ps1 своим шагом
         $sa += "-SkipDoctor"
-        if ($want -notcontains "deps" -or (Test-Deps $VenvPy)) { $sa += "-SkipDeps"; Add-Step "deps" "SKIP" 0 "пакеты уже стоят" "" }
+        if ($UseVenv) { $sa += "-Venv" }   # без этого setup.ps1 ставит глобально (дефолт)
+        if ($want -notcontains "deps" -or (Test-Deps (Get-PyUse))) { $sa += "-SkipDeps"; Add-Step "deps" "SKIP" 0 "пакеты уже стоят" "" }
         if ($DryRun -or $CheckOnly) {
             $plan.Add("powershell -File scripts\setup.ps1 " + ($sa -join " ")) | Out-Null
             Add-Step "setup" "plan" 0 "будет выполнено setup.ps1 $($sa -join ' ')" ""
@@ -755,10 +788,10 @@ if ($code -eq 0) {
 
     # 3. модели: локальный архив -> официальная загрузка Stanford (stanza.download) с ретраями
     if ($code -eq 0 -and $want -contains "models") {
-        $pyFor = $(if (Test-Path $VenvPy) { $VenvPy } else { $py })
+        $pyFor = Get-PyUse
         # FIX: $paths снимается префлайтом системным python, а scripts\_paths.py требует stanza —
         # до шага deps он null, и `haveModels` по незнанию считался $true → ложный «models SKIP»
-        # (именно так в прогоне 18.11 и вышло). После deps снимаем пути ещё раз — venv-питоном.
+        # (именно так в прогоне 18.11 и вышло). После deps снимаем пути ещё раз — тем же python.
         if (-not $paths -and $pyFor) { $paths = Probe-Paths $pyFor }
         $haveModels = $false
         if ($paths) { $haveModels = [bool]$paths.depparse }
@@ -771,7 +804,7 @@ if ($code -eq 0) {
             } elseif (-not $willRun) {
                 $rc = 0
                 Add-Step "models" "plan" 0 "локального архива нет — модели качает stanza.download (huggingface.co + stanza-resources)" ""
-            } elseif (Test-Deps $VenvPy) {
+            } elseif (Test-Deps $pyFor) {
                 $rc = Invoke-ModelsStep "models" "stanza.download не отдаёт модели: нужен raw.githubusercontent.com + huggingface.co; при 10054 повторите, или положите resources_1.15.0.json в кэш, или -Zip <архив>"
                 if ($rc -ne 0 -and $code -eq 0) { $code = $Code_Step }
             } else {
@@ -783,9 +816,8 @@ if ($code -eq 0) {
 
     # 4. конфиг MCP-клиента: его создаёт человек — мы печатаем готовый фрагмент и проверяем запись
     if ($code -eq 0 -and $want -contains "mcp") {
-        $pyFor = $(if (Test-Path $VenvPy) { $VenvPy } else { $py })
+        $pyFor = Get-PyUse
         $cfgPath = if ($McpConfig) { $McpConfig } else { Find-McpConfig }
-        $venvReady = Test-Path $VenvPy
         $entry = [ordered]@{
             command = $pyFor
             args    = @((Join-Path $Root "MCP-stanza-german\server.py"))
@@ -803,7 +835,13 @@ if ($code -eq 0) {
         Say "MCP-конфиг: $cfgPath (создаёт человек; установщик этот файл НЕ пишет; образец — MCP-stanza-german\mcp.json.example)"
         Say "вставь в секцию `"$McpKey`":"
         foreach ($l in ($mcpSnippet -split "`n")) { Say ("  " + $l) }
-        if (-not $venvReady) { Add-Step "mcp" "NOTE" 0 "snippet напечатан системным python: после шага venv меняйте command на $pyFor" "" }
+        $venvExists = Test-Path $VenvPy
+        if (-not $UseVenv -and -not $venvExists) {
+            # глобальный режим (по умолчанию): это нормально, а не «установка не сделана»
+            Add-Step "mcp" "OK" 0 "snippet напечатан для глобального Python ($pyFor)" ""
+        } elseif (-not $UseVenv -and $venvExists) {
+            Add-Step "mcp" "NOTE" 0 "есть готовый .venv, но режим глобальный: command = $pyFor (глобальный python)" "чтобы сервер работал в .venv, запустите с -Venv (тогда command будет $VenvPy)"
+        }
         if ($found) {
             # запись есть — но клиент её не запустит, если enabled:false или command — python без пакетов
             $on = $true
@@ -814,13 +852,14 @@ if ($code -eq 0) {
                 Add-Human "MCP: запись отключена" ("поставь `"enabled`: true в $cfgPath и перезапусти клиент")
                 $code = $Code_Human
             } elseif ($cmd -and -not (Test-Path $cmd)) {
-                if ($venvReady) {
-                    Add-Step "mcp" "BLOCK" 0 "command в конфиге не найден: $cmd" "правь command на $pyFor (venv уже есть) и перезапусти клиент"
+                if ($UseVenv -or $venvExists) {
+                    Add-Step "mcp" "BLOCK" 0 "command в конфиге не найден: $cmd" "правь command на $pyFor и перезапусти клиент"
                     Add-Human "MCP: command в конфиге несуществующий" ("command = $pyFor в $cfgPath, затем перезапуск клиента")
                     $code = $Code_Human
                 } else {
-                    Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd, на этой машине его нет" "установка не сделана: после шага venv поставь command = $pyFor и перезапусти клиент"
-                    Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath" ""
+                    Add-Step "mcp" "BLOCK" 0 "command в конфиге не найден: $cmd" "поставьте зависимости (install.ps1) и поправьте command на $pyFor"
+                    Add-Human "MCP: command в конфиге несуществующий" ("command = $pyFor в $cfgPath, затем перезапуск клиента")
+                    $code = $Code_Human
                 }
             } elseif ($cmd -and ($cmd -ne $pyFor)) {
                 Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd (ожидался $pyFor)" "в этом python пакетов mcp/stanza может не быть: поставь command = $pyFor"
@@ -831,7 +870,7 @@ if ($code -eq 0) {
         } else {
             Add-Step "mcp" "BLOCK" 0 "в $cfgPath записи stanza-german нет" "вставь напечатанный фрагмент (образец MCP-stanza-german\mcp.json.example) и перезапусти клиент"
             if ($willRun) {
-                Add-Human "осталось ОДНО действие человека: MCP-конфиг" ("1) положи запись stanza-german в $cfgPath (фрагмент выше)`n2) перезапусти MCP-клиент`n3) проверь: .venv\Scripts\python.exe scripts\mcp_probe.py")
+                Add-Human "осталось ОДНО действие человека: MCP-конфиг" ("1) положи запись stanza-german в $cfgPath (фрагмент выше)`n2) перезапусти MCP-клиент`n3) проверь: $pyFor scripts\mcp_probe.py")
                 if ($code -eq 0) { $code = $Code_ReadyHuman }
             } else {
                 Add-Human "MCP: нет записи stanza-german" ("после установки положи фрагмент в $cfgPath и перезапусти клиент")
@@ -844,7 +883,7 @@ if ($code -eq 0) {
     # Идёт и при коде 5: «осталось одно действие человека» не отменяет проверку окружения —
     # иначе установщик на чистом состоянии (mcp-конфига же нет) никогда не показал бы doctor.
     if (($code -eq 0 -or $code -eq $Code_ReadyHuman) -and $want -contains "doctor") {
-        $pyFor = $(if (Test-Deps $VenvPy) { $VenvPy } else { $py })
+        $pyFor = Get-PyUse
         $a = @((Join-Path $Root "scripts\doctor.py"))
         if ($CheckOnly) { $a += "--soft-models" }
         $rc = Run-Cmd $pyFor $a "doctor" "doctor нашёл FAIL: список и лечение — УСТАНОВКА.md (окружение: setup.ps1, модели: unpack_models.py)" (-not $DryRun)
@@ -885,6 +924,7 @@ $report = [ordered]@{
     total_sec = $totalSec; code = $code; verdict = $verdict; root = $Root
     mode = $(if ($InventoryOnly) { "inventory" } elseif ($CheckOnly) { "check-only" } elseif ($DryRun) { "dry-run" } else { "install" })
     python = $py; free_gb_before = $freeGB; free_gb_after = $freeAfter
+    install_mode = $(if ($UseVenv) { "venv" } else { "global" })
     venv_mb = $venvMB; stanza_cache_mb = $stanzaMB; hf_cache_mb = $hfMB
     inventory_blocking = $invBlocking; human_actions = $humanArr; steps = $stepArr
 }
@@ -894,7 +934,7 @@ try {
     $txt.Add("install-report: $Root  $($report.started) → $($report.finished)  всего $totalSec с  код $code  $verdict")
     $txt.Add(("{0,-12} {1,-7} {2,7} {3}" -f 'ШАГ', 'СТУС', 'СЕК', 'ДЕТАЛЬ'))
     foreach ($s in $stepArr) { $txt.Add(("{0,-12} {1,-7} {2,7} {3}" -f $s.id, $s.status, $s.seconds, ($s.detail + " " + $s.hint).Trim())) }
-    $txt.Add(("место: до {0} ГБ → после {1} ГБ | .venv {2} МБ | StanfordNLP {3} МБ | HF-кэш {4} МБ" -f $freeGB, $freeAfter, $venvMB, $stanzaMB, $hfMB))
+    $txt.Add(("место: до {0} ГБ → после {1} ГБ | {2} | StanfordNLP {3} МБ | HF-кэш {4} МБ" -f $freeGB, $freeAfter, $(if ($UseVenv) { ".venv " + $venvMB + " МБ" } else { "глобально в " + $py }), $stanzaMB, $hfMB))
     if ($humanActions.Count) { $txt.Add("действие человека:"); foreach ($a in $humanActions) { $txt.Add("  - " + $a.what + ": " + ($a.how -replace "`n", " / ")) } }
     [IO.File]::WriteAllText((Join-Path $Root "install-report.txt"), ($txt -join "`r`n"), (New-Object System.Text.UTF8Encoding $false))
     Say ("отчёт: install-report.txt / install-report.json")
@@ -907,6 +947,7 @@ if ($Json) {
         ok = ($code -eq 0 -or $code -eq 5); code = $code; verdict = $verdict; root = $Root
         mode = $report.mode
         python = $py; freeGB = $freeGB; gh = $(if ($gh) { $gh.why }); mcp_snippet = $mcpSnippet
+        install_mode = $(if ($UseVenv) { "venv" } else { "global" })
         total_sec = $totalSec; venv_mb = $venvMB; stanza_cache_mb = $stanzaMB; hf_cache_mb = $hfMB
         inventory_blocking = $invBlocking; human_actions = $humanArr
         steps = $stepArr; plan = [string[]]($plan | ForEach-Object { "$_" })

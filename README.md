@@ -116,10 +116,20 @@ git clone https://github.com/ppogrebnoj/stanza-german-ppl.git C:\KI_WORK && cd C
 
 В консоли видно шаги `[3/5]` и подшаги: `[2/5] deps · pip torch 2.15.0 · 1.2/2.4 ГБ · 43% ·
 ETA 6 мин` (torch ~2.4 ГБ, модели de ~1.6 ГБ). Шаги идемпотентны: готовые дают `SKIP`, повторный
-запуск безопасен. Ключи: `-CheckOnly` (ничего не ставить), `-DryRun` (проверить шаги без записи),
-`-Steps venv,deps,models,mcp,doctor`, `-SetupArgs`, `-Zip stanza-models-de-*.zip` (офлайн),
+запуск безопасен.
+
+**Зависимости ставятся ГЛОБАЛЬНО в системный Python 3.15 — это поведение по умолчанию.** Так же, как
+их ставил человек до появления venv (`doctor.py`: «нет `.venv` — работа идёт на системном Python
+(допустимо)»). `.venv` — **опция**: `install.ps1 -Venv` создаёт `<проект>\.venv` и ставит всё туда
+(/dir можно задать иначе: `-Venv` в `setup.ps1` + `-VenvDir <путь>`). Если `.venv` уже есть,
+он используется и без `-Venv` — чтобы не держать две копии torch по 2.4 ГБ. Что
+получилось — видно в префлайне (`пакеты: есть (глобально)|есть (.venv)`) и в `install-report.json`
+(поле `install_mode`: `global` / `venv`).
+
+Ключи: `-Venv` · `-CheckOnly` (ничего не ставить), `-DryRun` (проверить шаги без записи),
+`-Steps venv,deps,models,mcp,doctor`, `-Zip stanza-models-de-*.zip` (офлайн),
 `-InventoryOnly -Json`, `-InstallPython -InstallGit -InstallBuildTools -Yes` (автоустановка
-отсутствующего, админ — на Build Tools; для скачивания не нужны), `-NoProgress`, `-ProgressFile`,
+отсутствующего, админ — на Build Tools; для скачивания не нужны), `-NoProgress`,
 `-Log <файл>`, `-Retries <n>`.
 
 **Коды выхода:** 0 готово · 2 нужен человек (доустановить по `fix`) · 3 шаг упал (повторить ту же
@@ -138,8 +148,10 @@ fine-grained PAT (Contents: Read and write) в User-окружение:
 токен не нужен.
 Приёмка (дословно: `doctor: OK 18, WARN 0, FAIL 0`, smoke `OK 11 … SKIP 2`, `--full OK 14`,
 `segment_f1_corpus52 F1 0.777`, `segment_f1_heldout_51 F1 0.686`, `compliant 52 / 45`,
-`ИТОГ: MCP живой`), доступ, офлайн, разбор сбоев и замеренные времена (среда 41 мин, установка
-12 мин, приёмка 18 мин на VMware-шаре) — `УСТАНОВКА.md` (§1 человеку, §2 агенту, §2.6 замеры).
+`ИТОГ: MCP живой`) — команды в `УСТАНОВКА.md` §1.4 даны для системного Python (глобальный режим);
+с `-Venv` подставьте `.venv\Scripts\python.exe`. Доступ, офлайн, разбор сбоев и замеренные
+времена (среда 41 мин, установка 12 мин, приёмка 18 мин на VMware-шаре) — `УСТАНОВКА.md`
+(§1 человеку, §2 агенту, §2.6 замеры).
 Проект на сетевом/VMware-диске — установка и MCP-вызовы в 4–7 раз дольше (§1.8).
 Поддержка версий и обновления: `python scripts/pins.py --latest --write bench/results/deps.json`;
 снимок читает MCP-сервер (`pipeline_info().updates`).

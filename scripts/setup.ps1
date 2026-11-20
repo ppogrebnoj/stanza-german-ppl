@@ -4,6 +4,7 @@
 
     Из корня проекта:
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Venv       # в .venv (опция; по умолчанию — глобально)
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -UseLock    # точные пины (requirements.lock)
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -SkipDeps   # без сети: только хуки и проверки
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -SkipDoctor # без финальной проверки (её делает all.ps1)
@@ -13,7 +14,11 @@
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Retries 4                        # попыток pip на сетевых прогонах
 
     Поддерживается только Python 3.15 x64 (эталон проекта: torch 2.15.0 / numpy 2.5.5).
-    Версия проверяется ДО создания venv; если 3.15 нет — печатается команда winget.
+    Версия проверяется ДО установки; если 3.15 нет — печатается команда winget.
+
+    Куда ставятся зависимости: ПО УМОЛЧАНИЮ ГЛОБАЛЬНО в найденный Python 3.15 — так, как их
+    ставил человек до появления venv (doctor.py: «нет .venv — работа идёт на системном Python
+    (допустимо)»). venv — опция: -Venv (или явно заданный -VenvDir).
 
     Модели Stanza этим скриптом не качаются: их тянет сам Stanza (stanza.download('de'),
     официальный источник Stanford). Офлайн-архив распаковывает scripts\unpack_models.py --zip.
@@ -24,6 +29,7 @@ param(
     [string]$VenvDir = "",
     [string]$Python = "",      # явный путь к python.exe (если нужную версию не нашли автоматически)
     [switch]$UseLock,
+    [switch]$Venv,            # создать/использовать .venv; без него — глобально в системный Python
     [switch]$SkipDeps,
     [switch]$SkipDoctor,
     [int]$Retries = 3,
@@ -41,6 +47,9 @@ try {
 } catch { }
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $VenvDir) { $VenvDir = Join-Path $Root ".venv" }
+# Явно заданный -VenvDir тоже означает «работать в venv»: иначе каталогу не на что применить.
+$UseVenv = $Venv -or ($PSBoundParameters.ContainsKey("VenvDir") -and [string]$VenvDir)
+$DestLabel = if ($UseVenv) { ".venv" } else { "системный Python (глобально)" }
 $Reqs = if ($UseLock) { Join-Path $Root "requirements.lock" } else { Join-Path $Root "requirements.txt" }
 
 function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan; Prog @{ ev = "step_start"; step = "$n"; sub = $text } }
@@ -84,7 +93,7 @@ function Run-Pip([string[]]$pipArgs, [string]$id, $hint) {
     $collected = @{}
     while ($true) {
         $attempt++
-        Write-Host ("  > python -m pip {0} (попытка {1}/{2})" -f ($pipArgs -join " "), $attempt, $Retries)
+        Write-Host ("  > python {0} (попытка {1}/{2})" -f ($pipArgs -join " "), $attempt, $Retries)
         Prog @{ ev = "progress"; step = "deps"; sub = ("pip попытка $attempt/$Retries"); bytes = $bytes }
         if ($DryRun) { return }
         $prevEA = $ErrorActionPreference
@@ -105,7 +114,7 @@ function Run-Pip([string[]]$pipArgs, [string]$id, $hint) {
             } elseif ($l -match '^Building wheel for ([A-Za-z0-9_.\-]+)') {
                 Prog @{ ev = "progress"; step = "deps"; sub = ("сборка из sdist: " + $matches[1] + " (нужен MSVC VCTools)"); bytes = $bytes }
             } elseif ($l -match '^Installing collected packages:') {
-                Prog @{ ev = "progress"; step = "deps"; sub = "установка колёс в .venv"; bytes = $bytes; pct = 95 }
+                Prog @{ ev = "progress"; step = "deps"; sub = ("установка колёс: " + $DestLabel); bytes = $bytes; pct = 95 }
             }
         }
         $rc = $LASTEXITCODE
@@ -119,7 +128,7 @@ function Run-Pip([string[]]$pipArgs, [string]$id, $hint) {
 }
 
 Write-Host "проект : $Root"
-Write-Host "venv   : $VenvDir"
+Write-Host ("venv   : " + $(if ($UseVenv) { $VenvDir } else { "не используется — глобально (зависимости в найденный Python 3.15)" }))
 Write-Host "пины   : $(Split-Path -Leaf $Reqs)"
 if ($DryRun) { Write-Host "режим  : dry-run (ничего не меняется)" }
 
@@ -180,15 +189,25 @@ $ver = & $py -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
 Write-Host "  выбран: $py ($ver)"
 Write-Host "  пины: requirements.txt (torch 2.15.0 / numpy 2.5.5)"
 
-# ---------------------------------------------------------------- 2. venv
-Step 2 "виртуальное окружение"
-$vp = Join-Path $VenvDir "Scripts\python.exe"
-if (Test-Path $vp) {
-    Write-Host "  уже есть: $vp"
-    Prog @{ ev = "step_skip"; step = "venv"; sub = "venv уже есть" }
+# ---------------------------------------------------------------- 2. интерпретатор
+# ПО УМОЛЧАНИЮ — глобально: зависимости ставятся в найденный Python 3.15, venv не создаётся.
+# venv — опция (-Venv / -VenvDir): тогда создаём <root>\.venv и всё ставим туда.
+if ($UseVenv) {
+    Step 2 "виртуальное окружение (.venv)"
+    $vp = Join-Path $VenvDir "Scripts\python.exe"
+    if (Test-Path $vp) {
+        Write-Host "  уже есть: $vp"
+        Prog @{ ev = "step_skip"; step = "venv"; sub = "venv уже есть" }
+    } else {
+        Run $py @("-m", "venv", $VenvDir) "не удалось создать venv"
+        Prog @{ ev = "step_ok"; step = "venv"; sub = $VenvDir }
+    }
 } else {
-    Run $py @("-m", "venv", $VenvDir) "не удалось создать venv"
-    Prog @{ ev = "step_ok"; step = "venv"; sub = $VenvDir }
+    Step 2 "интерпретатор (глобально, без .venv)"
+    $vp = $py
+    Write-Host "  venv не запрошен: зависимости встанут в $vp"
+    Write-Host "  venv — опция: -Venv (doctor считает отсутствие .venv допустимым)"
+    Prog @{ ev = "step_skip"; step = "venv"; sub = ("глобально: " + $vp) }
 }
 
 # ---------------------------------------------------------------- 3. зависимости
@@ -255,6 +274,6 @@ Write-Host ""
 if ($DryRun) {
     Write-Host "dry-run завершён: команды выше будут выполнены без -DryRun." -ForegroundColor Green
 } else {
-    Write-Host 'готово. Дальше: модели — .venv\Scripts\python.exe -c "import stanza; stanza.download(''de'')" (или unpack_models.py --zip <офлайн-архив>),' -ForegroundColor Green
+    Write-Host ("готово. Дальше: модели — {0} -c " + '"' + "import stanza; stanza.download(''de'')" + '"' + " (или unpack_models.py --zip <офлайн-архив>)," -f $vp) -ForegroundColor Green
     Write-Host "конфиг MCP-клиента кладёт человек: образец MCP-stanza-german\mcp.json.example (УСТАНОВКА.md §1.3)." -ForegroundColor Green
 }
