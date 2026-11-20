@@ -133,7 +133,7 @@ jobs:
               $err = $null
               [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $f), [ref]$null, [ref]$err)
               if ($err.Count) { $f; $err | ForEach-Object { $_.ToString() }; exit 1 }
-              "$f — разбирается без ошибок"
+              "$f - разбирается без ошибок"
           }
 
       - name: Инвентаризация среды и тесты модулей (инвентаризация, прогресс)
@@ -156,7 +156,7 @@ jobs:
           $out | ForEach-Object { $_ }
           if ($LASTEXITCODE -ge 4) { "all.ps1 сломан: код $LASTEXITCODE"; exit 1 }
           if ($out -match '-Venv') { "::error::в глобальном режиме setup.ps1 получил -Venv"; exit 1 }
-          "глобальный режим: -Venv не передаётся — верно"
+          "глобальный режим: -Venv не передаётся, верно"
 
       - name: "all.ps1 -DryRun -Venv (опция — в .venv)"
         shell: powershell
@@ -165,7 +165,7 @@ jobs:
           $out | ForEach-Object { $_ }
           if ($LASTEXITCODE -ge 4) { "all.ps1 -Venv сломан: код $LASTEXITCODE"; exit 1 }
           if ($out -notmatch '-Venv') { "::error::-Venv не доехал до setup.ps1"; exit 1 }
-          "-Venv доехал до setup.ps1 — верно"
+          "-Venv доехал до setup.ps1, верно"
 
       - name: "all.ps1 шаг mcp: образец конфига как фикстура"
         shell: bash
