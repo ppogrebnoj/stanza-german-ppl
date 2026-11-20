@@ -852,14 +852,16 @@ if ($code -eq 0) {
                 Add-Human "MCP: запись отключена" ("поставь `"enabled`: true в $cfgPath и перезапусти клиент")
                 $code = $Code_Human
             } elseif ($cmd -and -not (Test-Path $cmd)) {
-                if ($UseVenv -or $venvExists) {
+                # команда в конфиге не существует. Это BLOCK только если зависимости уже стоят
+                # (тогда клиент точно не стартует и виноват конфиг). Пока зависимости не
+                # установлены — это NOTE: сначала установка, потом command.
+                if (Test-Deps $pyFor) {
                     Add-Step "mcp" "BLOCK" 0 "command в конфиге не найден: $cmd" "правь command на $pyFor и перезапусти клиент"
                     Add-Human "MCP: command в конфиге несуществующий" ("command = $pyFor в $cfgPath, затем перезапуск клиента")
                     $code = $Code_Human
                 } else {
-                    Add-Step "mcp" "BLOCK" 0 "command в конфиге не найден: $cmd" "поставьте зависимости (install.ps1) и поправьте command на $pyFor"
-                    Add-Human "MCP: command в конфиге несуществующий" ("command = $pyFor в $cfgPath, затем перезапуск клиента")
-                    $code = $Code_Human
+                    Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd, на этой машине его нет" "зависимости ещё не стоят: после установки поставь command = $pyFor и перезапусти клиент"
+                    Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath" ""
                 }
             } elseif ($cmd -and ($cmd -ne $pyFor)) {
                 Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd (ожидался $pyFor)" "в этом python пакетов mcp/stanza может не быть: поставь command = $pyFor"
