@@ -93,21 +93,15 @@ python scripts/mcp_probe.py
 
 ## Установка (Windows x64, три команды)
 
-Скачайте один файл `bootstrap.ps1`, сверьте хеш, запустите. Бутстрап поднимает winget
+Скачайте один файл `bootstrap.ps1`, сверьте хеш с `bootstrap.ps1.sha256` из того же релиза, запустите. Бутстрап поднимает winget
 (`Microsoft.WinGet.Client` из PSGallery + `Repair-WinGetPackageManager -AllUsers`), скачивает
 исходники из GitHub Release с проверкой SHA256, ставит Python 3.15.2 x64 (per-user, реестр,
 py launcher, PATH), Git, пакеты колёсами и модели Stanza, затем проверяет установку.
 
 ```powershell
 curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
-(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash      # сверить со значением ниже и в bootstrap.ps1.sha256
+(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash      # сверить с bootstrap.ps1.sha256 из того же релиза
 powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
-```
-
-SHA256 ассета `bootstrap.ps1` (релиз публикует рядом `bootstrap.ps1.sha256`):
-
-```
-2acb7867e758fcadba52a62dcf4746a66afa5390e0652e445c1907532b446ce6
 ```
 
 Агент управляет процессом по машинному контракту: `-Json`, `-ProgressJson` (NDJSON),

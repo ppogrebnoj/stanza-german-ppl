@@ -15,31 +15,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build release assets and update README SHA256
+      - name: Determine version from CHANGELOG.md
+        id: version
         shell: powershell
         run: |
-          $tag = "${{ github.ref_name }}"
-          if (-not $tag -or $tag -eq 'refs/heads/master') { $tag = 'v0.0.0-dev' }
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag $tag
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $text = Get-Content .\MCP-stanza-german\CHANGELOG.md -Raw -Encoding UTF8
+          $m = [regex]::Match($text, '(?m)^##\s+(\d+\.\d+\.\d+)(?:\s|$)')
+          if (-not $m.Success) { throw 'нет версии в CHANGELOG.md' }
+          $tag = "v$($m.Groups[1].Value)"
+          $ref = "${{ github.ref_name }}"
+          if ($ref -like 'v*' -and $ref -ne $tag) { throw "тег $ref не совпадает с версией CHANGELOG.md ($tag)" }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
 
-      - name: Commit updated README and bootstrap checksum
+      - name: Build release assets
         shell: powershell
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name github-actions
-          git config user.email github-actions@users.noreply.github.com
-          git add README.md bootstrap.ps1.sha256
-          git commit -m "release: update bootstrap SHA256 [skip ci]" 2>$null
-          git push origin HEAD:${{ github.ref_name }} 2>$null
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag "${{ steps.version.outputs.tag }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Publish release assets
         shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = "${{ steps.version.outputs.tag }}"
           $dir = Join-Path (Get-Location) '.tmp\release'
           $assets = @(
             (Join-Path $dir 'bootstrap.ps1'),
