@@ -5,14 +5,36 @@
 
 ## Установка
 
-Windows x64. Хеш `bootstrap.ps1` сверьте с `bootstrap.ps1.sha256` из того же релиза.
+Windows x64, **PowerShell 7.7+** (установка системного софта и разбор путей на 5.1 дают
+лишние отказы). Хеш `bootstrap.ps1` сверьте с `bootstrap.ps1.sha256` из того же релиза.
 Подробности — [installer/УСТАНОВКА.md](installer/УСТАНОВКА.md).
 
 ```powershell
 curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
 (Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash
-powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
+pwsh -ExecutionPolicy Bypass -File .\bootstrap.ps1
 ```
+
+Проверка после установки (должно быть `code 0`):
+
+```powershell
+.\install.ps1 -Check ready -Venv
+.\install.ps1 -Check mcp -Venv
+```
+
+Если репозиторий уже склонирован и нужен только минимум для MCP-сервера (без `winget`,
+`doctor` и приёмки):
+
+```powershell
+.\install.ps1 -Steps "python,git,deps,models,snippet" -Yes -Venv -Force
+```
+
+Долгие шаги (`deps` ~800 МБ, `models` 315 МБ) идут минутами: запускайте без `-Json`,
+тогда в консоли видна живая строка прогресса. `-Json` нужен только для CI/агента.
+
+Список шагов и параметров — `docs/flags.json`, `-Check capabilities`. Список шагов
+`-Steps` — строка через запятую; в PowerShell 7 её надо **закавычить**
+(`-Steps "python,git,deps,models,snippet"`), иначе массив приходит одним аргументом.
 
 ## Документы
 
@@ -31,6 +53,8 @@ powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 ## Как запустить
 
 При установке с `-Venv` используйте `.venv\Scripts\python.exe` вместо `python`.
+Готовые шимы: `python.cmd` (cmd.exe) и `use.ps1` (PowerShell) — оба подставляют
+`STANZA_RESOURCES_DIR` и путь к интерпретатору из `.venv`.
 
 ```bash
 # нарезать одно предложение

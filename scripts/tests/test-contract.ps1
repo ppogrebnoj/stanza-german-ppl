@@ -84,7 +84,9 @@ $report = $null
 try { $report = Get-Content -LiteralPath (Join-Path $art 'install-report.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
 $need = @('code','ok','arch','mode','mcp_registration','report_path','mcp_snippet_path','python_path','stanza_resources','steps','blockers','failures','next_action','sizes','timings','acceptance')
 $missing = @($need | Where-Object { $null -eq $report.PSObject.Properties[$_] })
-Check-Ok ($r.json.code -eq 2 -and $missing.Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $art 'install.log'))) 'report fields and artifacts' ("missing=" + ($missing -join ','))
+# Код 2 = doctor не нашёл python (BLOCK), код 3 = doctor отработал и вернул FAIL.
+# Оба означают «не установлено», и оба обязаны дать полный отчёт — проверяем это.
+Check-Ok (@(2, 3) -contains $r.json.code -and $missing.Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $art 'install.log'))) 'report fields and artifacts' ("code=" + $r.json.code + " missing=" + ($missing -join ','))
 $ndjson = @(Get-Content -LiteralPath (Join-Path $art 'progress.ndjson') -ErrorAction SilentlyContinue | Where-Object { $_.Trim() })
 $parsed = 0
 foreach ($line in $ndjson) { try { $null = $line | ConvertFrom-Json; $parsed++ } catch { } }

@@ -47,7 +47,10 @@ while ($Rest -and $i -lt $Rest.Count) {
                 $errors += "параметр -$name требует значения"
                 $i++
             } else {
-                $bound[$name] = "$($Rest[$i + 1])"
+                # PowerShell 7 отдаёт `-Steps a,b,c` одним массивом: приводим к строке через
+                # запятую, иначе массив склеивается пробелами и шаги не распознаются.
+                $val = $Rest[$i + 1]
+                if ($val -is [array]) { $bound[$name] = ($val -join ',') } else { $bound[$name] = "$val" }
                 $i += 2
             }
         }

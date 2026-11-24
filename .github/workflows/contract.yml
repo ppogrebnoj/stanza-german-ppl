@@ -29,11 +29,28 @@ jobs:
       - name: No writes in check modes
         shell: powershell
         run: |
+          # Диагностика в stdout, а не через throw: иначе в логе видно только
+          # "Process completed with exit code 1" без причины.
+          # Код 0 = всё есть, 2 = не установлено (норма для чистой машины), любой другой = сбой.
           $before = (Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName + '|' + $_.Length }) -join "`n"
-          $null = powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check inventory -Json
-          if ($LASTEXITCODE -gt 2) { throw "check inventory rc=$LASTEXITCODE" }
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check inventory -Json 2>&1
+          $rc = $LASTEXITCODE
+          "inventory rc=$rc"
+          if ($rc -ne 0 -and $rc -ne 2) {
+            "::error::check inventory rc=$rc (ожидались 0 или 2)"
+            ($out | Select-Object -Last 25) -join "`n"
+            exit 1
+          }
           $after = (Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName + '|' + $_.Length }) -join "`n"
-          if ($before -ne $after) { throw 'read-only check modified files' }
+          if ($before -ne $after) {
+            "::error::read-only check modified files"
+            Compare-Object ($before -split "`n") ($after -split "`n") | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }
+            exit 1
+          }
+          "read-only check: ok"
+          # Явный выход: иначе шаг наследует $LASTEXITCODE от install.ps1 (там 2 =
+          # «чистая машина») и падает, хотя все проверки прошли.
+          exit 0
 
       - name: Python syntax
         shell: pwsh
