@@ -24,6 +24,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $TargetDir) { $TargetDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
 if (-not $ArtifactDir) { $ArtifactDir = Join-Path $TargetDir '.tmp' }
 if (-not (Test-Path -LiteralPath $ArtifactDir)) { New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null }
+# Единственный источник путей к файлам установки — scripts\_env.ps1.
+. (Join-Path $PSScriptRoot '_env.ps1')
 
 function Get-Sha { param([string]$Path)
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -46,7 +48,7 @@ function New-Kit {
         try { $py = (& python -c "import sys;print(sys.executable)" 2>$null | Select-Object -First 1) } catch { }
     }
     if ($py -and (Test-Path -LiteralPath $py)) {
-        & $py -m pip download --only-binary=:all: --dest $wheels -r (Join-Path $TargetDir 'requirements.lock')
+        & $py -m pip download --only-binary=:all: --dest $wheels -r (Get-LockPath $TargetDir)
         if ($LASTEXITCODE -ne 0) { throw 'pip download колёс не удался (нужен --only-binary=:all:)' }
     } else {
         Write-Warning 'Python не найден: каталог wheels будет пустым'

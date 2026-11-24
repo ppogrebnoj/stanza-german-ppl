@@ -5,7 +5,7 @@
     Из корня проекта:
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Venv       # в .venv (опция; по умолчанию — глобально)
-        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -UseLock    # точные пины (requirements.lock)
+        powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -UseLock    # точные пины (installer/requirements.lock)
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -SkipDeps   # без сети: только хуки и проверки
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -SkipDoctor # без финальной проверки (её делает all.ps1)
         powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -DryRun     # показать команды, ничего не делать
@@ -53,7 +53,7 @@ if (-not $VenvDir) { $VenvDir = Join-Path $Root ".venv" }
 $UseVenv = $Venv -or ($PSBoundParameters.ContainsKey("VenvDir") -and [string]$VenvDir)
 $DestLabel = if ($UseVenv) { ".venv" } else { "системный Python (глобально)" }
 # Контракт v2: lock по умолчанию, только колёса (компилятор не нужен).
-$Reqs = Join-Path $Root "requirements.lock"
+$Reqs = Get-LockPath $Root
 
 function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan; Prog @{ ev = "step_start"; step = "$n"; sub = $text } }
 function Fail($text) { Write-Host "ОШИБКА: $text" -ForegroundColor Red; Prog @{ ev = "step_fail"; step = "setup"; msg = $text }; exit 1 }
@@ -151,7 +151,7 @@ if (-not $info -or -not $info.Usable) {
 $py = $info.Path
 $ver = & $py -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
 Write-Host "  выбран: $py ($ver)"
-Write-Host "  пины: requirements.txt (torch 2.15.0 / numpy 2.5.5)"
+Write-Host ("  пины: " + $Reqs + " (torch 2.15.0 / numpy 2.5.5)")
 
 # ---------------------------------------------------------------- 2. интерпретатор
 # ПО УМОЛЧАНИЮ — глобально: зависимости ставятся в найденный Python 3.15, venv не создаётся.
@@ -239,5 +239,5 @@ if ($DryRun) {
     Write-Host "dry-run завершён: команды выше будут выполнены без -DryRun." -ForegroundColor Green
 } else {
     Write-Host ("готово. Дальше: модели — {0} -c " + '"' + "import stanza; stanza.download(''de'')" + '"' + " (или unpack_models.py --zip <офлайн-архив>)," -f $vp) -ForegroundColor Green
-    Write-Host "конфиг MCP-клиента кладёт человек: образец MCP-stanza-german\mcp.json.example (УСТАНОВКА.md §1.3)." -ForegroundColor Green
+    Write-Host "конфиг MCP-клиента кладёт человек: образец MCP-stanza-german\mcp.json.example (installer/УСТАНОВКА.md §5)." -ForegroundColor Green
 }

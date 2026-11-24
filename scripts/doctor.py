@@ -2,7 +2,7 @@
 """doctor.py — «машина готова к работе?»: один ответ PASS/FAIL вместо гаданий.
 
 Проверяет ровно то, что ломается при переносе на другую машину:
-  * версия Python и версии пакетов против requirements.txt;
+  * версия Python и версии пакетов против installer/requirements.txt;
   * кэш моделей Stanza (de) — без него не работают стенд, smoke --full и сервер;
   * файлы правила (validator/segment/normalize/config.json) и наборы/разметку;
   * какой RULE_ROOT увидит сервер (env или папка рядом с server.py);

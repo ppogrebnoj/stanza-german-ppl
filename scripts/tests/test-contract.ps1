@@ -96,6 +96,14 @@ $env:PROCESSOR_ARCHITECTURE = $env:_KI_SAVED_ARCH; $env:PROCESSOR_ARCHITEW6432 =
 Remove-Item Env:\_KI_SAVED_ARCH -ErrorAction SilentlyContinue; Remove-Item Env:\_KI_SAVED_WOW -ErrorAction SilentlyContinue
 Check-Ok ($a1 -eq 'AMD64' -and $a2 -eq 'AMD64') 'arch normalization' ("$a1 / $a2")
 
+# 8. файлы установки лежат в installer\, корневые entry-point остаются на месте
+$needInstaller = @('УСТАНОВКА.md', 'requirements.txt', 'requirements.lock', 'bootstrap.ps1.sha256')
+$missingInstaller = @($needInstaller | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root ('installer\' + $_))) })
+$rootLeftovers = @($needInstaller | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) })
+Check-Ok ($missingInstaller.Count -eq 0 -and $rootLeftovers.Count -eq 0 -and
+          (Test-Path -LiteralPath (Join-Path $root 'install.ps1')) -and
+          (Test-Path -LiteralPath (Join-Path $root 'bootstrap.ps1'))) 'installer layout' ("missing=$($missingInstaller -join ',') root=$($rootLeftovers -join ',')")
+
 Write-Host "`nитого: $total проверок, ошибок $($failures.Count)" $(if ($failures.Count) { 'Red' } else { 'Green' })
 if ($failures.Count) { exit 1 }
 exit 0

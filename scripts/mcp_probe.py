@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SERVER = ROOT / "MCP-stanza-german" / "server.py"
 LOG = ROOT / "MCP-stanza-german" / "server.log"
 # Таймаут на ОДИН вызов инструмента. pipeline_info поднимает пайплайн Stanza (torch + stanza +
-# HF-кэш), и на сетевой/VMware-шаре это 65–135 с вместо ~6 с на локальном диске (§1.8 УСТАНОВКА.md).
+# HF-кэш), и на сетевой/VMware-шаре это 65–135 с вместо ~6 с на локальном диске (installer/УСТАНОВКА.md §4).
 # Дефолт MCP-клиента для such вызова — секунды, поэтому проба падала с ExceptionGroup именно на
 # pipeline_info: «сервер не ответил», хотя сервер был жив (замер 20.11: шаг стартовал, но не уложился).
 READ_TIMEOUT_S = float(os.environ.get("MCP_PROBE_TIMEOUT", "300"))
@@ -47,7 +47,7 @@ async def _checks(s, report: dict, bad: list[str]) -> None:
     report["pipeline"]["torch"] = d.get("versions", {}).get("torch")
     report["pipeline"]["updates"] = d.get("updates", {}).get("available")
     if not d.get("rule_registered"):
-        bad.append("правило не подключено: проверь RULE_ROOT в конфиге клиента (УСТАНОВКА.md §1.3, §1.6)")
+        bad.append("правило не подключено: проверь RULE_ROOT в конфиге клиента (installer/УСТАНОВКА.md §5)")
     if not d.get("offline"):
         bad.append("pipeline не офлайн: модель берётся не из локального кэша")
 
@@ -109,7 +109,7 @@ def _probe() -> dict:
                 causes.append(f"{type(cur).__name__}: {cur}")
         detail = "; ".join(causes[:3]) if causes else str(e)
         bad.append(f"сервер не ответил ({type(e).__name__}) — {detail}; "
-                   f"ждали до {READ_TIMEOUT_S:.0f} с на вызов; смотри {LOG.name} и УСТАНОВКА.md §1.6")
+                   f"ждали до {READ_TIMEOUT_S:.0f} с на вызов; смотри {LOG.name} и installer/УСТАНОВКА.md §5")
     report["ok"] = not bad
     report["problems"] = bad
     return report
@@ -124,7 +124,7 @@ def main() -> int:
         report = _probe()
     except ImportError as e:
         print(f"нет пакета mcp в этом python ({sys.executable}): {e}\n"
-              "поставьте зависимости тем же интерпретатором: python -m pip install -r requirements.txt\n"
+              "поставьте зависимости тем же интерпретатором: python -m pip install -r installer/requirements.txt\n"
               "(в режиме .venv — .venv\\Scripts\\python.exe scripts\\mcp_probe.py)")
         return 2
 

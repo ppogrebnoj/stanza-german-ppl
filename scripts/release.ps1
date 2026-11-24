@@ -40,7 +40,8 @@ if ($Tag -ne "v$version") {
 $bootstrap = Join-Path $Root 'bootstrap.ps1'
 if (-not (Test-Path -LiteralPath $bootstrap)) { throw 'нет bootstrap.ps1' }
 $sum = Get-Sha $bootstrap
-[IO.File]::WriteAllText((Join-Path $Root 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
+# В репозитории контрольная сумма лежит в installer\; в релизе публикуется плоским ассетом.
+[IO.File]::WriteAllText((Join-Path (Join-Path $Root 'installer') 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
 Copy-Item -LiteralPath $bootstrap -Destination (Join-Path $OutDir 'bootstrap.ps1') -Force
 [IO.File]::WriteAllText((Join-Path $OutDir 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
 

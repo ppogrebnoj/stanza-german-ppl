@@ -267,9 +267,9 @@ print("\n".join(miss))
     }
     $outFile = Join-Path $artifactDir 'deps_versions.txt'
     if ($readOnly) {
-        $out = & $pyExe -c $code (Join-Path $Root 'requirements.lock') 2>$null
+        $out = & $pyExe -c $code (Get-LockPath $Root) 2>$null
     } else {
-        $null = & $pyExe $tmpPy (Join-Path $Root 'requirements.lock') > $outFile 2>&1
+        $null = & $pyExe $tmpPy (Get-LockPath $Root) > $outFile 2>&1
         $out = @(Get-Content -LiteralPath $outFile -ErrorAction SilentlyContinue)
     }
     if ($LASTEXITCODE -ne 0) { return @('не удалось проверить версии пакетов') }
@@ -612,7 +612,7 @@ foreach ($id in $stepIds) {
                         if (Test-Path -LiteralPath $vp) { $py = $vp }
                     }
                     if (-not $result) {
-                        $lock = Join-Path $Root 'requirements.lock'
+                        $lock = Get-LockPath $Root
                         $dry = @('-m','pip','install','--dry-run','--only-binary=:all:','--disable-pip-version-check','-r',$lock)
                         $rcDry = Invoke-Logged -Exe $py -Argv $dry -Id 'deps-dry-run'
                         if ($rcDry -ne 0) {

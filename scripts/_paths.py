@@ -17,8 +17,9 @@ MCP_DIR = ROOT / "MCP-stanza-german"
 SETS_DIR = ROOT / "bench" / "sets"
 DATA_DIR = ROOT / "данные"
 REQUIRED_MINOR = 15                 # единственная поддерживаемая версия Python (эталон проекта)
-REQS = ROOT / "requirements.txt"    # единственный файл пинов
-LOCK = ROOT / "requirements.lock"
+INSTALLER_DIR = ROOT / "installer"   # файлы установки в отдельной папке
+REQS = INSTALLER_DIR / "requirements.txt"    # единственный файл пинов
+LOCK = INSTALLER_DIR / "requirements.lock"
 
 STANZA_VERSION = "1.15.0"     # версия, под которую снят кэш моделей
 LANG = "de"

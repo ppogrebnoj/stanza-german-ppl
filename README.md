@@ -6,7 +6,7 @@
 ## Установка
 
 Windows x64. Хеш `bootstrap.ps1` сверьте с `bootstrap.ps1.sha256` из того же релиза.
-Подробности — [УСТАНОВКА.md](УСТАНОВКА.md).
+Подробности — [installer/УСТАНОВКА.md](installer/УСТАНОВКА.md).
 
 ```powershell
 curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
@@ -21,7 +21,7 @@ powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 | `ТЗ.md` | что нужно, рамки, как устроено, как проверяем качество |
 | `ПРАВИЛО.md` | **как резать**: запреты и их коды, длины, исключения, цифры |
 | `ВОПРОСЫ.md` | только открытые вопросы к заказчику |
-| `УСТАНОВКА.md` | установка, параметры, коды, отчёты, офлайн, MCP, приёмка — подробности контракта v2 |
+| `installer/УСТАНОВКА.md` | установка, параметры, коды, отчёты, офлайн, MCP, приёмка — подробности контракта v2 |
 | `README.md` | этот файл: короткая установка, карта проекта и команды |
 | `LICENSE` | условия использования — MIT |
 
@@ -32,6 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 
 ```
 KI_WORK/
+├─ bootstrap.ps1 / install.ps1  ← точка входа установки (Windows x64)
 ├─ данные/                      ← разметка (её редактируете вы)
 │   ├─ РАЗМЕТКА_52.md           … 52 предложения, переразмеченные под новые правила
 │   ├─ РАЗМЕТКА_51.md           … первая часть из 150 (энциклопедические + новостные)
@@ -46,8 +47,14 @@ KI_WORK/
 │   └─ git-hooks/pre-commit     … хук, который вызывает smoke_test
 │
 ├─ MCP-stanza-german/           ← MCP-сервер: нарезка, разбор, судья (для чата)
+│   ├─ server.py                … сервер (версия — из CHANGELOG.md / version.json)
 │   └─ mcp.json.example         ← образец конфига: человек кладёт его в свой клиент сам
-├─ scripts/                     ← установка и проверка окружения (см. УСТАНОВКА.md)
+├─ installer/                   ← файлы установки
+│   ├─ УСТАНОВКА.md             … подробная документация по установке
+│   ├─ requirements.txt         … прямые пины
+│   ├─ requirements.lock        … полное замыкание, только колёса
+│   └─ bootstrap.ps1.sha256     … контрольная сумма ассета bootstrap.ps1
+├─ scripts/                     ← установка и проверка окружения (см. installer/УСТАНОВКА.md)
 │   ├─ all.ps1                  ← оркестратор v2: шаги, коды 0/2/3/4/6, отчёт schema_version 2
 │   ├─ _env.ps1 / _download.ps1 ← единый поиск Python и загрузки с SHA256/зеркалами
 │   ├─ _state.ps1 / progress.ps1← артефакты, mutex, NDJSON-поток в файл и в stdout
@@ -59,8 +66,6 @@ KI_WORK/
 │   ├─ doctor.py                … что готово, что нет (FAIL/OK, --json)
 │   ├─ mcp_probe.py             … проверить MCP-сервер по stdio без клиента (код 0/1)
 │   └─ setup.ps1                … совместимость: venv + пины + git-хук (поиск Python из _env.ps1)
-│
-├─ requirements.txt             ← прямые зависимости (пины) и requirements.lock (полное замыкание)
 │
 └─ bench/                       ← стенд: сравнение алгоритмов
     ├─ sets/*.jsonl             … данные в машинном виде (corpus52 / heldout_51 / heldout_150)
@@ -109,7 +114,7 @@ python scripts/mcp_probe.py
 3. Я собираю машинный набор (`bench/build_sets.py`), прогоняю аудит и валидатор,
    показываю, где правило с вами не согласно.
 
-## Состояние (итерация 4, июль 2026)
+## Состояние
 
 | | |
 |---|---|

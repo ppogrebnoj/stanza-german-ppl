@@ -25,6 +25,23 @@ function Get-DefaultArtifactDir { param([string]$Root = (Get-ProjectRoot))
 function Get-DefaultTargetDir {
     return (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python315')
 }
+
+# Файлы установки живут в installer\: единственный источник путей для всех скриптов.
+function Get-InstallerDir { param([string]$Root = (Get-ProjectRoot))
+    return (Join-Path $Root 'installer')
+}
+function Get-RequirementsPath { param([string]$Root = (Get-ProjectRoot))
+    return (Join-Path (Get-InstallerDir $Root) 'requirements.txt')
+}
+function Get-LockPath { param([string]$Root = (Get-ProjectRoot))
+    return (Join-Path (Get-InstallerDir $Root) 'requirements.lock')
+}
+function Get-BootstrapChecksumPath { param([string]$Root = (Get-ProjectRoot))
+    return (Join-Path (Get-InstallerDir $Root) 'bootstrap.ps1.sha256')
+}
+function Get-InstallDocPath { param([string]$Root = (Get-ProjectRoot))
+    return (Join-Path (Get-InstallerDir $Root) 'УСТАНОВКА.md')
+}
 function Get-DefaultModelsDir { param([string]$Root = (Get-ProjectRoot))
     return (Join-Path $Root '.stanza\models')
 }

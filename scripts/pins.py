@@ -43,7 +43,7 @@ CACHE_FILE = CACHE / "pypi_index.json"
 CACHE_TTL = 6 * 3600           # сутки/6 часов — чтобы не дёргать PyPI при каждом запуске
 _PYPI_DEAD = {"until": 0.0}    # после первого сбоя: не ползать по сети за каждым пакетом
 
-FILES = [("requirements.txt", (P.REQUIRED_MINOR,), "пины проекта")]
+FILES = [(str(P.REQS.relative_to(P.ROOT)), (P.REQUIRED_MINOR,), "пины проекта")]
 SNAPSHOT_DEFAULT = P.ROOT / "bench" / "results" / "deps.json"
 
 
