@@ -5,9 +5,38 @@
 
 ## Установка
 
-Windows x64, **PowerShell 7.7+** (установка системного софта и разбор путей на 5.1 дают
-лишние отказы). Хеш `bootstrap.ps1` сверьте с `bootstrap.ps1.sha256` из того же релиза.
-Подробности — [installer/УСТАНОВКА.md](installer/УСТАНОВКА.md).
+Windows x64. Нужен **PowerShell 7.7+**: на PowerShell 5.1 установка системного софта и
+разбор путей дают лишние отказы. Подробности — [installer/УСТАНОВКА.md](installer/УСТАНОВКА.md).
+
+### 1. PowerShell 7.7
+
+В Windows PowerShell 5.1 (он есть на любой Windows):
+
+```powershell
+curl.exe -L --retry 3 -o "$env:TEMP\ps77.msixbundle" https://github.com/PowerShell/PowerShell/releases/download/v7.7.0/PowerShell-7.7.0.msixbundle
+Add-AppxPackage -Path "$env:TEMP\ps77.msixbundle"
+```
+
+Закрыть окно и открыть **PowerShell 7** из меню Пуск. Проверка:
+
+```powershell
+pwsh -v          # 7.7.0
+```
+
+MSIX ставится без администратора и без перезагрузки. Если `Add-AppxPackage` отказал
+(нет App Installer) — portable ZIP, тоже без администратора:
+
+```powershell
+$d = "$env:LOCALAPPDATA\Programs\PowerShell\7.7.0"
+New-Item -ItemType Directory -Force $d | Out-Null
+curl.exe -L --retry 3 -o "$env:TEMP\ps77.zip" https://github.com/PowerShell/PowerShell/releases/download/v7.7.0/PowerShell-7.7.0-win-x64.zip
+Expand-Archive "$env:TEMP\ps77.zip" -DestinationPath $d -Force
+& "$d\pwsh.exe" -v
+```
+
+### 2. Установка проекта
+
+Хеш `bootstrap.ps1` сверьте с `bootstrap.ps1.sha256` из того же релиза.
 
 ```powershell
 curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
