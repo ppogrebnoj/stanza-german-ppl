@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 <#
-    _state.ps1 — артефакты установки v2 (dot-source, без param-блока):
+    _state.ps1 — артефакты установки (dot-source, без param-блока):
     фиксированные имена в -ArtifactDir, mutex параллельных прогонов, отчёты и
     mcp-snippet.json (UTF-8 без BOM, кириллица в \uXXXX).
 

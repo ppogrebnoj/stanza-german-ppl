@@ -2,8 +2,8 @@
 <#
     release.ps1 — сборка ассетов релиза установки (вызывается CI по тегу v*).
 
-    Версия берётся из первого заголовка MCP-stanza-german/CHANGELOG.md:
-        ## 4.0.2 (2026-11-17)  ->  тег v4.0.2
+    Версия берётся из MCP-stanza-german/version.json (единственный источник):
+        "server_version": "4.0.2"  ->  тег v4.0.2
     Ассеты: bootstrap.ps1(.sha256) и stanza-german-ppl-source.zip(.sha256).
     Хеш bootstrap.ps1 НЕ пишется в README: он публикуется рядом с установщиком
     и проверяется человеком/агентом из того же релиза.
@@ -23,18 +23,18 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 function Get-Sha { param([string]$Path) (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 function Get-ProjectVersion {
     param([string]$ProjectRoot)
-    $changelog = Join-Path $ProjectRoot 'MCP-stanza-german\CHANGELOG.md'
-    if (-not (Test-Path -LiteralPath $changelog)) { throw 'нет MCP-stanza-german/CHANGELOG.md — неоткуда взять версию' }
-    $text = [IO.File]::ReadAllText($changelog, $utf8)
-    $m = [regex]::Match($text, '(?m)^##\s+(\d+\.\d+\.\d+)(?:\s|$)')
-    if (-not $m.Success) { throw 'в CHANGELOG.md нет заголовка версии вида "## 4.0.2"' }
-    return $m.Groups[1].Value
+    $vjson = Join-Path $ProjectRoot 'MCP-stanza-german\version.json'
+    if (-not (Test-Path -LiteralPath $vjson)) { throw 'нет MCP-stanza-german/version.json — неоткуда взять версию' }
+    try { $data = [IO.File]::ReadAllText($vjson, $utf8) | ConvertFrom-Json } catch { throw "version.json не парсится: $_" }
+    $version = [string]$data.server_version
+    if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "version.json: некорректная версия '$version'" }
+    return $version
 }
 
 $version = Get-ProjectVersion $Root
 if (-not $Tag) { $Tag = "v$version" }
 if ($Tag -ne "v$version") {
-    throw "тег $Tag не совпадает с версией CHANGELOG.md (v$version); версию берём оттуда"
+    throw "тег $Tag не совпадает с версией version.json (v$version); версию берём оттуда"
 }
 
 $bootstrap = Join-Path $Root 'bootstrap.ps1'
@@ -61,7 +61,7 @@ $zsum = Get-Sha $zip
 $body = @"
 # stanza-german-ppl $version — установка (тег $Tag)
 
-Версия взята из MCP-stanza-german/CHANGELOG.md (совпадает с version.json).
+Версия взята из MCP-stanza-german/version.json.
 
 SHA256 bootstrap.ps1: $sum
 SHA256 stanza-german-ppl-source.zip: $zsum
@@ -73,7 +73,7 @@ powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 ``````
 
 Хеш установщика лежит рядом с ним в релизе: bootstrap.ps1.sha256.
-Агент: -Json, -ProgressJson, install-report.json (schema_version 2), коды 0/2/3/4/6.
+Агент: -Json, -ProgressJson, install-report.json, коды 0/2/3/4/6.
 "@
 [IO.File]::WriteAllText((Join-Path $OutDir 'RELEASE_BODY.md'), $body, $utf8)
 Write-Host "version=$version tag=$Tag"

@@ -44,7 +44,7 @@
 $script:Prog = @{
     Mode       = 'quiet'      # pretty | ndjson | quiet
     LogPath    = ''
-    EventFile  = ''        # NDJSON-поток в файл: пишется ВСЕГДА (контракт v2, progress.ndjson)
+    EventFile  = ''        # NDJSON-поток в файл: пишется ВСЕГДА (progress.ndjson)
     Utf8NoBom  = (New-Object System.Text.UTF8Encoding($false))
     Writer     = $null        # буферизованный stdout (только ndjson)
     FlushTick  = 0            # когда последний раз сбрасывали буфер

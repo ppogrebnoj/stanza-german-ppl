@@ -10,7 +10,7 @@
 
     Секретов нет. Полный прогон работает без вопросов: bootstrap сам добавляет -Yes,
     если человек не задал -Check (установка системного софта — смысл bootstrap).
-    Коды и NDJSON/JSON — те же, что у install.ps1 (контракт v2).
+    Коды и NDJSON/JSON — те же, что у install.ps1 (текущий контракт).
 #>
 [CmdletBinding()]
 param(
@@ -25,7 +25,7 @@ $Work = Join-Path $env:TEMP 'stanza-german-bootstrap'
 $Code_Ready = 0; $Code_Human = 2; $Code_Step = 3; $Code_Broken = 4
 
 # реестр ключей: тот же, что docs/flags.json (bootstrap не содержит секретов и не читает токены)
-$switchNames = @('Yes','Acceptance','Json','ProgressJson','Resume','Venv','Force','Repair','Uninstall','Update','CheckUpdates','RaisePython','MakeOfflineKit','Inventory','InventoryOnly','CheckOnly','DryRun','Help')
+$switchNames = @('Yes','Acceptance','Json','ProgressJson','Resume','Venv','Force','Repair','Uninstall','Update','CheckUpdates','RaisePython','MakeOfflineKit','Inventory','InventoryOnly','CheckOnly','DryRun')
 $valueNames = @('Check','ArtifactDir','Python','TargetDir','ModelsDir','Models','OfflineKit','Steps','Retries','Zip','Log')
 $allowed = @($switchNames + $valueNames)
 
@@ -53,7 +53,7 @@ function Say { param([string]$Text, [string]$Color)
 function Emit-Broken { param([int]$Code, [string]$Detail, [bool]$Retryable = $false)
     if ($wantsJson) {
         [Console]::Out.WriteLine(([pscustomobject][ordered]@{
-            schema_version = 2; code = $Code; ok = $false
+            code = $Code; ok = $false
             failures = @([pscustomobject]@{ id = 'bootstrap'; detail = $Detail; retryable = $Retryable })
         } | ConvertTo-Json -Depth 5))
     } else { Say "bootstrap: $Detail" Red }

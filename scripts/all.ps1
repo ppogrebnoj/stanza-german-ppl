@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 <#
-    all.ps1 — внутренний оркестратор установки (контракт v2).
+    all.ps1 — внутренний оркестратор установки (текущий контракт).
     Публичная точка входа — корневой install.ps1; он пробрасывает параметры без изменений.
 
         powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Yes
@@ -47,7 +47,6 @@ param(
     [switch]$DryRun,
     [string]$Zip = '',
     [string]$Log = '',
-    [switch]$Help,
     [Parameter(ValueFromRemainingArguments = $true)][object[]]$Rest
 )
 
@@ -81,7 +80,7 @@ foreach ($fn in @('Get-MachineArch', 'Find-Python', 'Get-PythonInfo', 'Get-Stanz
 }
 if (-not $libOk) {
     Say 'СЛОМАН ЗАПУСК: не загрузились модули установщика (scripts\_env.ps1, _download.ps1, _state.ps1, progress.ps1, inventory.ps1)' Red
-    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'modules'; detail = 'не загрузились модули установщика'; retryable = $false }) }) }
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'modules'; detail = 'не загрузились модули установщика'; retryable = $false }) }) }
     exit $Code_Broken
 }
 
@@ -93,7 +92,7 @@ if (Test-Path -LiteralPath $flagsPath) {
 }
 $allowed = @()
 if ($flagsReg) { $allowed = @($flagsReg.flags | ForEach-Object { $_.name }) }
-else { $allowed = @('Yes','Check','Acceptance','Json','ProgressJson','ArtifactDir','Python','TargetDir','ModelsDir','Models','OfflineKit','Steps','Resume','Venv','Force','Repair','Uninstall','Update','CheckUpdates','RaisePython','MakeOfflineKit','Retries','Inventory','InventoryOnly','CheckOnly','DryRun','Zip','Log','Help') }
+else { $allowed = @('Yes','Check','Acceptance','Json','ProgressJson','ArtifactDir','Python','TargetDir','ModelsDir','Models','OfflineKit','Steps','Resume','Venv','Force','Repair','Uninstall','Update','CheckUpdates','RaisePython','MakeOfflineKit','Retries','Inventory','InventoryOnly','CheckOnly','DryRun','Zip','Log') }
 
 $badArgs = @()
 foreach ($r in @($Rest)) {
@@ -106,7 +105,7 @@ foreach ($r in @($Rest)) {
 if ($badArgs.Count) {
     $msg = 'неизвестный параметр: ' + (($badArgs | Select-Object -Unique) -join ', ')
     Say "СЛОМАН ЗАПУСК: $msg (код 4)" Red
-    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; arch = (Get-MachineArch); failures = @([pscustomobject]@{ id = 'params'; detail = $msg; retryable = $false }) }) }
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ code = $Code_Broken; ok = $false; arch = (Get-MachineArch); failures = @([pscustomobject]@{ id = 'params'; detail = $msg; retryable = $false }) }) }
     exit $Code_Broken
 }
 
@@ -129,7 +128,7 @@ if ($checkMode) {
     $mode = "check-$checkMode"
     if ($checkModes -notcontains $checkMode) {
         Say "СЛОМАН ЗАПУСК: неизвестная область -Check '$Check' (код 4)" Red
-        if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'params'; detail = "неизвестная область -Check: $Check"; retryable = $false }) }) }
+        if ($Json) { Emit-Json ([pscustomobject][ordered]@{ code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'params'; detail = "неизвестная область -Check: $Check"; retryable = $false }) }) }
         exit $Code_Broken
     }
 }
@@ -140,7 +139,7 @@ $arch = Get-MachineArch
 if ($arch -ne 'AMD64' -or [IntPtr]::Size -ne 8) {
     $msg = "нужна Windows x64 (AMD64); текущая архитектура: $arch, шелл: $([IntPtr]::Size * 8) бит. Загрузки не начинались"
     Say "СЛОМАН ЗАПУСК: $msg" Red
-    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; arch = $arch; mode = $mode; failures = @([pscustomobject]@{ id = 'platform'; detail = $msg; retryable = $false; remedy = 'запустите 64-битный PowerShell на Windows x64' }) }) }
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ code = $Code_Broken; ok = $false; arch = $arch; mode = $mode; failures = @([pscustomobject]@{ id = 'platform'; detail = $msg; retryable = $false; remedy = 'запустите 64-битный PowerShell на Windows x64' }) }) }
     exit $Code_Broken
 }
 
@@ -324,7 +323,7 @@ function Read-McpSnippet {
 
 function Invoke-CheckMode {
     param([string]$Area)
-    $result = [ordered]@{ schema_version = 2; check = $Area; ok = $false; code = $Code_Ready; arch = $arch; mode = $mode }
+    $result = [ordered]@{ check = $Area; ok = $false; code = $Code_Ready; arch = $arch; mode = $mode }
 
     if ($Area -eq 'capabilities') {
         if (-not $flagsReg) { $result.code = $Code_Broken; $result.reason = 'нет docs/flags.json' }
@@ -423,7 +422,7 @@ try {
     $artifactDir = Initialize-Artifacts -ArtifactDir $artifactDir
 } catch {
     Say "СЛОМАН ЗАПУСК: $_" Red
-    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Step; ok = $false; failures = @([pscustomobject]@{ id = 'mutex'; detail = "$_"; retryable = $true; next_cmd = (Get-NextCommand) }) }) }
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ code = $Code_Step; ok = $false; failures = @([pscustomobject]@{ id = 'mutex'; detail = "$_"; retryable = $true; next_cmd = (Get-NextCommand) }) }) }
     exit $Code_Step
 }
 if (-not (Test-Path -LiteralPath $artifactDir)) { $artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path }
@@ -435,7 +434,7 @@ if ($Steps) {
     $badSteps = @($want | Where-Object { $stepIds -notcontains $_ })
     if ($badSteps.Count) {
         Say ('СЛОМАН ЗАПУСК: неизвестный шаг ' + ($badSteps -join ', ')) Red
-        if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'params'; detail = 'неизвестный шаг: ' + ($badSteps -join ', '); retryable = $false }) }) }
+        if ($Json) { Emit-Json ([pscustomobject][ordered]@{ code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'params'; detail = 'неизвестный шаг: ' + ($badSteps -join ', '); retryable = $false }) }) }
         Release-Artifacts; exit $Code_Broken
     }
     $stepIds = $want
@@ -591,6 +590,17 @@ foreach ($id in $stepIds) {
                             [IO.File]::WriteAllText($hookDst, $text, (New-Object System.Text.UTF8Encoding($false)))
                         }
                         $result = New-Step -Id $id -Phase 'git-init' -Rc $rcAll -Detail 'ZIP-копия: init/origin/fetch/reset --mixed + pre-commit hook' -Status $(if ($rcAll -eq 0) { 'OK' } else { 'FAIL' }) -Retryable ($rcAll -ne 0) -NextCmd (Get-NextCommand $id)
+                    }
+                }
+                # Обычный git clone: шаг git — единственный владелец pre-commit hook.
+                if (@('OK','SKIP') -contains $result.status -and (Test-Path -LiteralPath (Join-Path $Root '.git'))) {
+                    $hookSrc = Join-Path $Root 'правило\git-hooks\pre-commit'
+                    $hookDst = Join-Path $Root '.git\hooks\pre-commit'
+                    $hookDir = Split-Path -Parent $hookDst
+                    if (-not (Test-Path -LiteralPath $hookDir)) { New-Item -ItemType Directory -Force -Path $hookDir | Out-Null }
+                    if ((Test-Path -LiteralPath $hookSrc) -and ((-not (Test-Path -LiteralPath $hookDst)) -or $Force)) {
+                        $text = [IO.File]::ReadAllText($hookSrc) -replace "`r`n", "`n"
+                        [IO.File]::WriteAllText($hookDst, $text, (New-Object System.Text.UTF8Encoding($false)))
                     }
                 }
             }
@@ -843,18 +853,28 @@ $verdict = $(if ($code -eq 0 -and $serverOk) { 'ГОТОВО: сервер ус�
              elseif ($code -eq 6) { 'НУЖНА ПЕРЕЗАГРУЗКА' } else { 'СЛОМАН ЗАПУСК' })
 
 $secs = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+# Интерпретатор в отчёте — тот же, что реально используется шагами и сниппетом MCP.
+$venvPython = Join-Path $Root '.venv\Scripts\python.exe'
+$reportPython = $(if ($Venv -and (Test-Path -LiteralPath $venvPython)) { $venvPython }
+                   elseif ($pyInfo) { $pyInfo.Path } else { '' })
+# Размер пакетов: весь .venv или site-packages системного Python (в глобальном режиме).
+$packagesDir = ''
+if ($Venv -and (Test-Path -LiteralPath (Join-Path $Root '.venv'))) { $packagesDir = Join-Path $Root '.venv' }
+elseif ($reportPython) {
+    try { $packagesDir = (& $reportPython -c "import site;print(site.getsitepackages()[0])" 2>$null | Select-Object -First 1) } catch { }
+}
 $sizes = [ordered]@{
-    packages_mb = [math]::Round((Get-DirBytes $(if ($Venv) { (Join-Path $Root '.venv') } else { '' })) / 1MB, 1)
+    packages_mb = [math]::Round((Get-DirBytes $packagesDir) / 1MB, 1)
     models_mb = [math]::Round((Get-DirBytes $resources) / 1MB, 1)
     downloads_mb = [math]::Round((Get-DirBytes (Join-Path $artifactDir 'downloads')) / 1MB, 1)
 }
 $timing = [ordered]@{ started = $started.ToString('yyyy-MM-ddTHH:mm:ssZ'); finished = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ'); total_seconds = $secs }
 $report = [ordered]@{
-    schema_version = 2; code = $code; ok = ($code -eq 0); verdict = $verdict
+    code = $code; ok = ($code -eq 0); verdict = $verdict
     arch = $arch; mode = $mode; mcp_registration = $mcpRegistration
     report_path = (Join-Path $artifactDir 'install-report.json')
     mcp_snippet_path = $snippetPath
-    python_path = $pyInfo.Path
+    python_path = $reportPython
     stanza_resources = $resources
     steps = @($stepResults.ToArray()); blockers = @($blockers.ToArray()); failures = @($failures.ToArray())
     next_action = $nextAction; sizes = $sizes; timings = $timing

@@ -2,7 +2,7 @@
 <#
     _env.ps1 — единственный источник правды о среде (dot-source, без param-блока):
     архитектура, каталоги артефактов/моделей/установки Python, поиск интерпретатора,
-    STANZA_RESOURCES_DIR. all.ps1, setup.ps1 и inventory.ps1 обязаны пользоваться
+    STANZA_RESOURCES_DIR. all.ps1 и inventory.ps1 обязаны пользоваться
     именно этой функцией поиска Python (Get-PythonInfo / Find-Python).
 
     Ничего не пишет: библиотека пригодна для -Check (режим только чтение).

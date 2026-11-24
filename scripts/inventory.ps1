@@ -54,8 +54,8 @@ try {
 # Ключи файла разбираются вручную из $args (см. Invoke-InventoryCli в конце файла).
 $script:KI_InvItems = New-Object System.Collections.Generic.List[object]
 
-# Единый поиск/классификация Python живёт в scripts\_env.ps1 (all.ps1 и setup.ps1 тоже
-# берут оттуда версию, разрядность, Store-alias и PEP668). Повторного кода нет.
+# Единый поиск/классификация Python живёт в scripts\_env.ps1 (all.ps1 берёт оттуда
+# версию, разрядность, Store-alias и PEP668). Повторного кода нет.
 $envLib = Join-Path $PSScriptRoot '_env.ps1'
 if (Test-Path -LiteralPath $envLib) { try { . $envLib } catch { } }
 

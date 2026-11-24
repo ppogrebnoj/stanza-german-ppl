@@ -97,25 +97,8 @@ jobs:
           PYTHONUTF8: "1"
         run: python scripts/mcp_probe.py
 
-  powershell:
-    name: setup.ps1 разбирается и планирует шаги (dry-run)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.15"
-
-      - name: setup.ps1 -DryRun
-        shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1 -DryRun
-
-  all_ps1:
-    # Контракт «одной команды» (scripts/all.ps1): код разбирается, план печатается,
-    # префлайт отвечает машинно. На свежем раннере venv и моделей нет — это ожидаемый
-    # код 3 (есть FAIL в doctor), а не падение: скрипт честно говорит «среда не готова».
-    name: all.ps1 — dry-run и префлайт (Windows)
+  installer:
+    name: install.ps1 / all.ps1 — текущий контракт (Windows)
     runs-on: windows-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -129,18 +112,17 @@ jobs:
       - name: Синтаксис скриптов установки (PowerShell 5.1)
         shell: powershell
         run: |
-          foreach ($f in @("scripts\all.ps1", "scripts\setup.ps1")) {
-              $err = $null
-              [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $f), [ref]$null, [ref]$err)
-              if ($err.Count) { $f; $err | ForEach-Object { $_.ToString() }; exit 1 }
-              "$f - разбирается без ошибок"
+          foreach ($f in @("install.ps1", "bootstrap.ps1", "scripts\all.ps1")) {
+            $err = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $f), [ref]$null, [ref]$err)
+            if ($err.Count) { $f; $err | ForEach-Object { $_.ToString() }; exit 1 }
+            "$f - разбирается без ошибок"
           }
 
-      - name: Инвентаризация среды и тесты модулей (инвентаризация, прогресс)
+      - name: Инвентаризация и тесты модулей
         shell: powershell
         run: |
-          # -Inventory: 19 позиций, статусы, поле fix; на свежем раннере venv/моделей нет →
-          # ожидаемый код 2 (нужен человек), 4 = сломанный скрипт
+          # -Check-режимы только читают; inventory.ps1 как отдельный CLI тоже работает.
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/inventory.ps1 -Json
           if ($LASTEXITCODE -ge 4) { "::error::inventory.ps1 дал код $LASTEXITCODE"; exit 1 }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-inventory.ps1
@@ -148,47 +130,36 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-progress.ps1 -Fast
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: "all.ps1 -DryRun (по умолчанию — глобально, без .venv)"
+      - name: Регресс текущего контракта
         shell: powershell
         run: |
-          # дефолт: зависимости в системный Python, venv не создаётся (setup.ps1 без -Venv)
-          $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun -Steps venv,deps,models,doctor 2>&1
-          $out | ForEach-Object { $_ }
-          if ($LASTEXITCODE -ge 4) { "all.ps1 сломан: код $LASTEXITCODE"; exit 1 }
-          $txt = ($out -join "`n")
-          if ($txt -match '-Venv') { "::error::в глобальном режиме setup.ps1 получил -Venv"; exit 1 }
-          "глобальный режим: -Venv не передаётся, верно"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-contract.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: "all.ps1 -DryRun -Venv (опция — в .venv)"
+      - name: "all.ps1 -Check plan -Json"
         shell: powershell
         run: |
-          $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -DryRun -Steps venv,deps -Venv 2>&1
-          $out | ForEach-Object { $_ }
-          if ($LASTEXITCODE -ge 4) { "all.ps1 -Venv сломан: код $LASTEXITCODE"; exit 1 }
-          # -match/-notmatch по массиву строк возвращает ОТБОР строк (истина, если хоть одна не совпала),
-          # поэтому сравниваем склейку, а не массив
-          $txt = ($out -join "`n")
-          if ($txt -notmatch '-Venv') { "::error::-Venv не доехал до setup.ps1"; exit 1 }
-          "-Venv доехал до setup.ps1, верно"
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -Check plan -Json
+          if ($LASTEXITCODE -ne 0) { "::error::-Check plan дал код $LASTEXITCODE"; exit 1 }
+          $j = ($out -join "`n") | ConvertFrom-Json
+          if (-not $j.plan -or @($j.plan).Count -eq 0) { "::error::в плане нет шагов"; exit 1 }
+          $ids = @($j.plan | ForEach-Object { "$($_.id)=$($_.status)" }) -join ', '
+          "план: $ids"
 
-      - name: "all.ps1 шаг mcp: образец конфига как фикстура"
-        shell: bash
+      - name: "all.ps1 -Check mcp -Json"
+        shell: powershell
         run: |
-          out="${RUNNER_TEMP:-.}/mcp-check.json"
-          code=0
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -CheckOnly -Steps mcp -McpConfig MCP-stanza-german/mcp.json.example -Json > "$out" || code=$?
-          echo "код выхода: $code"
-          [ "$code" -le 1 ] || { echo "::error::шаг mcp на валидном образце дал код $code"; exit 1; }
-          grep -q 'mcp_snippet' "$out" || { echo "::error::в -Json нет mcp_snippet"; exit 1; }
-          grep -q 'stanza-german' "$out" && echo "mcp: запись в образце найдена, фрагмент печатается"
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -Check mcp -Json
+          $code = $LASTEXITCODE
+          if ($code -ne 0 -and $code -ne 2) { "::error::-Check mcp дал код $code"; exit 1 }
+          $j = ($out -join "`n") | ConvertFrom-Json
+          if (-not $j.snippet -or -not $j.hint) { "::error::нет причины проверки mcp"; exit 1 }
+          "mcp check: код $code, причина: $($j.snippet.reason)"
 
-      - name: all.ps1 -CheckOnly -Json (префлайт на чистой машине)
-        shell: bash
+      - name: "install.ps1 -Check ready -Json"
+        shell: powershell
         run: |
-          code=0
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/all.ps1 -CheckOnly -Json || code=$?
-          echo "код выхода all.ps1: $code"
-          if [ "$code" -ge 4 ]; then echo "::error::all.ps1 сломан: код 4 (СЛОМАН ЗАПУСК)"; exit 1; fi
-          # 2 = нет клиента MCP / gh / места — на свежем раннере это норма,
-          # 3 = doctor FAIL (venv на раннере не ставится) — тоже норма
-          echo "ok: all.ps1 отработал и ответил машинно (код $code)"
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Check ready -Json
+          $code = $LASTEXITCODE
+          if ($code -ge 4) { "::error::-Check ready сломан: код $code"; exit 1 }
+          "ready check: код $code (2 = среда ещё не собрана — нормально на чистом раннере)"

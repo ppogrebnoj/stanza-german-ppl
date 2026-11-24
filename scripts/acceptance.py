@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""acceptance.py — приёмка v2: doctor + smoke fast/full + валидаторы + mcp_probe.
+"""acceptance.py — приёмка: doctor + smoke fast/full + валидаторы + mcp_probe.
 
     python scripts/acceptance.py --json
 

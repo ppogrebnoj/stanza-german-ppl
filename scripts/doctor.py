@@ -167,9 +167,9 @@ def check_git():
         warn("git_remote", "origin не задан — проект без внешней копии")
     dst = P.hook_dst()
     if not dst.exists():
-        warn("git_hook", "pre-commit не установлен (scripts/setup.ps1 поставит)")
+        warn("git_hook", "pre-commit не установлен (установщик шага git поставит)")
     elif b"\r\n" in dst.read_bytes():
-        warn("git_hook", f"{dst} с CRLF — переустановите: scripts/setup.ps1")
+        warn("git_hook", f"{dst} с CRLF — переустановите: install.ps1 -Steps git -Force -Yes")
     else:
         ok("git_hook", str(dst))
 

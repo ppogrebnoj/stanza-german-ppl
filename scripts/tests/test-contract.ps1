@@ -1,11 +1,11 @@
 ﻿#Requires -Version 5.1
 <#
-    test-contract.ps1 — регресс контракта v2 без Python и сети.
+    test-contract.ps1 — регресс текущего контракта без Python и сети.
 
         powershell -NoProfile -ExecutionPolicy Bypass -File scripts\tests\test-contract.ps1
 
     Проверяет: неизвестный параметр = код 4, -Check только чтение, capabilities = docs/flags.json,
-    одинаковый вывод install.ps1 и scripts/all.ps1, schema_version 2, NDJSON в файле, Resume SKIP,
+    одинаковый вывод install.ps1 и scripts/all.ps1, поля отчёта, NDJSON в файле, Resume SKIP,
     нормализацию архитектуры. Код выхода 0 = все тесты зелёные.
 #>
 $ErrorActionPreference = 'Continue'
@@ -37,7 +37,7 @@ function Invoke-Ki {
     return [pscustomobject]@{ rc = $rc; lines = $lines; json = $final }
 }
 
-Write-Host "контракт v2: $root" Cyan
+Write-Host "текущий контракт: $root" Cyan
 
 # 1. неизвестный параметр
 $r = Invoke-Ki $entry @('-Bogus','1','-Json')
@@ -52,6 +52,19 @@ $namesOut = @($r1.json.capabilities.flags | ForEach-Object { $_.name }) -join ',
 Check-Ok ($r1.rc -eq 0 -and $namesReg -eq $namesOut) 'capabilities == docs/flags.json' ("reg=$namesReg out=$namesOut")
 Check-Ok (($r1.json | ConvertTo-Json -Depth 8) -eq ($r2.json | ConvertTo-Json -Depth 8)) 'install.ps1 == all.ps1 output'
 
+# 2b. bootstrap.ps1 самодостаточен: его реестр ключей обязан совпадать с docs/flags.json
+$bootText = [IO.File]::ReadAllText((Join-Path $root 'bootstrap.ps1'))
+$bootFlags = @()
+foreach ($var in @('switchNames', 'valueNames')) {
+    $m = [regex]::Match($bootText, ('\$' + $var + "\s*=\s*@\(([^)]*)\)"))
+    if ($m.Success) {
+        foreach ($q in [regex]::Matches($m.Groups[1].Value, "'([^']+)'")) { $bootFlags += $q.Groups[1].Value }
+    }
+}
+$bootJoined = (($bootFlags | Sort-Object -Unique) -join ',')
+$regJoined = (($namesReg -split ',') | Sort-Object -Unique) -join ','
+Check-Ok ($bootJoined -eq $regJoined) 'bootstrap flags == docs/flags.json' ("bootstrap=$bootJoined registry=$regJoined")
+
 # 3. -Check не пишет файлы
 $tmp = Join-Path $env:TEMP ('ki-contract-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -64,14 +77,14 @@ Check-Ok (-not (Get-ChildItem -LiteralPath $tmp -Force | Where-Object { $_.Name 
 $r = Invoke-Ki $entry @('-Check','mcp','-Json')
 Check-Ok ($r.rc -eq 2 -and "$($r.json.snippet.reason)" -match 'mcp-snippet' -and "$($r.json.hint)" -match 'RULE_ROOT|snippet|клиент') 'check mcp explains reason' ("rc=" + $r.rc + " " + $r.json.snippet.reason)
 
-# 5. отчёт v2 + NDJSON в файле
+# 5. отчёт + NDJSON в файле
 $art = Join-Path $tmp 'art'
 $r = Invoke-Ki $entry @('-Steps','doctor','-Json','-ProgressJson','-ArtifactDir',$art)
 $report = $null
 try { $report = Get-Content -LiteralPath (Join-Path $art 'install-report.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
-$need = @('schema_version','code','ok','arch','mode','mcp_registration','report_path','mcp_snippet_path','python_path','stanza_resources','steps','blockers','failures','next_action','sizes','timings','acceptance')
+$need = @('code','ok','arch','mode','mcp_registration','report_path','mcp_snippet_path','python_path','stanza_resources','steps','blockers','failures','next_action','sizes','timings','acceptance')
 $missing = @($need | Where-Object { $null -eq $report.PSObject.Properties[$_] })
-Check-Ok ($r.json.schema_version -eq 2 -and $missing.Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $art 'install.log'))) 'report schema_version 2 and artifacts' ("missing=" + ($missing -join ','))
+Check-Ok ($r.json.code -eq 2 -and $missing.Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $art 'install.log'))) 'report fields and artifacts' ("missing=" + ($missing -join ','))
 $ndjson = @(Get-Content -LiteralPath (Join-Path $art 'progress.ndjson') -ErrorAction SilentlyContinue | Where-Object { $_.Trim() })
 $parsed = 0
 foreach ($line in $ndjson) { try { $null = $line | ConvertFrom-Json; $parsed++ } catch { } }
@@ -79,7 +92,7 @@ Check-Ok ($parsed -eq $ndjson.Count -and $parsed -gt 0) 'progress.ndjson parses 
 Check-Ok (@(Get-ChildItem -LiteralPath $art -Filter 'install-report-*.json').Count -ge 1) 'timestamped report saved'
 
 # 6. Resume: готовый шаг -> SKIP
-$seed = [ordered]@{ schema_version = 2; code = 0; steps = @([pscustomobject]@{ id='doctor'; status='OK'; seconds=1; detail='seed' }) }
+$seed = [ordered]@{ code = 0; steps = @([pscustomobject]@{ id='doctor'; status='OK'; seconds=1; detail='seed' }) }
 [IO.File]::WriteAllText((Join-Path $art 'install-report.json'), ($seed | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
 $r = Invoke-Ki $entry @('-Steps','doctor','-Resume','-Json','-ArtifactDir',$art)
 Check-Ok ($r.rc -eq 0 -and $r.json.steps[0].status -eq 'SKIP') 'Resume skips ready steps' ("rc=" + $r.rc + " status=" + $r.json.steps[0].status)

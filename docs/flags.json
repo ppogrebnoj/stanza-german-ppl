@@ -1,5 +1,4 @@
 {
-  "schema_version": 2,
   "source": "docs/flags.json",
   "contract": "install.ps1 and scripts/all.ps1 accept exactly this set; unknown flag => code 4",
   "checks": ["inventory", "ready", "plan", "mcp", "status", "capabilities"],
@@ -32,7 +31,6 @@
     {"name": "DryRun", "kind": "switch", "alias": "Check plan", "description": "совместимость: то же, что -Check plan"},
     {"name": "Zip", "kind": "value", "alias": "OfflineKit", "description": "совместимость: архив моделей"},
     {"name": "Log", "kind": "value", "alias": "ArtifactDir", "description": "совместимость: каталог артефактов"},
-    {"name": "Retries", "kind": "value", "description": "число попыток сетевых шагов", "default": "4"},
-    {"name": "Help", "kind": "switch", "description": "эта справка"}
+    {"name": "Retries", "kind": "value", "description": "число попыток сетевых шагов", "default": "4"}
   ]
 }

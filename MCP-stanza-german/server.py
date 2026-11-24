@@ -37,7 +37,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _SERVER_LOG_FILE = os.path.join(_BASE_DIR, "server.log")
 _MAX_LOG_SIZE = 2 * 1024 * 1024
 
-# version.json — текущая версия сервера (см. CHANGELOG.md: история).
+# version.json — единственный источник текущей версии сервера.
 def _get_server_version() -> str:
     try:
         with open(os.path.join(_BASE_DIR, "version.json"), "r", encoding="utf-8") as f:

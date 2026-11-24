@@ -1,4 +1,4 @@
-name: installer-contract-v2
+name: installer-contract
 
 on:
   push:

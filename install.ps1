@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 <#
-    install.ps1 — публичный интерфейс установки v2 (человек, агент, bootstrap.ps1, CI).
+    install.ps1 — публичный интерфейс установки (человек, агент, bootstrap.ps1, CI).
     Логики нет: параметры пробрасываются в scripts\all.ps1 без изменений.
     Реестр разрешённых ключей — docs/flags.json; неизвестный ключ даёт код 4.
 
@@ -61,7 +61,7 @@ if ($errors.Count) {
     if ($wantsJson) {
         $msg = ($errors -join '; ')
         [Console]::Out.WriteLine(([pscustomobject][ordered]@{
-            schema_version = 2; code = 4; ok = $false
+            code = 4; ok = $false
             failures = @([pscustomobject]@{ id = 'params'; detail = $msg; retryable = $false })
         } | ConvertTo-Json -Depth 5))
     }
@@ -69,7 +69,7 @@ if ($errors.Count) {
 }
 if (-not (Test-Path -LiteralPath $target)) {
     if ($wantsJson) {
-        [Console]::Out.WriteLine(([pscustomobject][ordered]@{ schema_version = 2; code = 4; ok = $false; failures = @([pscustomobject]@{ id = 'entry'; detail = "нет $target"; retryable = $false }) } | ConvertTo-Json -Depth 5))
+        [Console]::Out.WriteLine(([pscustomobject][ordered]@{ code = 4; ok = $false; failures = @([pscustomobject]@{ id = 'entry'; detail = "нет $target"; retryable = $false }) } | ConvertTo-Json -Depth 5))
     } else { Write-Host "СЛОМАН ЗАПУСК: нет $target — обновите репозиторий" -ForegroundColor Red }
     exit 4
 }

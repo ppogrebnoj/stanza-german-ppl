@@ -15,16 +15,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Determine version from CHANGELOG.md
+      - name: Determine version from version.json
         id: version
         shell: powershell
         run: |
-          $text = Get-Content .\MCP-stanza-german\CHANGELOG.md -Raw -Encoding UTF8
-          $m = [regex]::Match($text, '(?m)^##\s+(\d+\.\d+\.\d+)(?:\s|$)')
-          if (-not $m.Success) { throw 'нет версии в CHANGELOG.md' }
-          $tag = "v$($m.Groups[1].Value)"
+          $data = Get-Content .\MCP-stanza-german\version.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $version = [string]$data.server_version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "version.json: некорректная версия '$version'" }
+          $tag = "v$version"
           $ref = "${{ github.ref_name }}"
-          if ($ref -like 'v*' -and $ref -ne $tag) { throw "тег $ref не совпадает с версией CHANGELOG.md ($tag)" }
+          if ($ref -like 'v*' -and $ref -ne $tag) { throw "тег $ref не совпадает с версией version.json ($tag)" }
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
 
       - name: Build release assets
