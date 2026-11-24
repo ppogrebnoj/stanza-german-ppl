@@ -61,10 +61,14 @@ function Get-PythonInfo {
     try { $Path = (Resolve-Path -LiteralPath $Path).Path } catch { }
     $ver = $null; $bits = $null
     try {
-        $ver = (& $Path -c "import sys;print('%d.%d.%d' % sys.version_info[:3])" 2>$null | Select-Object -First 1)
-        if ($LASTEXITCODE -ne 0) { $ver = $null }
-        $bits = (& $Path -c "import struct;print(struct.calcsize('P') * 8)" 2>$null | Select-Object -First 1)
-        if ($LASTEXITCODE -ne 0) { $bits = $null }
+        # PS 5.1: конвейер `cmd | Select-Object -First 1` обрывается досрочно и оставляет
+        # $LASTEXITCODE = -1, поэтому код возврата читаем ДО срезания вывода.
+        # @(...) обязателен: без него одиночная строка индексируется посимвольно и
+        # $verRaw[0] вернёт "3" вместо "3.15.2".
+        $verRaw = @(& $Path -c "import sys;print('%d.%d.%d' % sys.version_info[:3])" 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $verRaw.Count -gt 0) { $ver = "$($verRaw[0])".Trim() }
+        $bitsRaw = @(& $Path -c "import struct;print(struct.calcsize('P') * 8)" 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $bitsRaw.Count -gt 0) { $bits = "$($bitsRaw[0])".Trim() }
     } catch { }
     if (-not $ver) { return $null }
     $ver = "$ver".Trim(); $bits = "$bits".Trim()
@@ -82,7 +86,13 @@ function Get-PythonInfo {
         $sid = $me.User.Value
         $allow = $false; $deny = $false
         foreach ($r in $acl.Access) {
-            try { if ($r.IdentityReference.Value -ne $sid) { continue } } catch { continue }
+            # Сравниваем SID, а не IdentityReference.Value: на локализованной Windows имя
+            # аккаунта ("PC\user") никогда не совпадёт с SID, и каталог ложно считается
+            # недоступным для записи.
+            $rid = $null
+            try { $rid = $r.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { }
+            if (-not $rid) { try { $rid = $r.IdentityReference.Value } catch { } }
+            if ($rid -ne $sid) { continue }
             if ($r.AccessControlType -eq 'Deny' -and ($r.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Write)) { $deny = $true }
             if ($r.AccessControlType -eq 'Allow' -and ($r.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Write)) { $allow = $true }
         }

@@ -149,7 +149,9 @@ function Open-ProgressLog {
     if ($mode -eq 'ndjson') {
         try {
             $script:Prog.Writer = [System.IO.StreamWriter]::new([Console]::OpenStandardOutput(), (New-Object System.Text.UTF8Encoding($false)))
-            $script:Prog.Writer.AutoFlush = $false
+            # AutoFlush = true: иначе события копятся в буфере и `-Json -ProgressJson`
+            # выглядит как зависание (шаг живёт минутами, а в stdout ничего нет).
+            $script:Prog.Writer.AutoFlush = $true
         } catch { $script:Prog.Writer = $null }
     }
 

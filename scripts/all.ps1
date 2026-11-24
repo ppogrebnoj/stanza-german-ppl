@@ -191,17 +191,68 @@ function Add-StepResult { param($Step)
 }
 
 function Invoke-Logged {
-    param([string]$Exe, [string[]]$Argv, [string]$Id, [switch]$NoLogOutput)
+    param([string]$Exe, [string[]]$Argv, [string]$Id, [switch]$NoLogOutput, [string]$WorkingDir = '')
     $logFile = Join-Path $artifactDir ($Id + '.log')
     $enc = New-Object System.Text.UTF8Encoding($false)
-    try { [IO.File]::AppendAllText($logFile, ("> $Exe " + ($Argv -join ' ') + "`n"), $enc) } catch { }
-    $out = @()
+    $outFile = Join-Path $artifactDir ($Id + '.stdout.log')
+    $errFile = Join-Path $artifactDir ($Id + '.stderr.log')
+    foreach ($f in @($outFile, $errFile)) { try { [IO.File]::WriteAllText($f, "", $enc) } catch { } }
+    try { [IO.File]::WriteAllText($logFile, ("> $Exe " + ($Argv -join ' ') + "`n"), $enc) } catch { }
+    $rc = 1
+    $t0 = Get-Date
+    $fsOut = $null; $fsErr = $null
     try {
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        $out = @(& $Exe @Argv 2>&1 | ForEach-Object { "$_" })
-        $rc = $LASTEXITCODE
-        $ErrorActionPreference = $prev
-    } catch { $rc = 1; $out = @("$_") }
+        # Запуск через System.Diagnostics.Process, а не Start-Process:
+        # 1) Start-Process -PassThru без -Wait не заполняет ExitCode, и упавший шаг
+        #    рапортует OK (проверено: doctor.py rc=1 -> шаг сообщал rc=0);
+        # 2) нужен рабочий каталог: `git init` иначе создаёт репозиторий в профиле;
+        # 3) нужен поток в файл, чтобы heartbeat показывал реальный объём вывода.
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $Exe
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $true
+        if ($WorkingDir) { $psi.WorkingDirectory = $WorkingDir }
+        if ($Argv -and $Argv.Count) {
+            $psi.Arguments = (($Argv | ForEach-Object {
+                $a = "$_"
+                if ($a -match '[\s"]') { '"' + ($a -replace '"', '\"') + '"' } else { $a }
+            }) -join ' ')
+        }
+        $p = New-Object System.Diagnostics.Process
+        $p.StartInfo = $psi
+        $null = $p.Start()
+        $fsOut = [IO.File]::Open($outFile, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+        $fsErr = [IO.File]::Open($errFile, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+        $tOut = $p.StandardOutput.BaseStream.CopyToAsync($fsOut)
+        $tErr = $p.StandardError.BaseStream.CopyToAsync($fsErr)
+        # Heartbeat: pip install и stanza.download молчат минутами — показываем, что процесс жив.
+        while (-not $p.HasExited) {
+            Start-Sleep -Seconds 2
+            try {
+                $sec = [int]((Get-Date) - $t0).TotalSeconds
+                $bytes = 0
+                foreach ($f in @($outFile, $errFile)) {
+                    try { $bytes += (Get-Item -LiteralPath $f).Length } catch { }
+                }
+                Write-Progress2 -Step $Id -Sub ((Split-Path -Leaf $Exe) + ' · ' + $sec + ' с') -BytesDone $bytes -Msg 'работает'
+            } catch { }
+        }
+        try { $p.WaitForExit() } catch { }
+        try { [void]$tOut.Wait(10000) } catch { }
+        try { [void]$tErr.Wait(10000) } catch { }
+        $rc = [int]$p.ExitCode
+    } catch {
+        $rc = 1
+        try { [IO.File]::AppendAllText($errFile, ("$_`n"), $enc) } catch { }
+    } finally {
+        foreach ($fs in @($fsOut, $fsErr)) { try { if ($fs) { $fs.Dispose() } } catch { } }
+    }
+    $out = @()
+    foreach ($f in @($outFile, $errFile)) {
+        try { if ((Get-Item -LiteralPath $f).Length -gt 0) { $out += @(Get-Content -LiteralPath $f -Encoding UTF8) } } catch { }
+    }
     if ($out.Count) {
         try { [IO.File]::AppendAllText($logFile, (($out -join "`n") + "`n"), $enc) } catch { }
         if (-not $NoLogOutput -and -not $Json) { foreach ($l in $out) { Say ('  | ' + $l) } }
@@ -266,7 +317,11 @@ print("\n".join(miss))
     }
     $outFile = Join-Path $artifactDir 'deps_versions.txt'
     if ($readOnly) {
-        $out = & $pyExe -c $code (Get-LockPath $Root) 2>$null
+        # Многострочный код через `python -c` теряет кавычки при передаче в native-команду
+        # (PS 5.1/7), поэтому и в read-only режиме пишем временный файл.
+        $tmpPy = Join-Path $env:TEMP 'stanza_verify_deps.py'
+        [IO.File]::WriteAllText($tmpPy, $code, (New-Object System.Text.UTF8Encoding($false)))
+        $out = & $pyExe $tmpPy (Get-LockPath $Root) 2>$null
     } else {
         $null = & $pyExe $tmpPy (Get-LockPath $Root) > $outFile 2>&1
         $out = @(Get-Content -LiteralPath $outFile -ErrorAction SilentlyContinue)
@@ -572,7 +627,7 @@ foreach ($id in $stepIds) {
                     }
                 }
                 # ZIP-копия без .git: init + origin + fetch + reset --mixed + pre-commit hook
-                if ($result.status -eq 'OK' -and (Test-Path (Join-Path $Root '.git')) -eq $false) {
+                if (@('OK','SKIP') -contains $result.status -and (Test-Path (Join-Path $Root '.git')) -eq $false) {
                     if (-not $Force) {
                         $result = New-Step -Id $id -Phase 'git-init' -Status 'BLOCK' -Detail 'ZIP-копия: нет .git, нужен -Force для init/fetch/reset --mixed' -Remedy 'запустите с -Force -Yes (или сделайте git clone)'
                         Add-Blocker 'git-repo' 'ZIP-копия не превращена в репозиторий' 'powershell -ExecutionPolicy Bypass -File .\install.ps1 -Steps git -Force -Yes'
@@ -580,7 +635,7 @@ foreach ($id in $stepIds) {
                         # Invoke-Logged не умеет конвейеры: выполняем по шагам
                         $rcAll = 0
                         foreach ($ga in @(@('init','-b','master','.'), @('remote','add','origin','https://github.com/ppogrebnoj/stanza-german-ppl.git'), @('fetch','origin','master'), @('reset','--mixed','FETCH_HEAD'))) {
-                            $rcOne = Invoke-Logged -Exe 'git.exe' -Argv $ga -Id 'git-repo'
+                            $rcOne = Invoke-Logged -Exe 'git.exe' -Argv $ga -Id 'git-repo' -WorkingDir $Root
                             if ($rcOne -ne 0 -and $ga[0] -ne 'remote') { $rcAll = $rcOne; break }
                         }
                         $hookSrc = Join-Path $Root 'правило\git-hooks\pre-commit'
@@ -725,7 +780,8 @@ foreach ($id in $stepIds) {
                     $snippetPath = Save-McpSnippet -ArtifactDir $artifactDir -Root $Root -Json $mcpSnippetJson
                     $valid = Read-McpSnippet
                     # шим use.ps1 / python.cmd: абсолютный путь + переменные процесса
-                    $use = "@echo off`r`n`$env:PYTHONUTF8='1'`r`n`$env:STANZA_RESOURCES_DIR='$resources'`r`n`"$pyFor`" %*`r`n"
+                    # python.cmd — это cmd.exe, а не PowerShell: set вместо $env:
+                    $use = "@echo off`r`nset PYTHONUTF8=1`r`nset STANZA_RESOURCES_DIR=$resources`r`n`"$pyFor`" %*`r`n"
                     [IO.File]::WriteAllText((Join-Path $Root 'python.cmd'), $use, (New-Object System.Text.ASCIIEncoding))
                     $usePs = "`$env:PYTHONUTF8='1'`r`n`$env:STANZA_RESOURCES_DIR='$resources'`r`n& '$pyFor' @args`r`n"
                     [IO.File]::WriteAllText((Join-Path $Root 'use.ps1'), $usePs, (New-Object System.Text.UTF8Encoding($false)))
