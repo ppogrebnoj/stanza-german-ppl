@@ -3,6 +3,17 @@
 Предложение режется на смысловые фразы по 2–6 слов. В руках — **правило** (что считается
 хорошей паузой) и **программа** (нарезает сама) + **валидатор** (проверяет вашу разметку).
 
+## Установка
+
+Windows x64. Хеш `bootstrap.ps1` сверьте с `bootstrap.ps1.sha256` из того же релиза.
+Подробности — [УСТАНОВКА.md](УСТАНОВКА.md).
+
+```powershell
+curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
+(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash
+powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
+```
+
 ## Документы
 
 | Файл | Что внутри |
@@ -10,8 +21,8 @@
 | `ТЗ.md` | что нужно, рамки, как устроено, как проверяем качество |
 | `ПРАВИЛО.md` | **как резать**: запреты и их коды, длины, исключения, цифры |
 | `ВОПРОСЫ.md` | только открытые вопросы к заказчику |
-| `УСТАНОВКА.md` | §1 человеку: Python/Git, доступ, конфиг MCP, приёмка, офлайн, сбои, обновления · §2 агенту: порядок, коды 0/2/3/4, запреты |
-| `README.md` | этот файл: карта проекта, команды, блок «Установка» с SHA256 |
+| `УСТАНОВКА.md` | установка, параметры, коды, отчёты, офлайн, MCP, приёмка — подробности контракта v2 |
+| `README.md` | этот файл: короткая установка, карта проекта и команды |
 | `LICENSE` | условия использования — MIT |
 
 Истории решений отдельным файлом нет: принятое воплощено в `ПРАВИЛО.md` и `config.json`,
@@ -91,46 +102,6 @@ python scripts/mcp_probe.py
 
 Числа правила живут только в `config.json` → правка правила = правка JSON, без кода.
 
-## Установка (Windows x64, три команды)
-
-Скачайте один файл `bootstrap.ps1`, сверьте хеш с `bootstrap.ps1.sha256` из того же релиза, запустите. Бутстрап поднимает winget
-(`Microsoft.WinGet.Client` из PSGallery + `Repair-WinGetPackageManager -AllUsers`), скачивает
-исходники из GitHub Release с проверкой SHA256, ставит Python 3.15.2 x64 (per-user, реестр,
-py launcher, PATH), Git, пакеты колёсами и модели Stanza, затем проверяет установку.
-
-```powershell
-curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
-(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash      # сверить с bootstrap.ps1.sha256 из того же релиза
-powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
-```
-
-Агент управляет процессом по машинному контракту: `-Json`, `-ProgressJson` (NDJSON),
-`install-report.json` (schema_version 2) и коды 0/2/3/4/6. Всё, что создаёт установщик, лежит в
-`<проект>\.tmp`: `install.log`, `progress.ndjson`, `downloads\`, `install-report.json`,
-`install-report-<UTC>.json`, `mcp-snippet.json` (+ копия в корне проекта).
-
-```powershell
-.\install.ps1 -Check inventory -Json       # только чтение: что есть на машине
-.\install.ps1 -Check ready -Json           # код 0 на установленной машине
-.\install.ps1 -Check mcp -Json             # почему клиент не видит сервер
-.\install.ps1 -Acceptance -Json            # doctor + smoke + валидаторы + mcp_probe, F1 0.777 / 0.686
-.\install.ps1 -Resume -Steps models -Yes   # продолжить после обрыва сети
-```
-
-Полный реестр ключей — `docs/flags.json`; `-Check capabilities -Json` выдаёт его же.
-Неизвестный ключ даёт код 4. Модели: ровно пять процессоров
-`tokenize,mwt,pos,lemma,depparse` (~315 МБ; `-Models ner,sentiment` докачивает остальные).
-Пакеты ставятся только колёсами: `pip install --dry-run --only-binary=:all: -r requirements.lock`.
-Запись в конфиг MCP-клиента делает человек: установщик создаёт `mcp-snippet.json` и не трогает
-`mcp.json`; код остаётся 0, а готовый фрагмент лежит в `next_action`.
-
-**Коды выхода:** 0 готово (при необходимости `next_action` с MCP-сниппетом) ·
-2 нужен человек (`blockers[].fix_cmd`) · 3 шаг упал, `retryable: true` (`next_action.command`) ·
-4 ошибка скрипта/среды, не-x64, неизвестный параметр · 6 нужна перезагрузка/перелогин.
-
-Подробности — `УСТАНОВКА.md` (человеку и агенту), `docs/flags.json`, `scripts/install_status.py`.
-
-```
 ## Как пополнять разметку
 
 1. Открываете `данные/СПИСОК_150.md`, размечаете очередную часть слэшами: `… фраза / фраза …`.
