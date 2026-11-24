@@ -3,7 +3,7 @@
     release.ps1 — сборка ассетов релиза установки (вызывается CI по тегу v*).
 
     Версия берётся из MCP-stanza-german/version.json (единственный источник):
-        "server_version": "4.0.3"  ->  тег v4.0.3
+        "server_version": "4.0.4"  ->  тег v4.0.4
     Ассеты: bootstrap.ps1(.sha256) и stanza-german-ppl-source.zip(.sha256).
     Хеш bootstrap.ps1 НЕ пишется в README: он публикуется рядом с установщиком
     и проверяется человеком/агентом из того же релиза.
@@ -54,7 +54,15 @@ Get-ChildItem -LiteralPath $Root -Force | Where-Object { $skip -notcontains $_.N
 }
 $zip = Join-Path $OutDir 'stanza-german-ppl-source.zip'
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+# Не Compress-Archive: он не ставит флаг UTF-8 у имён внутри архива, и кириллица
+# распаковывается как «ð+ÐÇð¦ð¦ð©ð+ð¥» вместо «правило». CreateFromDirectory с явным
+# entryNameEncoding=UTF8 записывает флаг, и имена читаются правильно везде.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory(
+    $stage, $zip,
+    [System.IO.Compression.CompressionLevel]::Optimal,
+    $false,
+    (New-Object System.Text.UTF8Encoding($false)))
 $zsum = Get-Sha $zip
 [IO.File]::WriteAllText("$zip.sha256", "$zsum  stanza-german-ppl-source.zip`n", $utf8)
 

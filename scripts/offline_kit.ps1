@@ -75,7 +75,10 @@ function Expand-Kit {
     } else { Write-Warning 'нет .sha256 рядом с архивом — проверка суммы пропущена' }
     $unpack = Join-Path $ArtifactDir 'offline-unpack'
     if (Test-Path -LiteralPath $unpack) { Remove-Item -LiteralPath $unpack -Recurse -Force }
-    Expand-Archive -LiteralPath $Archive -DestinationPath $unpack -Force
+    # Как и в bootstrap.ps1: Expand-Archive теряет кириллицу в именах, поэтому
+    # распаковываем с явным UTF-8.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($Archive, $unpack, (New-Object System.Text.UTF8Encoding($false)))
     $src = Join-Path $unpack 'repo'
     if (Test-Path -LiteralPath $src) {
         Get-ChildItem -LiteralPath $src -Force | ForEach-Object {

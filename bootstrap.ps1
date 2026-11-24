@@ -118,7 +118,11 @@ if (-not $readOnly) {
         }
         $stage = Join-Path $Work 'src'
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-        Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force
+        # Не Expand-Archive: в PS 5.1 он декодирует имена внутри архива по системной
+        # ANSI-кодировке, и кириллица превращается в «РїСЂР°РІРёР»Рѕ» — тогда установщик
+        # не находит ни правило/config.json, ни git-hooks. Явный UTF-8 сохраняет имена.
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $stage, (New-Object System.Text.UTF8Encoding($false)))
         $found = Get-ChildItem -LiteralPath $stage -Recurse -Filter install.ps1 -File | Select-Object -First 1
         if (-not $found) { Emit-Broken $Code_Broken 'в архиве нет install.ps1' }
         $srcDir = $found.Directory.FullName
