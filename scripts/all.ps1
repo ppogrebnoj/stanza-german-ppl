@@ -1,961 +1,885 @@
 ﻿#Requires -Version 5.1
 <#
-    all.ps1 — установка проекта ОДНОЙ командой: инвентаризация среды + префлайт + venv +
-    зависимости + модели + проверка MCP-клиента + doctor + итоговый отчёт. Работает
-    неинтерактивно (никогда не спрашивает без -Yes), поэтому годится и для человека, и для агента.
+    all.ps1 — внутренний оркестратор установки (контракт v2).
+    Публичная точка входа — корневой install.ps1; он пробрасывает параметры без изменений.
 
-        powershell -NoProfile -ExecutionPolicy Bypass -File scripts\all.ps1
-        (то же самое короче: .\install.ps1)
+        powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Yes
+        .\install.ps1 -Check inventory -Json
+        .\install.ps1 -Acceptance -Json -ProgressJson
 
-        -CheckOnly     ничего не менять: инвентаризация + префлайт + что готово + doctor (soft)
-        -DryRun        напечатать команды, которые будут выполнены
-        -Json          машинный вывод (итоговый объект) вместо человеческого
-        -ProgressJson  к -Json: потоковые NDJSON-события прогресса ДО итогового объекта
-        -Inventory     напечатать инвентаризацию среды и продолжить (префлайт её делает сам)
-        -InventoryOnly только инвентаризация: «чего не хватает → одна команда на каждое»
-        -Steps         список шагов: venv,deps,models,mcp,doctor
-        -Venv          ставить зависимости в .venv (ОПЦИЯ). По умолчанию — глобально в системный
-                       Python 3.15 (doctor.py: «нет .venv — работа идёт на системном Python
-                       (допустимо)»). Если .venv уже есть, шаг venv так и так его подхватит
-                       (чтобы не ставить torch дважды) — см. -CheckOnly.
-        -Zip           архив моделей локально (офлайн); по умолчанию ищем stanza-models-de-*.zip в корне
-        -Python        явный путь к python.exe 3.15 (если py-лаунчер его не нашёл)
-        -MinFreeGB     сколько ГБ просить на диске (по умолчанию 12: venv+torch, модели, Build Tools, кэш)
-        -McpConfig     конфиг MCP-клиента; по умолчанию автопоиск (pi, LM Studio, Claude, Cursor, VS Code)
-        -McpKey        секция конфига (по умолчанию mcpServers)
-        -Log           путь лога (по умолчанию install.log в корне проекта)
-        -InstallPython / -InstallGit / -InstallBuildTools   доустановка система софта (ВЫКЛЮЧЕНО по
-                       умолчанию; требует -Yes в машино-режиме и подтверждения Y/n в человеческом)
-        -Yes           подтвердить автоустановку и другие необратимые действия
-        -Help          эта справка
+    Режимы -Check только читают: не пишут файлы, реестр и окружение пользователя.
+    Коды: 0 готово (MCP-registration — одно действие человека в next_action),
+          2 нужен человек (blockers[].fix_cmd), 3 шаг упал (retryable),
+          4 ошибка скрипта/среды/неизвестный параметр, 6 нужна перезагрузка/перелогин.
 
-    Инвентаризация среды (§Г плана, FR-13..FR-17): перед ЛЮБЫМ прогоном скрипт сам смотрит,
-    что на машине ЕСТЬ НА САМОМ ДЕЛЕ (python, git, winget, MSVC, место, сеть, права, кэши), и
-    для каждого MISSING/WRONG печатает готовую команду. Статусы: OK / MISSING / WRONG /
-    BASE_ONLY / PARTIAL / LOW / UNKNOWN. «Нет в PATH» ≠ «не установлено»: PATH сбрасывается до
-    Machine+User, дальше py-лаунчер, реестр, стандартные пути, vswhere, Get-AppxPackage.
-    Ничего из доков и памяти сессии не является фактом — только замер.
-
-    Порядок моделей: локальный архив stanza-models-de-*.zip рядом с .sha256 (офлайн, быстро) ->
-    иначе официальная загрузка Stanford: stanza.download() тянет список ресурсов со
-    raw.githubusercontent.com (stanza-resources) и файлы с huggingface.co (stanfordnlp/stanza-de).
-    Сетевой шаг идёт с ретраями (по умолчанию 4 попытки, пауза 15 с): на этой машине
-    raw.githubusercontent.com регулярно рвёт TLS (ConnectionResetError 10054). Своих архивов
-    моделей в репозитории нет и не будет.
-
-    Конфиг MCP-клиента создаёт человек: скрипт печатает готовый фрагмент с путями этой машины
-    и проверяет, есть ли запись в конфиге; если её нет — код 5 (всё стоит, нужно ОДНО действие
-    человека). Сам файл конфига установщик НЕ пишет никогда, даже по флагу.
-
-    gh и токены — это доступ на ЗАПИСЬ репозитория (push), к установке отношения не имеют.
-    Если токен задан (GH_TOKEN/GITHUB_TOKEN), gh сам его использует: лишним
-    `gh auth login --with-token` скрипт его не дёргает. Печать токена исключена (github_pat_***).
-
-    Коды выхода (контракт, см. УСТАНОВКА.md):
-        0  ГОТОВО
-        2  НУЖЕН ЧЕЛОВЕК: нет Python 3.15 x64 / MSVC / места / сети; в конфиге MCP нет записи (check-only)
-        3  ШАГ УПАЛ: pip, распаковка/загрузка моделей, doctor (FAIL) — лечится повтором того же шага
-        4  СЛОМАН ЗАПУСК: нет файлов скриптов, чужие ключи, не Windows
-        5  ГОТОВО, НУЖНО ОДНО ДЕЙСТВИЕ ЧЕЛОВЕКА: положить запись в mcp.json + перезапустить клиент
-
-    Лог: install.log в корне проекта (токены маскируются). Отчёт: install-report.txt / .json
-    (шаг → секунды → факт, объёмы, свободное место до/после) — тоже в корне, в .gitignore.
+    Все создаваемые файлы лежат в -ArtifactDir (по умолчанию .tmp) под фиксированными
+    именами: install.log, install-report.json, install-report-<UTC>.json, progress.ndjson,
+    downloads\, mcp-snippet.json (+ копия в корне проекта).
 #>
 [CmdletBinding()]
 param(
-    [string]$Steps = "venv,deps,models,mcp,doctor",
-    [string]$Zip = "",
-    [string]$Python = "",
-    [long]$MinFreeGB = 12,
-    [string]$McpConfig = "",
-    [string]$McpKey = "mcpServers",
+    [switch]$Yes,
+    [string]$Check = '',
+    [switch]$Acceptance,
+    [switch]$Json,
+    [switch]$ProgressJson,
+    [string]$ArtifactDir = '',
+    [string]$Python = '',
+    [string]$TargetDir = '',
+    [string]$ModelsDir = '',
+    [string]$Models = '',
+    [string]$OfflineKit = '',
+    [string]$Steps = '',
+    [switch]$Resume,
+    [switch]$Venv,
+    [switch]$Force,
+    [switch]$Repair,
+    [switch]$Uninstall,
+    [switch]$Update,
+    [switch]$CheckUpdates,
+    [switch]$RaisePython,
+    [switch]$MakeOfflineKit,
     [int]$Retries = 4,
-    [string]$Log = "",
-    [string]$ProgressFile = "",     # внутренний: сюда пишет дочерний setup.ps1
+    # совместимость со старыми ключами (см. docs/flags.json)
     [switch]$Inventory,
     [switch]$InventoryOnly,
     [switch]$CheckOnly,
     [switch]$DryRun,
-    [switch]$Json,
-    [switch]$ProgressJson,
-    [switch]$Yes,
-    [switch]$InstallPython,
-    [switch]$InstallGit,
-    [switch]$InstallBuildTools,
-    [switch]$Venv,
-    [switch]$Help
+    [string]$Zip = '',
+    [string]$Log = '',
+    [switch]$Help,
+    [Parameter(ValueFromRemainingArguments = $true)][object[]]$Rest
 )
 
-$ErrorActionPreference = "Continue"   # не Stop: нативные команды (pip, gh, python) пишут в stderr
-                                       # штатные предупреждения, и PowerShell превращает их в
-                                       # NativeCommandError и обрывает шаг. Решение — только $LASTEXITCODE.
-$Code_Ready, $Code_Human, $Code_Step, $Code_Broken, $Code_ReadyHuman = 0, 2, 3, 4, 5
+$ErrorActionPreference = 'Continue'
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$Code_Ready = 0; $Code_Human = 2; $Code_Step = 3; $Code_Broken = 4; $Code_Reboot = 6
 
-# Глобально (в системный Python) — поведение по умолчанию; venv — опция (см. -Venv в справке).
-# Если .venv уже создан (раньше ставили в него), используем его — иначе получилось бы две копии
-# torch по 2.4 ГБ. Явный -Venv — создать/использовать venv; явного «-force global» нет:
-# удалить .venv и запустить снова — самый понятный способ вернуться к глобальной установке.
-$UseVenv = [bool]$Venv
+function Say { param([string]$Text, $Color)
+    if ($Json) { return }
+    if ($Color) { Write-Host $Text -ForegroundColor $Color } else { Write-Host $Text }
+}
+function Emit-Json { param($Object)
+    if ($Object -is [string]) { [Console]::Out.WriteLine($Object) }
+    else { [Console]::Out.WriteLine(($Object | ConvertTo-Json -Depth 12)) }
+}
 
-try {
-    # дети (doctor/setup/unpack) печатают UTF-8 — читать их тоже надо по-UTF-8
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-} catch { }
-$env:PYTHONUTF8 = "1"
-
-# FR-15: шелл pi/CI наследует PATH без %LOCALAPPDATA%\Microsoft\WindowsApps, и «нет в PATH»
-# превращается в «не установлено». Сбрасываем PATH до Machine+User — так видны winget/python-алиасы.
-try {
-    $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-    $up = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $env:Path = (@($mp, $up) | Where-Object { $_ }) -join ';'
-} catch { }
-
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-if (-not $Log) { $Log = Join-Path $Root "install.log" }
-$VenvPy = Join-Path $Root ".venv\Scripts\python.exe"
-$NetHosts = @("https://pypi.org", "https://api.github.com")
-$StartedAt = Get-Date
-
-# модули прогресса и инвентаризации (Этапы −1 и 1); без них запуск считается сломанным.
-# progress.ps1 — чистая библиотека (param-блока нет): dot-source напрямую, её $script: состояние
-# живёт в области all.ps1. inventory.ps1 — файл с param-блоком: при обычном dot-source он
-# затирает $Json/$Log вызывающего (так работает dot-source в PS 5.1) и сам печатает таблицу
-# (guard по $MyInvocation.InvocationName в PS 5.1 не срабатывает). Поэтому грузим его в
-# изолированной области и переносим только функции; точка входа файла гасится сентинелом.
+# ------------------------------------------------------------------ загрузка библиотек
+$libOk = $true
+foreach ($lib in @('_env.ps1', '_download.ps1', '_state.ps1', 'progress.ps1')) {
+    $p = Join-Path $PSScriptRoot $lib
+    if (-not (Test-Path -LiteralPath $p)) { $libOk = $false; continue }
+    try { . $p } catch { $libOk = $false }
+}
 $global:KI_LIB_ONLY = $true
-
-function Import-ModuleFunctionsGlobal([string]$path) {
-    $before = @{}
-    foreach ($n in (Get-ChildItem function:).Name) { $before[$n] = $true }
-    $q = $path -replace "'", "''"
-    $body = ". '$q'`nforeach (`$n in (Get-ChildItem function:).Name) { if (-not `$before.ContainsKey(`$n)) { `$d = (Get-Item ('function:' + `$n)).Definition; if (`$d) { Set-Item -Path ('function:global:' + `$n) -Value `$d } } }"
-    & ([ScriptBlock]::Create($body))
+$invPath = Join-Path $PSScriptRoot 'inventory.ps1'
+if (Test-Path -LiteralPath $invPath) { try { . $invPath } catch { $libOk = $false } } else { $libOk = $false }
+foreach ($fn in @('Get-MachineArch', 'Find-Python', 'Get-PythonInfo', 'Get-StanzaResourcesDir',
+                  'Invoke-Download', 'Initialize-Artifacts', 'Release-Artifacts', 'Write-Step',
+                  'Open-ProgressLog', 'Close-ProgressLog', 'Get-Inventory', 'Save-Report')) {
+    if (-not (Test-Path "function:$fn")) { $libOk = $false }
+}
+if (-not $libOk) {
+    Say 'СЛОМАН ЗАПУСК: не загрузились модули установщика (scripts\_env.ps1, _download.ps1, _state.ps1, progress.ps1, inventory.ps1)' Red
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'modules'; detail = 'не загрузились модули установщика'; retryable = $false }) }) }
+    exit $Code_Broken
 }
 
-$ModNeeded = @("inventory.ps1", "progress.ps1")
-foreach ($m in $ModNeeded) {
-    $mpath = Join-Path $PSScriptRoot $m
-    if (-not (Test-Path $mpath)) {
-        Write-Host ("СЛОМАН ЗАПУСК: нет scripts\{0} — обновите репозиторий" -f $m) -ForegroundColor Red
+# ------------------------------------------------------------------ параметры и реестр флагов
+$flagsPath = Join-Path $Root 'docs\flags.json'
+$flagsReg = $null
+if (Test-Path -LiteralPath $flagsPath) {
+    try { $flagsReg = (Get-Content -LiteralPath $flagsPath -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { }
+}
+$allowed = @()
+if ($flagsReg) { $allowed = @($flagsReg.flags | ForEach-Object { $_.name }) }
+else { $allowed = @('Yes','Check','Acceptance','Json','ProgressJson','ArtifactDir','Python','TargetDir','ModelsDir','Models','OfflineKit','Steps','Resume','Venv','Force','Repair','Uninstall','Update','CheckUpdates','RaisePython','MakeOfflineKit','Retries','Inventory','InventoryOnly','CheckOnly','DryRun','Zip','Log','Help') }
+
+$badArgs = @()
+foreach ($r in @($Rest)) {
+    $s = "$r"
+    if ($s -like '-*' -and $s -notlike '--*') {
+        $n = $s.TrimStart('-')
+        if ($allowed -notcontains $n) { $badArgs += $n }
+    }
+}
+if ($badArgs.Count) {
+    $msg = 'неизвестный параметр: ' + (($badArgs | Select-Object -Unique) -join ', ')
+    Say "СЛОМАН ЗАПУСК: $msg (код 4)" Red
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; arch = (Get-MachineArch); failures = @([pscustomobject]@{ id = 'params'; detail = $msg; retryable = $false }) }) }
+    exit $Code_Broken
+}
+
+$mode = 'install'
+if ($Inventory -or $InventoryOnly) { $Check = 'inventory' }
+if ($CheckOnly) { $Check = 'ready' }
+if ($DryRun) { $Check = 'plan' }
+if ($Zip -and -not $OfflineKit) { $OfflineKit = $Zip }
+if ($Log -and -not $ArtifactDir) { $ArtifactDir = (Split-Path -Parent $Log) }
+if ($Repair) { $mode = 'repair' }
+if ($Uninstall) { $mode = 'uninstall' }
+if ($Update) { $mode = 'update' }
+if ($CheckUpdates) { $mode = 'check-updates'; $Check = '' }
+if ($RaisePython) { $mode = 'raise-python'; $Check = '' }
+if ($MakeOfflineKit) { $mode = 'make-offline-kit'; $Check = '' }
+$checkModes = @('inventory', 'ready', 'plan', 'mcp', 'status', 'capabilities')
+$checkMode = ''
+if ($Check) { $checkMode = "$Check".ToLowerInvariant() }
+if ($checkMode) {
+    $mode = "check-$checkMode"
+    if ($checkModes -notcontains $checkMode) {
+        Say "СЛОМАН ЗАПУСК: неизвестная область -Check '$Check' (код 4)" Red
+        if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'params'; detail = "неизвестная область -Check: $Check"; retryable = $false }) }) }
         exit $Code_Broken
     }
-    if ($m -eq "inventory.ps1") { Import-ModuleFunctionsGlobal $mpath } else { . $mpath }
 }
-foreach ($fn in @("Get-Inventory", "Open-ProgressLog", "Write-Step", "Write-Progress2", "Close-ProgressLog", "Measure-DirSize", "Format-Bytes", "Format-Eta")) {
-    if (-not (Test-Path "function:$fn")) {
-        Write-Host ("СЛОМАН ЗАПУСК: модули не поднялись, нет функции {0}" -f $fn) -ForegroundColor Red
-        exit $Code_Broken
+$readOnly = $checkMode -ne ''
+
+# ------------------------------------------------------------------ платформа
+$arch = Get-MachineArch
+if ($arch -ne 'AMD64' -or [IntPtr]::Size -ne 8) {
+    $msg = "нужна Windows x64 (AMD64); текущая архитектура: $arch, шелл: $([IntPtr]::Size * 8) бит. Загрузки не начинались"
+    Say "СЛОМАН ЗАПУСК: $msg" Red
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; arch = $arch; mode = $mode; failures = @([pscustomobject]@{ id = 'platform'; detail = $msg; retryable = $false; remedy = 'запустите 64-битный PowerShell на Windows x64' }) }) }
+    exit $Code_Broken
+}
+
+$artifactDir = if ($ArtifactDir) { $ArtifactDir } else { Get-DefaultArtifactDir $Root }
+$resources = Get-StanzaResourcesDir -Root $Root -ModelsDir $ModelsDir
+$target = if ($TargetDir) { $TargetDir } else { Get-DefaultTargetDir }
+$started = Get-Date
+$stepResults = New-Object System.Collections.Generic.List[object]
+$blockers = New-Object System.Collections.Generic.List[object]
+$failures = New-Object System.Collections.Generic.List[object]
+$nextAction = [ordered]@{ kind = ''; command = ''; snippet = '' }
+$reportPath = ''
+$snippetPath = ''
+$pyInfo = $null
+$py = ''
+$acceptance = $null
+$mcpRegistration = 'human'
+$mcpSnippetJson = ''
+$serverStatus = ''
+
+function Add-Blocker { param([string]$Component, [string]$Reason, [string]$FixCmd)
+    $blockers.Add([pscustomobject]@{ component = $Component; reason = $Reason; fix_cmd = $FixCmd }) | Out-Null
+    Say ("  БЛОКЕР [{0}] {1}; fix: {2}" -f $Component, $Reason, $FixCmd) Yellow
+}
+function Add-Failure { param([string]$Id, [string]$Detail, [bool]$Retryable, [string]$Remedy)
+    $failures.Add([pscustomobject]@{ id = $Id; detail = $Detail; retryable = $Retryable; remedy = $Remedy }) | Out-Null
+}
+function New-Step { param([string]$Id, [string]$Status = 'OK', [double]$Seconds = 0, [string]$Phase = '',
+                          [int]$Rc = 0, [string]$Detail = '', [string]$Remedy = '', [bool]$Retryable = $false,
+                          [string]$NextCmd = '', [long]$Bytes = 0)
+    return [pscustomobject][ordered]@{
+        id = $Id; status = $Status; seconds = $Seconds; phase = $Phase; rc = $Rc
+        detail = $Detail; remedy = $Remedy; retryable = $Retryable; next_cmd = $NextCmd
+        bytes = $Bytes; hint = $Remedy
+    }
+}
+function Add-StepResult { param($Step)
+    $stepResults.Add($Step) | Out-Null
+    Say ("  [{0,-4}] {1,-12} {2}s {3}" -f $Step.status, $Step.id, $Step.seconds, $Step.detail)
+    $state = 'ok'
+    if ($Step.status -eq 'FAIL') { $state = 'fail' }
+    elseif ($Step.status -eq 'SKIP') { $state = 'skip' }
+    elseif ($Step.status -eq 'BLOCK') { $state = 'fail' }
+    try { Write-Step -Step $Step.id -State $state -Seconds $Step.seconds -Msg ($Step.detail + ' ' + $Step.remedy).Trim() } catch { }
+    if ($Step.status -eq 'FAIL') { Add-Failure -Id $Step.id -Detail $Step.detail -Retryable $Step.retryable -Remedy $Step.remedy }
+    if ($Step.status -eq 'BLOCK' -and $blockers.Count -eq $blockerCountBeforeStep) {
+        Add-Blocker $Step.id $Step.detail $Step.remedy
     }
 }
 
-$logLines = New-Object System.Collections.Generic.List[string]
-$plan = New-Object System.Collections.Generic.List[object]
-$done = New-Object System.Collections.Generic.List[object]
-$humanActions = New-Object System.Collections.Generic.List[object]
-$freeGB = -1
-$inv = $null
-$invBlocking = 0
-$py = $null
-$gh = $null
-$paths = $null
-$depsOk = $false
-$mcpSnippet = ""
-$verdict = ""
-
-function Get-FreeGB($path) {
+function Invoke-Logged {
+    param([string]$Exe, [string[]]$Argv, [string]$Id, [switch]$NoLogOutput)
+    $logFile = Join-Path $artifactDir ($Id + '.log')
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    try { [IO.File]::AppendAllText($logFile, ("> $Exe " + ($Argv -join ' ') + "`n"), $enc) } catch { }
+    $out = @()
     try {
-        $d = New-Object System.IO.DriveInfo(($path.Substring(0, 1) + ":\").ToUpper())
-        return [math]::Round($d.AvailableFreeSpace / 1GB, 1)
-    } catch { return -1 }
-}
-function Get-DirMB($path) {
-    if (-not (Test-Path $path)) { return 0 }
-    $sum = 0
-    try { $sum = (Get-ChildItem $path -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum } catch { }
-    return [math]::Round($sum / 1MB, 0)
-}
-
-function Say($text, $color) { if (-not $Json) { if ($color) { Write-Host $text -ForegroundColor $color } else { Write-Host $text } } }
-function Log($text) {
-    # токен не должен попасть в лог ни при каких условиях
-    $safe = [regex]::Replace("$text", '(gh_pat_|github_pat_)[A-Za-z0-9_]+', '$1***')
-    $logLines.Add((Get-Date).ToString("HH:mm:ss") + " " + $safe)
-}
-function Add-Human($what, $how) {
-    $humanActions.Add([ordered]@{ what = $what; how = $how }) | Out-Null
-    Say ("  ЧЕЛОВЕК: {0}" -f $what) Yellow
-    foreach ($l in ($how -split "`n")) { Say ("    " + $l) Yellow }
-}
-function Add-Step($id, $status, $sec, $detail, $hint) {
-    $done.Add([ordered]@{ id = $id; status = $status; seconds = $sec; detail = "$detail"; hint = "$hint" }) | Out-Null
-    Say ("  [{0,-4}] {1,-7} {2}" -f $status, $id, $detail)
-    $st = @{ "OK" = "ok"; "SKIP" = "skip"; "FAIL" = "fail"; "BLOCK" = "fail"; "NOTE" = "note"; "plan" = "plan" }[$status]
-    if (-not $st) { $st = "note" }
-    try { Write-Step -Step $id -State $st -Seconds $sec -Msg ("$detail $hint".Trim()) } catch { }
-}
-
-# ------------------------------------------------------------------ окружение
-
-function Find-Py315([string]$explicit) {
-    if ($explicit) {
-        if (-not (Test-Path $explicit)) { return $null }
-        $v = & (Resolve-Path $explicit) -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null
-        if ("$v".Trim() -eq "3.15") { return (Resolve-Path $explicit).Path }
-        return $null
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        $out = @(& $Exe @Argv 2>&1 | ForEach-Object { "$_" })
+        $rc = $LASTEXITCODE
+        $ErrorActionPreference = $prev
+    } catch { $rc = 1; $out = @("$_") }
+    if ($out.Count) {
+        try { [IO.File]::AppendAllText($logFile, (($out -join "`n") + "`n"), $enc) } catch { }
+        if (-not $NoLogOutput -and -not $Json) { foreach ($l in $out) { Say ('  | ' + $l) } }
     }
+    if ($rc -eq $null) { $rc = 1 }
+    return [int]$rc
+}
+
+# GUI-установщики (python.org, git-scm) возвращают управление сразу: ждём процессом.
+function Invoke-Installer {
+    param([string]$Exe, [string[]]$Argv, [string]$Id)
+    $logFile = Join-Path $artifactDir ($Id + '.log')
+    try { [IO.File]::AppendAllText($logFile, ("> $Exe " + ($Argv -join ' ') + "`n"), (New-Object System.Text.UTF8Encoding($false))) } catch { }
     try {
-        foreach ($line in (& py -0p 2>$null)) {
-            if ($line -match '-V:3\.15' -and $line -match 'python\.exe') {
-                $p = ($line -split '\s+')[-1].Trim()
-                if (Test-Path $p) { return $p }
-            }
-        }
-    } catch { }
-    try {
-        $p = (& python -c "import sys;print(sys.executable)" 2>$null)
-        $p = "$p".Trim()
-        if ($p -and (Test-Path $p)) {
-            $v = & $p -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null
-            if ("$v".Trim() -eq "3.15") { return $p }
-        }
-    } catch { }
-    # стандартные пути установщика (per-user и machine) — py-лаунчер их не всегда видит сразу
-    foreach ($p in @((Join-Path $env:LOCALAPPDATA "Programs\Python\Python315\python.exe"),
-                     "C:\Program Files\Python315\python.exe",
-                     "C:\Program Files\Python\Python315\python.exe")) {
-        if (Test-Path $p) {
-            $v = & $p -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null
-            if ("$v".Trim() -eq "3.15") { return (Resolve-Path $p).Path }
-        }
+        $p = Start-Process -FilePath $Exe -ArgumentList $Argv -Wait -PassThru -NoNewWindow -ErrorAction Stop
+        return [int]$p.ExitCode
+    } catch {
+        try { [IO.File]::AppendAllText($logFile, ("$_`n"), (New-Object System.Text.UTF8Encoding($false))) } catch { }
+        return 1
     }
-    return $null
 }
 
-function Get-EnvToken() {
-    foreach ($n in @("GH_TOKEN", "GITHUB_TOKEN")) {
-        foreach ($sc in @("Process", "User")) {
-            $v = [Environment]::GetEnvironmentVariable($n, $sc)
-            if ($v) { return @{ Name = $n; Scope = $sc; Value = "$v" } }
-        }
-    }
-    return $null
+function Get-DirBytes { param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return [long]0 }
+    try { return [long]((Get-ChildItem -LiteralPath $Path -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) } catch { return [long]0 }
 }
 
-function Test-Gh($py) {
-    # Этап 4: при заданном токене gh использует его сам; вызывать `gh auth login --with-token`
-    # вслепую — получать rc=1 «value of GH_TOKEN is being used for authentication» и печатать
-    # ложную NOTE при живом gh. Поэтому: сначала auth status, токен только показываем.
-    $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
-    if (-not $ghCmd) { return @{ ok = $false; why = "no-gh" } }
-    & gh auth status *> $null
-    if ($LASTEXITCODE -eq 0) {
-        $t = Get-EnvToken
-        $src = $(if ($t) { "токен $($t.Name) ($($t.Scope))" } else { "keyring" })
-        return @{ ok = $true; why = "gh авторизован ($src)" }
-    }
-    $t = Get-EnvToken
-    if (-not $t) { return @{ ok = $false; why = "no-token" } }
-    return @{ ok = $false; why = ("gh auth status не прошёл, токен {0} ({1}) len={2} — для push: gh auth login (УСТАНОВКА.md §1.2)" -f $t.Name, $t.Scope, $t.Value.Length) }
+function Get-NextCommand { param([string]$Id = '')
+    $cmd = 'powershell -ExecutionPolicy Bypass -File .\install.ps1 -Resume'
+    if ($Id) { $cmd += " -Steps $Id" }
+    if ($Yes) { $cmd += ' -Yes' }
+    return $cmd
 }
 
-function Test-Net() {
+function Test-EnvReady { param([object]$Info, [object]$Flags)
     $bad = @()
-    foreach ($u in $NetHosts) {
-        try { $null = Invoke-WebRequest -Uri $u -Method Head -TimeoutSec 6 -UseBasicParsing } catch { $bad += $u }
+    if (-not $Info) { return @('нет Python 3.15 x64') }
+    if (-not $Info.Usable) { $bad += "Python $($Info.Version) [$($Info.Reason)]: $($Info.Path)" }
+    $pyExe = $Info.Path
+    if ($Venv) {
+        $vp = Join-Path $Root '.venv\Scripts\python.exe'
+        if (Test-Path -LiteralPath $vp) { $pyExe = $vp } else { $bad += 'нет .venv (нужен -Venv)' }
     }
+    if ($bad.Count) { return $bad }
+    $code = @'
+import importlib.metadata as M, pathlib, sys
+lock = pathlib.Path(sys.argv[1])
+miss = []
+for line in lock.read_text(encoding="utf-8").splitlines():
+    line = line.split("#", 1)[0].strip()
+    if "=" not in line or not line[0].isalpha():
+        continue
+    name, want = line.split("==", 1)
+    try: have = M.version(name).split("+", 1)[0]
+    except Exception: miss.append(name + ":missing"); continue
+    if have != want.strip(): miss.append(name + ":" + have + "!=" + want.strip())
+print("\n".join(miss))
+'@
+    $tmpPy = Join-Path $artifactDir 'verify_deps.py'
+    if (-not $readOnly -and -not (Test-Path -LiteralPath $tmpPy)) {
+        [IO.File]::WriteAllText($tmpPy, $code, (New-Object System.Text.UTF8Encoding($false)))
+    }
+    $outFile = Join-Path $artifactDir 'deps_versions.txt'
+    if ($readOnly) {
+        $out = & $pyExe -c $code (Join-Path $Root 'requirements.lock') 2>$null
+    } else {
+        $null = & $pyExe $tmpPy (Join-Path $Root 'requirements.lock') > $outFile 2>&1
+        $out = @(Get-Content -LiteralPath $outFile -ErrorAction SilentlyContinue)
+    }
+    if ($LASTEXITCODE -ne 0) { return @('не удалось проверить версии пакетов') }
+    foreach ($m in @($out)) { if ("$m".Trim()) { $bad += "версия пакета: $m" } }
     return $bad
 }
 
-function Probe-Paths($py) {
-    $code = @"
-import sys, json
-sys.path.insert(0, r'$Root\scripts')
-import _paths as P
-m = P.model_dir()
-print(json.dumps({'cache': str(P.stanza_cache_dir()), 'model': str(m),
-                  'depparse': (m / 'depparse').exists(), 'reqs': str(P.REQS)}))
-"@
-    $o = & $py -c $code 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $o) { return $null }
-    try { return ("$o" | ConvertFrom-Json) } catch { return $null }
-}
-
-function Test-Deps($py) {
-    # проверяем ИМЕННО тот интерпретатор, который будет использован:
-    # в режиме venv — venv-питон (и venv должен существовать),
-    # по умолчанию (глобально) — системный Python 3.15.
-    if (-not $py) { return $false }
-    if ($UseVenv -and -not (Test-Path $VenvPy)) { return $false }
-    & $py -c "import stanza, torch, mcp, pyphen" *> $null
-    return ($LASTEXITCODE -eq 0)
-}
-
-function Get-PyUse {
-    # единственный источник правды «какой python работает»: venv-питон при -Venv,
-    # иначе системный. Все шаги (deps, models, mcp-snippet, doctor) берут его.
-    if ($UseVenv -and (Test-Path $VenvPy)) { return $VenvPy }
-    return $py
-}
-
-function Find-McpConfig() {
-    # Этап 4: клиенту может быть pi, LM Studio, Claude, Cursor, VS Code — ищем по наличию файла,
-    # потом по существующей папке; если ничего нет — LM Studio (историческое поведение).
-    $files = @((Join-Path $env:USERPROFILE ".pi\agent\mcp.json"),
-               (Join-Path $env:USERPROFILE ".lmstudio\mcp.json"),
-               (Join-Path $env:APPDATA "Claude\claude_desktop_config.json"),
-               (Join-Path $env:USERPROFILE ".cursor\mcp.json"),
-               (Join-Path $env:APPDATA "Code\User\mcp.json"))
-    foreach ($p in $files) { if (Test-Path $p) { return $p } }
-    foreach ($p in $files) { $d = Split-Path $p -Parent; if (Test-Path $d) { return $p } }
-    return (Join-Path $env:USERPROFILE ".lmstudio\mcp.json")
-}
-
-function Show-Inventory($inv) {
-    if (-not $inv) { return }
-    Say ""
-    Say "инвентаризация среды (только замер; доки и память сессии — не факт)" Cyan
-    Say ("{0,-16} {1,-9} {2,-10} {3,-26} {4}" -f 'КОМПОНЕНТ', 'НУЖЕН', 'СТАТУС', 'ВЕРСИЯ', 'ГДЕ')
-    foreach ($it in $inv.items) {
-        Say ("{0,-16} {1,-9} {2,-10} {3,-26} {4}" -f $it.name, $it.need, $it.status, [string]$it.version, [string]$it.path)
-        if ($it.fix) { Say ("      fix: {0}" -f $it.fix) }
-        if ($it.note) { Say ("      note: {0}" -f $it.note) }
-    }
-    Say ("  позиций {0}, блокирующих {1}, время {2} с" -f @($inv.items).Count, $invBlocking, $inv.elapsed)
-}
-
-# инвентаризация вызывается ОДНОЙ обёрткой: если модуль умеет -Quiet (ничего не печатает) —
-# работаем в процессе; если нет — снимаем инвентаризацию дочерним процессом с -Json, иначе
-# таблица модуля попадёт в stdout и сломает и -Json, и -ProgressJson (проверено замером)
-$script:invQuiet = $false
-try { $script:invQuiet = [bool]((Get-Command Get-Inventory).Parameters.Keys -contains 'Quiet') } catch { }
-function Invoke-Inventory([bool]$withNet) {
-    if ($script:invQuiet) {
-        if ($withNet) { return Get-Inventory -Quiet } else { return Get-Inventory -NoNetwork -Quiet }
-    }
-    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'inventory.ps1'), '-Json')
-    if (-not $withNet) { $a += '-NoNetwork' }
-    $o = & powershell @a 2>&1
-    try { return ("$($o | Out-String)" | ConvertFrom-Json) } catch { return $null }
-}
-
-function Get-InvItem($name) {
-    if (-not $inv) { return $null }
-    return ($inv.items | Where-Object { $_.name -eq $name } | Select-Object -First 1)
-}
-
-# ------------------------------------------------------------------ автоустановка (-Install* -Yes)
-
-function Confirm-AutoInstall($what) {
-    if ($DryRun -or $CheckOnly) { return $false }
-    if ($Yes) { return $true }
-    if ($Json) { return $false }     # в машино-режиме без -Yes ничего не ставим
-    Write-Host ("поставить {0}? Это изменит систему. [y/N] " -f $what) -ForegroundColor Yellow
-    $ans = Read-Host
-    return ($ans -match '^(y|Y|д|Д|да|Да)')
-}
-
-function Run-Winget([string]$id, [string]$extra) {
-    $a = @("install", "-e", "--id", $id, "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity")
-    if ($extra) { $a += ($extra -split ' ') }
-    for ($i = 1; $i -le 3; $i++) {
-        Write-Host ("  > winget install -e --id {0} (попытка {1})" -f $id, $i)
-        & winget @a *> $null
+function Test-ModelsReady {
+    param([string]$PyExe, [string]$Processors, [switch]$Load)
+    if (-not $PyExe -or -not (Test-Path -LiteralPath $PyExe)) { return $false }
+    $script = Join-Path $PSScriptRoot 'check_models.py'
+    if (-not (Test-Path -LiteralPath $script)) { return $false }
+    $oldRes = $env:STANZA_RESOURCES_DIR; $oldUtf = $env:PYTHONUTF8
+    try {
+        $env:STANZA_RESOURCES_DIR = $resources
+        $env:PYTHONUTF8 = '1'
+        $a = @($script, '--processors', $Processors, '--json')
+        if ($Load) { $a += '--load' }
+        $null = & $PyExe @a 2>$null
         $rc = $LASTEXITCODE
-        Log("winget install $id попытка $i rc=$rc")
-        if ($rc -eq 0) { return 0 }
-        Start-Sleep -Seconds 10
+    } finally {
+        $env:STANZA_RESOURCES_DIR = $oldRes; $env:PYTHONUTF8 = $oldUtf
     }
-    return $rc
+    return ($rc -eq 0)
 }
 
-function Invoke-CurlTo([string]$url, [string]$dest) {
-    & curl.exe -L --retry 3 --retry-delay 5 -o $dest $url *> $null
-    return $LASTEXITCODE
+# ------------------------------------------------------------------ режимы -Check (только чтение)
+function Read-McpSnippet {
+    $p = Join-Path $Root 'mcp-snippet.json'
+    if (-not (Test-Path -LiteralPath $p)) { return [pscustomobject]@{ ok = $false; reason = "нет $p"; path = $p } }
+    $bytes = [IO.File]::ReadAllBytes($p)
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        return [pscustomobject]@{ ok = $false; reason = 'файл с BOM (нужен UTF-8 без BOM)'; path = $p }
+    }
+    $text = [Text.Encoding]::UTF8.GetString($bytes)
+    try { $obj = $text | ConvertFrom-Json } catch {
+        return [pscustomobject]@{ ok = $false; reason = 'не парсится JSON'; path = $p }
+    }
+    $srv = $null
+    try { $srv = $obj.mcpServers.'stanza-german' } catch { }
+    if (-not $srv) { return [pscustomobject]@{ ok = $false; reason = 'нет записи mcpServers."stanza-german"'; path = $p } }
+    $cmd = [string]$srv.command
+    if (-not $cmd -or -not (Test-Path -LiteralPath $cmd)) {
+        return [pscustomobject]@{ ok = $false; reason = "command не найден: $cmd"; path = $p }
+    }
+    $envObj = $srv.env
+    if (-not $envObj -or -not $envObj.PSObject.Properties['STANZA_RESOURCES_DIR'] -or -not $envObj.PSObject.Properties['PYTHONUTF8']) {
+        return [pscustomobject]@{ ok = $false; reason = 'env без PYTHONUTF8 / STANZA_RESOURCES_DIR'; path = $p }
+    }
+    return [pscustomobject]@{ ok = $true; reason = 'snippet валиден'; path = $p; command = $cmd; snippet = $text }
 }
 
-function Invoke-AutoInstall([string]$what) {
-    # все автоустановки — только по явному флагу и подтверждению; каждое действие в лог
-    if ($DryRun) {
-        Add-Step "auto_$what" "plan" 0 ("будет доустановлено: $what") ""
-        return
+function Invoke-CheckMode {
+    param([string]$Area)
+    $result = [ordered]@{ schema_version = 2; check = $Area; ok = $false; code = $Code_Ready; arch = $arch; mode = $mode }
+
+    if ($Area -eq 'capabilities') {
+        if (-not $flagsReg) { $result.code = $Code_Broken; $result.reason = 'нет docs/flags.json' }
+        else { $result.ok = $true; $result.capabilities = $flagsReg }
+        $result.code = $(if ($result.ok) { 0 } else { 4 })
+        return $result
     }
-    if (-not (Confirm-AutoInstall $what)) {
-        Add-Step "auto_$what" "BLOCK" 0 "автоустановка $what не подтверждена (нужен -Yes или ответ y)" "поставьте вручную командой из инвентаризации"
-        return
+    if ($Area -eq 'inventory') {
+        $inv = Get-Inventory -Quiet -NoNetwork
+        $result.inventory = $inv
+        $bad = @($inv.items | Where-Object { $_.need -eq 'required' -and $_.status -notin @('OK','NOTE','ADMIN','USER','set','NOT_REQUIRED','SLOW') })
+        $result.blockers = @($bad | ForEach-Object { [pscustomobject]@{ component = $_.name; reason = $_.status; fix_cmd = [string]$_.fix } })
+        $result.ok = ($bad.Count -eq 0); $result.code = $(if ($result.ok) { 0 } else { 2 })
+        if (-not $Json) {
+            foreach ($l in @((Format-InvText $inv $false))) { Say $l }
+            Say ("инвентаризация: блокирующих {0}, код {1}" -f $bad.Count, $result.code)
+        }
+        return $result
     }
-    $hasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
-    Log("автоустановка: $what (winget=$hasWinget)")
-    switch ($what) {
-        "python" {
-            if ($hasWinget) { $rc = Run-Winget "Python.Python.3.15" "" }
-            else {
-                $f = Join-Path $env:TEMP "py315.exe"
-                $rc = Invoke-CurlTo "https://www.python.org/ftp/python/3.15.2/python-3.15.2-amd64.exe" $f
-                if ($rc -eq 0) {
-                    $p = Start-Process -FilePath $f -ArgumentList "/quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0" -Wait -PassThru -NoNewWindow
-                    $rc = $p.ExitCode
-                }
+    if ($Area -eq 'ready') {
+        $info = Find-Python -Explicit $Python -TargetDir $target
+        $pyExe = Get-InterpreterPath -PythonInfo $info -Root $Root -Venv:$Venv
+        $bad = @()
+        if (-not $info) { $bad += 'нет Python 3.15 x64' }
+        elseif (-not $info.Usable) { $bad += "Python $($info.Version) [$($info.reason)]: $($info.Path)" }
+        if (-not $bad.Count) { $bad += @(Test-EnvReady -Info $info -Flags $flagsReg) }
+        $snippet = Read-McpSnippet
+        if (-not $snippet.ok) { $bad += "MCP snippet: $($snippet.reason)" }
+        $models = $false
+        if (-not $bad.Count) { $models = Test-ModelsReady -PyExe $pyExe -Processors 'tokenize,mwt,pos,lemma,depparse' }
+        if (-not $models -and -not $bad.Count) { $bad += 'модели Stanza (5 процессоров) не готовы' }
+        $result.python_path = $pyExe
+        $result.stanza_resources = $resources
+        $result.mcp_snippet = $snippet.path
+        $result.blockers = @($bad | ForEach-Object { [pscustomobject]@{ component = 'ready'; reason = $_; fix_cmd = (Get-NextCommand) } })
+        $result.ok = ($bad.Count -eq 0)
+        $result.code = $(if ($result.ok) { 0 } else { 2 })
+        return $result
+    }
+    if ($Area -eq 'plan') {
+        $info = Find-Python -Explicit $Python -TargetDir $target
+        $badDeps = @()
+        if ($info) { $badDeps = @(Test-EnvReady -Info $info -Flags $flagsReg) }
+        $plan = @()
+        foreach ($id in @('winget','python','git','deps','models','snippet','doctor')) {
+            $need = $true; $why = ''
+            switch ($id) {
+                'python' { $need = -not $info -or -not $info.Usable; $why = $(if ($need) { '.python 3.15 x64' } else { 'python уже есть' }) }
+                'deps'   { $need = $badDeps.Count -gt 0; $why = $(if ($need) { 'пакеты не сверены с lock' } else { 'пакеты готовы' }) }
+                'models' { $need = -not $info -or -not (Test-ModelsReady -PyExe (Get-InterpreterPath -PythonInfo $info -Root $Root -Venv:$Venv) -Processors 'tokenize,mwt,pos,lemma,depparse'); $why = $(if ($need) { 'нет 5 процессоров' } else { 'модели готовы' }) }
+                'snippet' { $need = -not (Read-McpSnippet).ok; $why = 'создать mcp-snippet.json (_registration человек)' }
+                'doctor' { $need = $true; $why = 'проверка doctor.py' }
+                'winget' { $need = -not (Get-Command winget -ErrorAction SilentlyContinue); $why = 'проверить winget' }
+                'git' { $need = -not (Get-Command git -ErrorAction SilentlyContinue); $why = 'проверить git' }
             }
+            $plan += [pscustomobject]@{ id = $id; status = $(if ($need) { 'PLAN' } else { 'SKIP' }); detail = $why }
         }
-        "git" {
-            if ($hasWinget) { $rc = Run-Winget "Git.Git" "" }
-            else {
-                $f = Join-Path $env:TEMP "git.exe"
-                $rc = Invoke-CurlTo "https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/Git-2.56.1-64-bit.exe" $f
-                if ($rc -eq 0) {
-                    $p = Start-Process -FilePath $f -ArgumentList "/VERYSILENT /NORESTART" -Wait -PassThru -NoNewWindow
-                    $rc = $p.ExitCode
-                }
-            }
+        $result.plan = $plan; $result.ok = $true; $result.code = 0
+        return $result
+    }
+    if ($Area -eq 'mcp') {
+        $s = Read-McpSnippet
+        $result.snippet = $s
+        $result.ok = $s.ok
+        $result.code = $(if ($s.ok) { 0 } else { 2 })
+        if (-not $s.ok) {
+            $result.fix_cmd = 'powershell -ExecutionPolicy Bypass -File .\install.ps1 -Steps snippet'
+            $result.hint = "Причина: $($s.reason). Сервер не видит конфиг клиента: добавьте запись stanza-german из mcp-snippet.json и перезапустите клиент."
         }
-        "buildtools" {
-            # base-пакетwinget даёт только MSBuild: компилятор добавляют отдельным шагом (см. план §А.4.1)
-            $bt = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_buildtools.exe"
-            if (-not (Test-Path $bt)) {
-                $bt = Join-Path $env:TEMP "vs_buildtools.exe"
-                $rc = Invoke-CurlTo "https://aka.ms/vs/18/stable/vs_buildtools.exe" $bt
-                if ($rc -ne 0) { Add-Step "auto_buildtools" "FAIL" 0 "не скачался vs_buildtools.exe" "проверьте доступ к aka.ms; команда в инвентаризации"; return }
-            }
-            $p = Start-Process -FilePath $bt -ArgumentList "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" -Wait -PassThru -NoNewWindow
-            $rc = $p.ExitCode
-            $vi = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe"
-            if ($rc -ne 0 -and (Test-Path $vi)) {
-                $p2 = Start-Process -FilePath $vi -ArgumentList "modify --channelId VisualStudio.18.Release --productId Microsoft.VisualStudio.Product.BuildTools --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart" -Wait -PassThru -NoNewWindow
-                $rc = $p2.ExitCode     # у vs_installer.exe нет --wait: ждём процессом
-            }
-            $deadline = (Get-Date).AddMinutes(45)
-            while ((Get-Date) -lt $deadline -and -not (Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\MSVC" -Directory -ErrorAction SilentlyContinue)) {
-                Write-Progress2 -Step "auto_buildtools" -Sub "ждём VC\Tools\MSVC" -Msg "install rc=$rc" -ThrottleMs 5000
-                Start-Sleep -Seconds 10
-            }
+        return $result
+    }
+    if ($Area -eq 'status') {
+        $p = Join-Path $artifactDir 'install-report.json'
+        if (-not (Test-Path -LiteralPath $p)) {
+            $result.ok = $false; $result.code = 2; $result.reason = "нет $p"; $result.fix_cmd = (Get-NextCommand)
+            return $result
         }
+        $r = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json
+        $result.report = $r
+        $result.code = [int]$r.code; $result.ok = [bool]$r.ok
+        return $result
     }
-    try {
-        $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-        $up = [Environment]::GetEnvironmentVariable('Path', 'User')
-        $env:Path = (@($mp, $up) | Where-Object { $_ }) -join ';'
-    } catch { }
-    if ($rc -eq 0) { Add-Step "auto_$what" "OK" 0 "доустановлено: $what (переснимаем инвентаризацию)" "" }
-    else { Add-Step "auto_$what" "FAIL" $rc "winget/установщик вернул $rc" "поставьте вручную: команда из инвентаризации" }
+    return $result
 }
 
-# ------------------------------------------------------------------ потоковые дети
-
-function New-TailState([string]$path) {
-    return @{ path = $path; pos = 0; partial = ""; enc = (New-Object System.Text.UTF8Encoding $false) }
-}
-function Read-Appended($state) {
-    # дочитывает новые байты растущего файла (PS 5.1, без FileShare-трюков с StreamReader)
-    $out = @()
-    if (-not (Test-Path $state.path)) { return $out }
-    try {
-        $fs = [IO.File]::Open($state.path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-        try {
-            $len = $fs.Length - $state.pos
-            if ($len -le 0) { return $out }
-            $fs.Seek($state.pos, [IO.SeekOrigin]::Begin) | Out-Null
-            $buf = New-Object byte[] ([int]$len)
-            [void]$fs.Read($buf, 0, [int]$len)
-            $state.pos += $len
-            $text = $state.enc.GetString($buf)
-            $all = $state.partial + $text
-            $parts = $all -split "`r`n|`n"
-            $state.partial = $parts[$parts.Count - 1]
-            for ($i = 0; $i -lt $parts.Count - 1; $i++) { $out += $parts[$i] }
-        } finally { $fs.Dispose() }
-    } catch { }
-    return $out
+if ($readOnly) {
+    $res = Invoke-CheckMode $checkMode
+    if ($Json) { Emit-Json $res }
+    elseif ($checkMode -eq 'capabilities' -and $flagsReg) { Say 'реестр флагов: docs/flags.json' }
+    $rc = [int]$res.code
+    exit $rc
 }
 
-function Start-KiChild([string]$innerCmd, [string]$rcF) {
-    # PS 5.1: у Start-Process -PassThru свойство ExitCode часто $null (без EnableRaisingEvents),
-    # и молча «код выхода » превращает успех в код 3. Поэтому ребёнка запускаем через cmd-обёртку,
-    # которая пишет ERRORLEVEL в файл (delayed expansion: !ERRORLEVEL! после команды).
-    $w = Join-Path $env:TEMP ("ki-cmd-" + [guid]::NewGuid().ToString("N") + ".cmd")
-    [IO.File]::WriteAllLines($w, @('@echo off', $innerCmd, ('echo !ERRORLEVEL!> "{0}"' -f $rcF)), (New-Object System.Text.ASCIIEncoding))
-    $plan.Add($innerCmd) | Out-Null
-    return Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/v:on /c "' + $w + '"') -NoNewWindow -PassThru
+# ------------------------------------------------------------------ рабочий прогон (пишет артефакты)
+try {
+    $artifactDir = Initialize-Artifacts -ArtifactDir $artifactDir
+} catch {
+    Say "СЛОМАН ЗАПУСК: $_" Red
+    if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Step; ok = $false; failures = @([pscustomobject]@{ id = 'mutex'; detail = "$_"; retryable = $true; next_cmd = (Get-NextCommand) }) }) }
+    exit $Code_Step
 }
-
-function Get-KiRc([string]$rcF) {
-    for ($i = 0; $i -lt 40; $i++) {
-        if (Test-Path $rcF) {
-            $t = ""
-            try { $t = ([IO.File]::ReadAllText($rcF)).Trim() } catch { }
-            if ($t -match '^\d+$') { return [int]$t }
-        }
-        Start-Sleep -Milliseconds 250
+if (-not (Test-Path -LiteralPath $artifactDir)) { $artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path }
+$progressFile = Join-Path $artifactDir 'progress.ndjson'
+$logFile = Join-Path $artifactDir 'install.log'
+$stepIds = @('winget','python','git','deps','models','snippet','doctor','acceptance')
+if ($Steps) {
+    $want = @($Steps -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+    $badSteps = @($want | Where-Object { $stepIds -notcontains $_ })
+    if ($badSteps.Count) {
+        Say ('СЛОМАН ЗАПУСК: неизвестный шаг ' + ($badSteps -join ', ')) Red
+        if ($Json) { Emit-Json ([pscustomobject][ordered]@{ schema_version = 2; code = $Code_Broken; ok = $false; failures = @([pscustomobject]@{ id = 'params'; detail = 'неизвестный шаг: ' + ($badSteps -join ', '); retryable = $false }) }) }
+        Release-Artifacts; exit $Code_Broken
     }
-    return 1
+    $stepIds = $want
+}
+if ($Acceptance -and $stepIds -notcontains 'acceptance') { $stepIds += 'acceptance' }
+$env:PYTHONUTF8 = '1'
+try {
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $OutputEncoding = [Text.Encoding]::UTF8
+} catch { }
+Open-ProgressLog -Json:$Json -ProgressJson:$ProgressJson -LogPath $logFile -EventFile $progressFile -Steps $stepIds
+
+Say "установка: $Root" Cyan
+Say ("артефакты: $artifactDir; ресурсы Stanza: $resources")
+$prevReport = $null
+if ($Resume -and (Test-Path -LiteralPath (Join-Path $artifactDir 'install-report.json'))) {
+    try { $prevReport = Get-Content -LiteralPath (Join-Path $artifactDir 'install-report.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+}
+function Get-PrevStep { param([string]$Id)
+    if (-not $prevReport) { return $null }
+    return @($prevReport.steps | Where-Object { $_.id -eq $Id } | Select-Object -Last 1)
 }
 
-function New-PyFile([string]$code) {
-    # код python — в файл (UTF-8), а не в командную строку: кириллица и кавычки через cmd ломаются
-    $f = Join-Path $env:TEMP ("ki-py-" + [guid]::NewGuid().ToString("N") + ".py")
-    [IO.File]::WriteAllText($f, $code, (New-Object System.Text.UTF8Encoding $false))
-    return $f
-}
-
-function Run-Cmd($exe, [string[]]$argv, $id, $hint, $execute) {
-    $plan.Add("$exe " + ($argv -join " ")) | Out-Null
-    if (-not $execute) {
-        Say ("  (plan) {0} {1}" -f (Split-Path -Leaf $exe), ($argv -join " "))
-        Add-Step $id "plan" 0 "будет выполнено: $($argv -join ' ')" $hint
-        return 0
-    }
-    Say ("  > {0} {1}" -f (Split-Path -Leaf $exe), ($argv -join " "))
-    $t0 = Get-Date
-    Write-Step -Step $id -State "start" -Msg ($argv -join " ")
-    # stderr нативной команды — не авария: pip печатает в него «WARNING: Retrying …» на временных
-    # обрывах, и с EAP=Stop это превращалось в NativeCommandError и рвало шаг. Решает код выхода.
-    $prevEA = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $lines = @(& $exe @argv 2>&1 | ForEach-Object { "$_" })
-    $rc = $LASTEXITCODE
-    $ErrorActionPreference = $prevEA
-    try { [IO.File]::AppendAllText($Log, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding $false)) } catch { }
-    if (-not $Json) { foreach ($l in $lines) { Write-Host "  | $l" } }
-    $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
-    if ($rc -ne 0) { Add-Step $id "FAIL" $sec "код выхода $rc" $hint }
-    else { Add-Step $id "OK" $sec "" $hint }
-    return $rc
-}
-
-function Run-CmdRetry($exe, [string[]]$argv, $id, $hint, $tries) {
-    # FR-5: сетевые шаги падают на первой же дырке (pip, TLS-reset); попытки с паузой, между
-    # ними — событие прогресса, чтобы «немота» не выглядела зависанием
-    $rc = 1
-    for ($i = 1; $i -le [math]::Max(1, $tries); $i++) {
-        if ($i -gt 1) {
-            Write-Progress2 -Step $id -Sub ("повтор {0}/{1}" -f $i, $tries) -Msg "пауза 15 с после rc=$rc"
-            Start-Sleep -Seconds 15
-        }
-        $rc = Run-Cmd $exe $argv ("{0}" -f $id) $hint $true
-        if ($rc -eq 0) { return 0 }
-        Log("$id попытка $i rc=$rc")
-    }
-    return $rc
-}
-
-function Run-SetupWithProgress([string[]]$setupArgs, $id, $hint) {
-    # setup.ps1 пишет NDJSON-события в $ProgressFile; здесь — хвост файлов + живой прогресс venv
-    $pf = if ($ProgressFile) { $ProgressFile } else { Join-Path $env:TEMP ("ki-setup-progress-" + [guid]::NewGuid().ToString("N") + ".ndjson") }
-    $outF = Join-Path $env:TEMP ("ki-setup-out-" + [guid]::NewGuid().ToString("N") + ".log")
-    $errF = Join-Path $env:TEMP ("ki-setup-err-" + [guid]::NewGuid().ToString("N") + ".log")
-    foreach ($f in @($pf, $outF, $errF)) { try { [IO.File]::WriteAllText($f, "") } catch { } }
-    $argsLine = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" {1} -ProgressFile "{2}"' -f (Join-Path $PSScriptRoot "setup.ps1"), ($setupArgs -join " "), $pf)
-    $rcF = Join-Path $env:TEMP ("ki-setup-rc-" + [guid]::NewGuid().ToString("N") + ".txt")
-    $plan.Add("powershell $argsLine") | Out-Null
-    Say ("  > setup.ps1 {0}" -f ($setupArgs -join " "))
-    $t0 = Get-Date
-    Write-Step -Step $id -State "start" -Msg ($setupArgs -join " ")
-    $inner = ('powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" {1} -ProgressFile "{2}" > "{3}" 2> "{4}"' -f (Join-Path $PSScriptRoot "setup.ps1"), ($setupArgs -join " "), $pf, $outF, $errF)
-    $p = Start-KiChild $inner $rcF
-    $tOut = New-TailState $outF; $tErr = New-TailState $errF; $tPf = New-TailState $pf
-    # что показывать как «растёт»: в режиме venv — .venv; по умолчанию (глобально) — site-packages
-    # системного Python, иначе прогресс стоял бы на нуле. Если не вышло определить — .venv (как было).
-    $growDir = Join-Path $Root ".venv"
-    $growLabel = "размер .venv (эталон 874 МБ)"
-    $growTotal = 874 * 1MB
-    if (-not $UseVenv) {
-        $sp = ""
-        try { $sp = (& $py -c "import site;print(site.getsitepackages()[0])" 2>$null | Select-Object -First 1) } catch { }
-        if ($sp -and (Test-Path $sp)) { $growDir = "" + $sp; $growLabel = "site-packages (глобально)" }
-    }
-    while (-not $p.HasExited) {
-        foreach ($l in (Read-Appended $tPf)) {
-            if (-not $l.Trim()) { continue }
-            try {
-                $e = $l | ConvertFrom-Json
-                $sub = [string]$e.sub; if (-not $sub) { $sub = [string]$e.step }
-                $bd = -1.0; $bt = -1.0; $pc = -1.0; $et = -1.0
-                if ($null -ne $e.bytes) { $bd = [double]$e.bytes }
-                if ($null -ne $e.total -and [double]$e.total -gt 0) { $bt = [double]$e.total }
-                if ($null -ne $e.pct) { $pc = [double]$e.pct }
-                if ($null -ne $e.eta) { $et = [double]$e.eta }
-                if ("$($e.ev)" -like 'step_*') { Write-Progress2 -Step $id -Sub ("setup {0}: {1}" -f $e.ev, $sub) -Pct $pc -BytesDone $bd -BytesTotal $bt -Msg ([string]$e.msg) -ThrottleMs 1000 }
-                else { Write-Progress2 -Step $id -Sub $sub -Pct $pc -BytesDone $bd -BytesTotal $bt -EtaSec $et -Msg ([string]$e.msg) }
-            } catch { Log("setup progress line не распарсилась: $l") }
-        }
-        foreach ($l in (Read-Appended $tOut)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { }; if (-not $Json) { Write-Host "  | $l" } }
-        foreach ($l in (Read-Appended $tErr)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { } }
-        # Measure-DirSize отдаёт БАЙТЫ (кэш 2 с) — их и передаём в Write-Progress2
-        $grownBytes = Measure-DirSize -Path $growDir -MinIntervalSec 2
-        Write-Progress2 -Step $id -Sub $growLabel -BytesDone ([double]$grownBytes) -BytesTotal ([double]$growTotal) -Msg $growLabel
-        Start-Sleep -Milliseconds 800
-    }
-    foreach ($l in (Read-Appended $tPf)) {
-        try {
-            $e = $l | ConvertFrom-Json
-            $sub = [string]$e.sub; if (-not $sub) { $sub = [string]$e.step }
-            $bd = -1.0; $bt = -1.0; $pc = -1.0; $et = -1.0
-            if ($null -ne $e.bytes) { $bd = [double]$e.bytes }
-            if ($null -ne $e.total -and [double]$e.total -gt 0) { $bt = [double]$e.total }
-            if ($null -ne $e.pct) { $pc = [double]$e.pct }
-            if ($null -ne $e.eta) { $et = [double]$e.eta }
-            Write-Progress2 -Step $id -Sub ("setup {0}: {1}" -f $e.ev, $sub) -Pct $pc -BytesDone $bd -BytesTotal $bt -EtaSec $et -Msg ([string]$e.msg)
-        } catch { }
-    }
-    foreach ($l in (Read-Appended $tOut)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { }; if (-not $Json) { Write-Host "  | $l" } }
-    foreach ($l in (Read-Appended $tErr)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { } }
-    $rc = Get-KiRc $rcF
-    $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
-    if ($rc -ne 0) { Add-Step $id "FAIL" $sec "код выхода $rc" $hint }
-    else { Add-Step $id "OK" $sec "" $hint }
-    return $rc
-}
-
-function Invoke-ModelsStep($id, $hint) {
-    # загрузка моделей с ретраями и живым прогрессом по размеру кэшей (STANZA + HF)
-    $code = "import stanza; stanza.download('de', verbose=False); print('модели de скачаны')"
-    $stanzaCache = Join-Path $env:LOCALAPPDATA "StanfordNLP"
-    $hfCache = Join-Path $env:USERPROFILE ".cache\huggingface"
-    $totalEst = 1.62GB   # эталон прогона: 1.09 ГБ Stanza + 0.53 ГБ HF-кэш
-    for ($i = 1; $i -le [math]::Max(1, $Retries); $i++) {
-        if ($i -gt 1) {
-            Write-Progress2 -Step $id -Sub ("повтор {0}/{1}" -f $i, $Retries) -Msg "пауза 15 с (TLS-reset raw.githubusercontent.com)"
-            Start-Sleep -Seconds 15
-        }
-        $t0 = Get-Date
-        Write-Progress2 -Step $id -Sub ("stanza.download('de') попытка {0}" -f $i) -BytesTotal $totalEst -Msg "модели de: stanza-resources + huggingface.co"
-        $outF = Join-Path $env:TEMP ("ki-models-out-" + [guid]::NewGuid().ToString("N") + ".log")
-        $errF = Join-Path $env:TEMP ("ki-models-err-" + [guid]::NewGuid().ToString("N") + ".log")
-        $rcF = Join-Path $env:TEMP ("ki-models-rc-" + [guid]::NewGuid().ToString("N") + ".txt")
-        $pyFile = New-PyFile "import stanza`nstanza.download('de', verbose=False)`nprint('MODELS_DOWNLOADED')`n"
-        $pyFor = Get-PyUse
-        $inner = ('"{0}" "{1}" > "{2}" 2> "{3}"' -f $pyFor, $pyFile, $outF, $errF)
-        $p = Start-KiChild $inner $rcF
-        $tOut = New-TailState $outF; $tErr = New-TailState $errF
-        while (-not $p.HasExited) {
-            $b1 = 0; $b2 = 0
-            $b1 = Measure-DirSize -Path $stanzaCache -MinIntervalSec 2
-            try { $b2 = Measure-DirSize -Path $hfCache -MinIntervalSec 2 } catch { }
-            $bytes = $b1 + $b2
-            Write-Progress2 -Step $id -Sub ("качаем: StanfordNLP + HF-кэш") -BytesDone $bytes -BytesTotal $totalEst -Msg ("попытка {0}" -f $i)
-            foreach ($l in (Read-Appended $tOut)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { }; if (-not $Json) { Write-Host "  | $l" } }
-            foreach ($l in (Read-Appended $tErr)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { }; if (-not $Json) { Write-Host "  | $l" } }
-            Start-Sleep -Seconds 2
-        }
-        foreach ($l in (Read-Appended $tOut)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { } }
-        foreach ($l in (Read-Appended $tErr)) { try { [IO.File]::AppendAllText($Log, $l + "`n", (New-Object System.Text.UTF8Encoding $false)) } catch { } }
-        $rc = Get-KiRc $rcF
-        $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
-        if ($rc -eq 0) { Add-Step $id "OK" $sec "stanza.download('de') с попытки $i" ""; return 0 }
-        Log("$id попытка $i rc=$rc")
-        Add-Step $id "FAIL" $sec ("попытка {0}/{1}: rc={2}" -f $i, $Retries, $rc) $hint
-    }
-    return 1
-}
-
-Say "all.ps1: $Root" Cyan
-Say ("режим : " + $(if ($InventoryOnly) { "инвентаризация среды" } elseif ($CheckOnly) { "check-only (ничего не меняю)" } elseif ($DryRun) { "dry-run" } else { "установка" }))
-Open-ProgressLog -Json:$Json -ProgressJson:$ProgressJson -LogPath $Log -Steps @($Steps -Split ',')
-if ($Help) { Get-Help $MyInvocation.MyCommand.Path -Detailed | Out-String -Width 110 | ForEach-Object { Say $_ }; Close-ProgressLog; exit $Code_Ready }
-
-$want = @($Steps -Split ',' | ForEach-Object { $_.Trim().ToLower() })
-$known = @("venv", "deps", "models", "mcp", "doctor")
-$willRun = (-not $CheckOnly) -and (-not $DryRun) -and (-not $InventoryOnly)
-$needDeps = ($want -contains "deps") -and -not (Test-Deps (Get-PyUse))
-$needModels = ($want -contains "models")
-$netNeeded = $willRun -and (($want -contains "deps") -or ($want -contains "models"))
-
-# ------------------------------------------------------------------ 0. инвентаризация + префлайт
-
-$t0 = Get-Date
-$blockers = @()
-$badSteps = @($want | Where-Object { $_ -notin $known })
-if ($badSteps) {
-    Add-Step "preflight" "FAIL" 0 ("неизвестный шаг: " + ($badSteps -join ", ") + "; известно: " + ($known -join ", ")) "код 4: поправьте -Steps"
-    if ($Json) { [pscustomobject]@{ ok = $false; code = $Code_Broken; verdict = "СЛОМАН ЗАПУСК"; steps = @([pscustomobject]@{ id = "preflight"; status = "FAIL"; seconds = 0; detail = "неизвестный шаг: $($badSteps -join ', ')"; hint = "поправьте -Steps" }) } | ConvertTo-Json -Depth 6 }
-    Close-ProgressLog
-    exit $Code_Broken
-}
-if ($Zip -and -not (Test-Path $Zip)) {
-    Add-Step "preflight" "FAIL" 0 "нет файла -Zip $Zip" "код 4: укажите существующий архив моделей"
-    if ($Json) { [pscustomobject]@{ ok = $false; code = $Code_Broken; verdict = "СЛОМАН ЗАПУСК"; steps = @([pscustomobject]@{ id = "preflight"; status = "FAIL"; seconds = 0; detail = "нет файла -Zip $Zip"; hint = "укажите существующий архив" }) } | ConvertTo-Json -Depth 6 }
-    Close-ProgressLog
-    exit $Code_Broken
-}
-
-# FR-17: префлайт ЛЮБОГО прогона начинается с замера среды; статус только из замера
-$inv = Invoke-Inventory $netNeeded
-$invBlocking = @($inv.items | Where-Object { $_.need -eq 'required' -and @('OK', 'NOTE', 'ADMIN', 'USER', 'set', 'NOT_REQUIRED', 'SLOW') -notcontains $_.status }).Count
-if ($invQuiet -and ($Inventory -or $InventoryOnly -or -not $Json)) { Show-Inventory $inv }
-
-if ($InventoryOnly) {
-    $code = $(if ($invBlocking -gt 0) { $Code_Human } else { $Code_Ready })
-    Say ""
-    Say ("итог: " + $(if ($code -eq 0) { "среда полная" } else { "чего-то не хватает (см. fix выше)" }) + " (код $code)") $(if ($code -eq 0) { "Green" } else { "Red" })
-    if ($Json) { [pscustomobject]@{ ok = ($code -eq 0); code = $code; verdict = "ИНВЕНТАРИЗАЦИЯ"; root = $Root; elapsed = $inv.elapsed; blocking = $invBlocking; items = @($inv.items) } | ConvertTo-Json -Depth 6 }
-    Close-ProgressLog
-    exit $code
-}
-
-# флаги автоустановки: доустановить и переснять инвентаризацию (только по явному флагу + подтверждению)
-foreach ($flag in @(@{ on = $InstallPython; name = "python"; item = "python" },
-                   @{ on = $InstallGit; name = "git"; item = "git" },
-                   @{ on = $InstallBuildTools; name = "buildtools"; item = "msvc_vctools" })) {
-    if (-not $flag.on) { continue }
-    $it = Get-InvItem $flag.item
-    if ($it -and $it.status -eq 'OK') { Add-Step "auto_$($flag.name)" "SKIP" 0 "$($flag.item) уже есть: $($it.version)" ""; continue }
-    Invoke-AutoInstall $flag.name
-    $inv = Invoke-Inventory $netNeeded
-    $invBlocking = @($inv.items | Where-Object { $_.need -eq 'required' -and @('OK', 'NOTE', 'ADMIN', 'USER', 'set', 'NOT_REQUIRED', 'SLOW') -notcontains $_.status }).Count
-    if ($invQuiet -and -not $Json) { Show-Inventory $inv }
-}
-
-foreach ($f in @("scripts\setup.ps1", "scripts\inventory.ps1", "scripts\progress.ps1", "scripts\unpack_models.py", "scripts\doctor.py",
-                 "requirements.txt", "MCP-stanza-german\server.py", "MCP-stanza-german\mcp.json.example")) {
-    if (-not (Test-Path (Join-Path $Root $f))) { Add-Step "preflight" "FAIL" 0 "нет $f" "клон неполный — обновите репозиторий" }
-}
-if ($env:OS -notlike "Windows*") { $blockers += "all.ps1 рассчитан на Windows (PowerShell 5.1+)" }
-
-# правила «что блокирует, что только предупреждает» (FIX-поля — из инвентаризации)
-$itPy = Get-InvItem "python"
-$py = Find-Py315 $Python
-if (-not $py) {
-    $fix = $(if ($itPy -and $itPy.fix) { $itPy.fix } else { "winget install -e --id Python.Python.3.15; без winget — https://www.python.org/ftp/python/3.15.2/python-3.15.2-amd64.exe /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0" })
-    $blockers += ("нет Python 3.15 x64 (статус замера: " + $(if ($itPy) { $itPy.status } else { "UNKNOWN" }) + "). Поставить: " + $fix + " | не даунгрейдить до 3.12/3.13/3.14; можно -InstallPython -Yes")
-}
-$itGit = Get-InvItem "git"
-if ($itGit -and $itGit.status -eq 'MISSING') {
-    if ($InventoryOnly) { $blockers += ("нет git. Поставить: " + $itGit.fix) }
-    else { Add-Step "preflight" "NOTE" 0 "git не найден (для установки не нужен; нужен для клона, git-хука и push)" ("поставить: " + $itGit.fix + " | можно -InstallGit -Yes") }
-}
-$itMsvc = Get-InvItem "msvc_vctools"
-if ($needDeps -and $itMsvc -and $itMsvc.status -ne 'OK') {
-    $blockers += ("для шага deps нужен компилятор (pyyaml 6.0.3 собирается из sdist, cp315-колёс нет), статус MSVC: " + $itMsvc.status + ". Поставить: " + $itMsvc.fix + " | можно -InstallBuildTools -Yes")
-} elseif ($itMsvc -and $itMsvc.status -ne 'OK') {
-    Add-Step "preflight" "NOTE" 0 ("MSVC VCTools: " + $itMsvc.status + " (нужен только для сборки pyyaml из sdist на шаге deps)") $itMsvc.fix
-}
-$itShell = Get-InvItem "shell"
-if ($itShell -and $itShell.status -ne 'OK') { Add-Step "preflight" "NOTE" 0 ("шелл/кодировка: " + $itShell.note) "нужен PowerShell 5.1 x64; для кириллицы chcp 65001" }
-$itDisk = Get-InvItem "project_disk"
-if ($itDisk -and $itDisk.status -eq 'SLOW') { Add-Step "preflight" "NOTE" 0 "проект на сетевой/VMware-шаре: установка и MCP-вызовы в 4–7 раз дольше" $itDisk.fix }
-$itRights = Get-InvItem "rights"
-if ($itRights -and $itRights.status -eq 'USER') { Add-Step "preflight" "NOTE" 0 "обычный пользователь: Build Tools и machine-wide установки требуют UAC (per-user Python/Git — нет)" $itRights.fix }
-
-$freeGB = Get-FreeGB $Root
-if ($freeGB -ge 0 -and $freeGB -lt $MinFreeGB) { $blockers += "на диске $freeGB ГБ, просим >= $MinFreeGB ГБ (venv+torch ~4, модели ~1.6, Build Tools 3–4, кэш)" }
-
-$depsOk = Test-Deps (Get-PyUse)
-if ($py) { $paths = Probe-Paths $py }
-$gh = Test-Gh $py
-if (-not $gh.ok) { Add-Step "preflight" "NOTE" 0 ("gh: $($gh.why) — для установки не нужен (репозиторий публичный)") "для push: gh auth login + gh auth setup-git (УСТАНОВКА.md §1.2)" }
-if ($netNeeded) {
-    $bad = Test-Net
-    if ($bad) { $blockers += ("нет доступа к " + ($bad -join ", ") + " (порт 443, прокси: HTTPS_PROXY)") }
-}
-
-$itWinget = Get-InvItem "winget"
-if ($itWinget -and $itWinget.status -eq 'MISSING') { Add-Step "preflight" "NOTE" 0 "winget нет (Магазин отсутствует) — проект ставится прямыми ссылками, flags -Install* используют их" $itWinget.fix }
-
-if ($blockers.Count) {
-    foreach ($b in $blockers) { Add-Step "preflight" "BLOCK" 0 $b "нужен человек: команда fix из инвентаризации" }
-    $code = $Code_Human
-} elseif ($done | Where-Object { $_.status -eq "FAIL" }) {
-    $code = $Code_Broken
-} else {
-    $det = "python $py; диск $freeGB ГБ; gh: $($gh.why); пакеты: " + $(if ($depsOk) { "есть (" + $(if ($UseVenv) { ".venv" } else { "глобально" }) + ")" } else { "нет" }) + "; инвентаризация: блокирующих $invBlocking"
-    if ($paths) { $det += "; модели: " + $(if ($paths.depparse) { "есть" } else { "нет" }) }
-    Add-Step "preflight" "OK" ([math]::Round(((Get-Date) - $t0).TotalSeconds, 1)) $det ""
-    $code = 0
-}
+# реестр флагов — CI-контракт: вывод -Check capabilities совпадает с docs/flags.json
+$planArr = @($stepIds | ForEach-Object { [pscustomobject]@{ id = $_; status = 'PLAN' } })
 
 # ------------------------------------------------------------------ шаги
-
-if ($code -eq 0) {
-    # 1+2. интерпретатор/venv и зависимости — силами setup.ps1 (свою логику не дублируем)
-    if ($want -contains "venv" -or $want -contains "deps") {
-        $sa = @()
-        if ($Python) { $sa += @("-Python", "`"$Python`"") }
-        if ($DryRun) { $sa += "-DryRun" }
-        # doctor внутри setup.ps1 — лишняя тяжёлая работа на медленном диске (import torch с Z: —
-        # минуты); финальный doctor делает all.ps1 своим шагом
-        $sa += "-SkipDoctor"
-        if ($UseVenv) { $sa += "-Venv" }   # без этого setup.ps1 ставит глобально (дефолт)
-        if ($want -notcontains "deps" -or (Test-Deps (Get-PyUse))) { $sa += "-SkipDeps"; Add-Step "deps" "SKIP" 0 "пакеты уже стоят" "" }
-        if ($DryRun -or $CheckOnly) {
-            $plan.Add("powershell -File scripts\setup.ps1 " + ($sa -join " ")) | Out-Null
-            Add-Step "setup" "plan" 0 "будет выполнено setup.ps1 $($sa -join ' ')" ""
-        } else {
-            $rc = Run-SetupWithProgress $sa "setup" "setup.ps1 упал: pip/сеть/нужен MSVC; повторите ту же команду (шаги идемпотентны, готовые дают SKIP)"
-            if ($rc -ne 0) { $code = $Code_Step }
-        }
+foreach ($id in $stepIds) {
+    $t0 = Get-Date
+    $prev = Get-PrevStep $id
+    if ($Resume -and $prev -and @('OK','SKIP') -contains $prev.status) {
+        Add-StepResult (New-Step -Id $id -Status 'SKIP' -Phase 'resume' -Detail "готово в previous run: $($prev.detail)" -Seconds 0)
+        continue
     }
-
-    # 3. модели: локальный архив -> официальная загрузка Stanford (stanza.download) с ретраями
-    if ($code -eq 0 -and $want -contains "models") {
-        $pyFor = Get-PyUse
-        # FIX: $paths снимается префлайтом системным python, а scripts\_paths.py требует stanza —
-        # до шага deps он null, и `haveModels` по незнанию считался $true → ложный «models SKIP»
-        # (именно так в прогоне 18.11 и вышло). После deps снимаем пути ещё раз — тем же python.
-        if (-not $paths -and $pyFor) { $paths = Probe-Paths $pyFor }
-        $haveModels = $false
-        if ($paths) { $haveModels = [bool]$paths.depparse }
-        if ($haveModels -and -not $Zip) {
-            Add-Step "models" "SKIP" 0 "модели de уже в кэше ($($paths.model))" ""
-        } else {
-            $local = if ($Zip) { $Zip } else { (Get-ChildItem (Join-Path $Root "stanza-models-de-*.zip") -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
-            if ($local -and (Test-Path $local)) {
-                $rc = Run-Cmd $pyFor @((Join-Path $Root "scripts\unpack_models.py"), "--zip", $local, "--check") "models" "распаковка не вышла на 52/52: проверьте .sha256 рядом с архивом" $willRun
-            } elseif (-not $willRun) {
-                $rc = 0
-                Add-Step "models" "plan" 0 "локального архива нет — модели качает stanza.download (huggingface.co + stanza-resources)" ""
-            } elseif (Test-Deps $pyFor) {
-                $rc = Invoke-ModelsStep "models" "stanza.download не отдаёт модели: нужен raw.githubusercontent.com + huggingface.co; при 10054 повторите, или положите resources_1.15.0.json в кэш, или -Zip <архив>"
-                if ($rc -ne 0 -and $code -eq 0) { $code = $Code_Step }
-            } else {
-                $rc = 1
-                Add-Step "models" "BLOCK" 0 "нет локального архива моделей, а пакеты (stanza) ещё не установлены" "сначала шаг deps, затем модели: stanza.download('de') или unpack_models.py --zip <архив>"
-            }
-        }
-    }
-
-    # 4. конфиг MCP-клиента: его создаёт человек — мы печатаем готовый фрагмент и проверяем запись
-    if ($code -eq 0 -and $want -contains "mcp") {
-        $pyFor = Get-PyUse
-        $cfgPath = if ($McpConfig) { $McpConfig } else { Find-McpConfig }
-        $entry = [ordered]@{
-            command = $pyFor
-            args    = @((Join-Path $Root "MCP-stanza-german\server.py"))
-            env     = [ordered]@{ RULE_ROOT = (Join-Path $Root "правило"); PYTHONUTF8 = "1" }
-        }
-        $mcpSnippet = [ordered]@{ mcpServers = [ordered]@{ "stanza-german" = $entry } } | ConvertTo-Json -Depth 5
-        $found = $false; $srv = $null
-        if (Test-Path $cfgPath) {
-            try {
-                $servers = (Get-Content -Raw -Encoding UTF8 $cfgPath | ConvertFrom-Json).$McpKey
-                $srv = $servers.'stanza-german'
-                $found = $null -ne $srv
-            } catch { $found = $false }
-        }
-        Say "MCP-конфиг: $cfgPath (создаёт человек; установщик этот файл НЕ пишет; образец — MCP-stanza-german\mcp.json.example)"
-        Say "вставь в секцию `"$McpKey`":"
-        foreach ($l in ($mcpSnippet -split "`n")) { Say ("  " + $l) }
-        $venvExists = Test-Path $VenvPy
-        if (-not $UseVenv -and -not $venvExists) {
-            # глобальный режим (по умолчанию): это нормально, а не «установка не сделана»
-            Add-Step "mcp" "OK" 0 "snippet напечатан для глобального Python ($pyFor)" ""
-        } elseif (-not $UseVenv -and $venvExists) {
-            Add-Step "mcp" "NOTE" 0 "есть готовый .venv, но режим глобальный: command = $pyFor (глобальный python)" "чтобы сервер работал в .venv, запустите с -Venv (тогда command будет $VenvPy)"
-        }
-        if ($found) {
-            # запись есть — но клиент её не запустит, если enabled:false или command — python без пакетов
-            $on = $true
-            if ($srv.PSObject.Properties['enabled'] -and $srv.enabled -is [bool]) { $on = $srv.enabled }
-            $cmd = [string]$srv.command
-            if (-not $on) {
-                Add-Step "mcp" "BLOCK" 0 "в $cfgPath запись stanza-german есть, но enabled: false" "поставь ""enabled"": true (или убери поле) и перезапусти клиент — иначе сервер не стартует"
-                Add-Human "MCP: запись отключена" ("поставь `"enabled`: true в $cfgPath и перезапусти клиент")
-                $code = $Code_Human
-            } elseif ($cmd -and -not (Test-Path $cmd)) {
-                # команда в конфиге не существует. Это BLOCK только если зависимости уже стоят
-                # (тогда клиент точно не стартует и виноват конфиг). Пока зависимости не
-                # установлены — это NOTE: сначала установка, потом command.
-                if (Test-Deps $pyFor) {
-                    Add-Step "mcp" "BLOCK" 0 "command в конфиге не найден: $cmd" "правь command на $pyFor и перезапусти клиент"
-                    Add-Human "MCP: command в конфиге несуществующий" ("command = $pyFor в $cfgPath, затем перезапуск клиента")
-                    $code = $Code_Human
+    Write-Step -Step $id -State 'start' -Msg $mode
+    $blockerCountBeforeStep = $blockers.Count
+    $result = $null
+    try {
+        switch ($id) {
+            'winget' {
+                $winget = Get-Command winget -ErrorAction SilentlyContinue
+                if ($winget) {
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'SKIP' -Detail 'winget уже установлен'
+                } elseif (-not $Yes) {
+                    Add-Blocker 'winget' 'winget (App Installer) не найден' 'winget: Install-Module Microsoft.WinGet.Client -Force -Repository PSGallery; Repair-WinGetPackageManager -AllUsers  (или запустите с -Yes)'
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'winget не найден, -Yes не задан' -Remedy 'запустите с -Yes или установите App Installer вручную'
                 } else {
-                    Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd, на этой машине его нет" "зависимости ещё не стоят: после установки поставь command = $pyFor и перезапусти клиент"
-                    Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath" ""
+                    $okBoot = $true; $detail = ''
+                    try {
+                        Import-Module Microsoft.WinGet.Client -Force -ErrorAction Stop
+                        Repair-WinGetPackageManager -AllUsers -ErrorAction Stop
+                    } catch { $okBoot = $false; $detail = "$_" }
+                    if (-not $okBoot) {
+                        $rc = Invoke-Logged -Exe 'powershell.exe' -Argv @('-NoProfile','-ExecutionPolicy','Bypass','-Command','Install-Module Microsoft.WinGet.Client -Force -Repository PSGallery; Repair-WinGetPackageManager -AllUsers') -Id 'winget-bootstrap'
+                        $okBoot = ($rc -eq 0)
+                    }
+                    try { $env:Path = (@([Environment]::GetEnvironmentVariable('Path','Machine'), [Environment]::GetEnvironmentVariable('Path','User')) | Where-Object { $_ }) -join ';' } catch { }
+                    if ($okBoot -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+                        $result = New-Step -Id $id -Phase 'install' -Detail 'winget установлен из PSGallery (Microsoft.WinGet.Client + Repair-WinGetPackageManager -AllUsers)'
+                    } else {
+                        # winget не обязателен: все компоненты ставятся прямыми ссылками
+                        $result = New-Step -Id $id -Phase 'install' -Status 'SKIP' -Detail "winget недоступен ($detail); используется прямой путь установки" -Remedy 'проверьте App Installer и PSGallery; на установку это не влияет'
+                    }
                 }
-            } elseif ($cmd -and ($cmd -ne $pyFor)) {
-                Add-Step "mcp" "NOTE" 0 "command в конфиге = $cmd (ожидался $pyFor)" "в этом python пакетов mcp/stanza может не быть: поставь command = $pyFor"
-                Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath" ""
-            } else {
-                Add-Step "mcp" "OK" 0 "запись stanza-german есть в $cfgPath (command $cmd)" ""
             }
-        } else {
-            Add-Step "mcp" "BLOCK" 0 "в $cfgPath записи stanza-german нет" "вставь напечатанный фрагмент (образец MCP-stanza-german\mcp.json.example) и перезапусти клиент"
-            if ($willRun) {
-                Add-Human "осталось ОДНО действие человека: MCP-конфиг" ("1) положи запись stanza-german в $cfgPath (фрагмент выше)`n2) перезапусти MCP-клиент`n3) проверь: $pyFor scripts\mcp_probe.py")
-                if ($code -eq 0) { $code = $Code_ReadyHuman }
-            } else {
-                Add-Human "MCP: нет записи stanza-german" ("после установки положи фрагмент в $cfgPath и перезапусти клиент")
-                if ($code -eq 0) { $code = $Code_Human }
+            'python' {
+                $info = Find-Python -Explicit $Python -TargetDir $target
+                if ($info -and $info.Usable) {
+                    $pyInfo = $info; $py = $info.Path
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'SKIP' -Detail "Python $($info.Version) x64: $($info.Path)"
+                } elseif ($info) {
+                    Add-Blocker 'python' "Python $($info.Version) непригоден: $($info.Reason) ($($info.Path))" 'удалите externally-managed интерпретатор или задайте -Python <путь к per-user Python 3.15.2 x64>'
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail "Python: $($info.Reason)" -Remedy 'нужен per-user Python 3.15.2 x64 без PEP668'
+                } elseif (-not $Yes) {
+                    Add-Blocker 'python' 'нет Python 3.15.2 x64' "winget install --id Python.Python.3.15 -e; или запустите с -Yes (офлайн: python-3.15.2-amd64.exe /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1)"
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'нет Python 3.15 x64, -Yes не задан' -Remedy 'запустите с -Yes'
+                } else {
+                    # SHA256 берём из манифеста winget-pkgs (InstallerSha256)
+                    $hash = ''
+                    $manifestUrls = @(
+                        'https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/p/Python/Python/3.15/Python.Python.3.15.installer.yaml',
+                        'https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/p/Python/Python/3.15/3.15.2/Python.Python.3.15.installer.yaml'
+                    )
+                    foreach ($mu in $manifestUrls) {
+                        try {
+                            $mf = (Invoke-WebRequest -Uri $mu -UseBasicParsing -TimeoutSec 20).Content
+                            if ($mf -match '(?im)InstallerSha256:\s*([0-9a-fA-F]{64})') { $hash = $Matches[1].ToLowerInvariant(); break }
+                        } catch { }
+                    }
+                    $url = 'https://www.python.org/ftp/python/3.15.2/python-3.15.2-amd64.exe'
+                    $exe = Join-Path $artifactDir 'downloads\python-3.15.2-amd64.exe'
+                    $dl = Invoke-Download -Url $url -Dest $exe -Sha256 $hash -Retries $Retries -DownloadDir (Join-Path $artifactDir 'downloads') -OnProgress { param($e)
+                        if ($e.ev -eq 'progress') { Write-Progress2 -Step 'python' -Sub 'скачивание python.org' -Pct $e.pct }
+                    }
+                    if (-not $dl.ok) {
+                        $result = New-Step -Id $id -Phase 'download' -Status 'FAIL' -Detail "не скачан Python: $($dl.detail)" -Retryable $true -Remedy 'проверьте HTTPS_PROXY/сеть; повторите с -Resume; SHA256 сверяется с winget-pkgs' -NextCmd (Get-NextCommand $id)
+                    } else {
+                        $args = @('/quiet','InstallAllUsers=0','PrependPath=1','Include_launcher=1','Include_test=0',("TargetDir=$target"))
+                        $rc = Invoke-Installer -Exe $exe -Argv $args -Id 'python-install'
+                        if ($rc -eq 0 -or $rc -eq 3010) {
+                            try { $env:Path = (@([Environment]::GetEnvironmentVariable('Path','Machine'), [Environment]::GetEnvironmentVariable('Path','User')) | Where-Object { $_ }) -join ';' } catch { }
+                            $info = Find-Python -Explicit (Join-Path $target 'python.exe') -TargetDir $target
+                            if ($info -and $info.Usable) {
+                                $pyInfo = $info; $py = $info.Path
+                                $result = New-Step -Id $id -Phase 'install' -Status 'OK' -Detail "Python $($info.Version) установлен: $($info.Path); реестр/launcher/PATH перечитаны" -Bytes $dl.bytes -Rc $rc
+                            } else {
+                                $result = New-Step -Id $id -Phase 'verify' -Status 'FAIL' -Detail "установщик rc=$rc, но Python 3.15 x64 не найден по TargetDir/реестру/PATH" -Retryable $true -Remedy 'перелогиньтесь и повторите с -Resume' -NextCmd (Get-NextCommand $id) -Rc $rc -Bytes $dl.bytes
+                            }
+                        } else {
+                            $result = New-Step -Id $id -Phase 'install' -Status 'FAIL' -Detail "установщик python.org вернул $rc" -Retryable $true -Remedy 'см. install.log в ArtifactDir; повторите с -Resume' -NextCmd (Get-NextCommand $id) -Rc $rc -Bytes $dl.bytes
+                        }
+                    }
+                }
+            }
+            'git' {
+                if (Get-Command git -ErrorAction SilentlyContinue) {
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'SKIP' -Detail 'git уже установлен'
+                } elseif (-not $Yes) {
+                    Add-Blocker 'git' 'git не найден' 'winget install --id Git.Git -e; или запустите с -Yes'
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'git не найден, -Yes не задан' -Remedy 'запустите с -Yes'
+                } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+                    $rc = Invoke-Logged -Exe 'winget.exe' -Argv @('install','--id','Git.Git','-e','--accept-package-agreements','--accept-source-agreements','--disable-interactivity') -Id 'git-install'
+                    $result = if ($rc -eq 0) { New-Step -Id $id -Phase 'install' -Detail 'Git.Git установлен winget' }
+                              else { New-Step -Id $id -Phase 'install' -Status 'FAIL' -Detail "winget Git.Git rc=$rc" -Retryable $true -Remedy 'повторите с -Resume или ставьте с git-scm.com' -NextCmd (Get-NextCommand $id) -Rc $rc }
+                } else {
+                    $url = 'https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/Git-2.56.1-64-bit.exe'
+                    $exe = Join-Path $artifactDir 'downloads\Git-2.56.1-64-bit.exe'
+                    $dl = Invoke-Download -Url $url -Dest $exe -Retries $Retries -DownloadDir (Join-Path $artifactDir 'downloads')
+                    if (-not $dl.ok) {
+                        $result = New-Step -Id $id -Phase 'download' -Status 'FAIL' -Detail "git не скачан: $($dl.detail)" -Retryable $true -Remedy 'проверьте доступ к github.com; повторите с -Resume' -NextCmd (Get-NextCommand $id)
+                    } else {
+                        $rc = Invoke-Installer -Exe $exe -Argv @('/VERYSILENT','/NORESTART') -Id 'git-install'
+                        $result = if ($rc -eq 0 -or $rc -eq 3010) { New-Step -Id $id -Phase 'install' -Detail 'Git установлен с git-scm.com' -Bytes $dl.bytes }
+                                  else { New-Step -Id $id -Phase 'install' -Status 'FAIL' -Detail "установщик Git вернул $rc" -Retryable $true -Remedy 'повторите с -Resume' -Rc $rc -NextCmd (Get-NextCommand $id) }
+                    }
+                }
+                # ZIP-копия без .git: init + origin + fetch + reset --mixed + pre-commit hook
+                if ($result.status -eq 'OK' -and (Test-Path (Join-Path $Root '.git')) -eq $false) {
+                    if (-not $Force) {
+                        $result = New-Step -Id $id -Phase 'git-init' -Status 'BLOCK' -Detail 'ZIP-копия: нет .git, нужен -Force для init/fetch/reset --mixed' -Remedy 'запустите с -Force -Yes (или сделайте git clone)'
+                        Add-Blocker 'git-repo' 'ZIP-копия не превращена в репозиторий' 'powershell -ExecutionPolicy Bypass -File .\install.ps1 -Steps git -Force -Yes'
+                    } else {
+                        # Invoke-Logged не умеет конвейеры: выполняем по шагам
+                        $rcAll = 0
+                        foreach ($ga in @(@('init','-b','master','.'), @('remote','add','origin','https://github.com/ppogrebnoj/stanza-german-ppl.git'), @('fetch','origin','master'), @('reset','--mixed','FETCH_HEAD'))) {
+                            $rcOne = Invoke-Logged -Exe 'git.exe' -Argv $ga -Id 'git-repo'
+                            if ($rcOne -ne 0 -and $ga[0] -ne 'remote') { $rcAll = $rcOne; break }
+                        }
+                        $hookSrc = Join-Path $Root 'правило\git-hooks\pre-commit'
+                        $hookDst = Join-Path $Root '.git\hooks\pre-commit'
+                        if ($rcAll -eq 0 -and (Test-Path -LiteralPath $hookSrc)) {
+                            $text = [IO.File]::ReadAllText($hookSrc) -replace "`r`n", "`n"
+                            [IO.File]::WriteAllText($hookDst, $text, (New-Object System.Text.UTF8Encoding($false)))
+                        }
+                        $result = New-Step -Id $id -Phase 'git-init' -Rc $rcAll -Detail 'ZIP-копия: init/origin/fetch/reset --mixed + pre-commit hook' -Status $(if ($rcAll -eq 0) { 'OK' } else { 'FAIL' }) -Retryable ($rcAll -ne 0) -NextCmd (Get-NextCommand $id)
+                    }
+                }
+            }
+            'deps' {
+                $info = Find-Python -Explicit $Python -TargetDir $target
+                if ($info -and $info.Usable) { $pyInfo = $info; $py = $info.Path }
+                if (-not $info -or -not $info.Usable) {
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'нет пригодного Python 3.15 x64' -Remedy 'сначала шаг python; fix_cmd: winget install --id Python.Python.3.15 -e'
+                } else {
+                    $py = $info.Path
+                    if ($Venv) {
+                        $vp = Join-Path $Root '.venv\Scripts\python.exe'
+                        if (-not (Test-Path -LiteralPath $vp)) {
+                            $rc = Invoke-Logged -Exe $py -Argv @('-m','venv',(Join-Path $Root '.venv')) -Id 'venv'
+                            if ($rc -ne 0) {
+                                $result = New-Step -Id $id -Phase 'venv' -Status 'FAIL' -Detail "создание .venv rc=$rc" -Retryable $true -Remedy 'проверьте Python 3.15 x64 и место на диске' -Rc $rc -NextCmd (Get-NextCommand $id)
+                            }
+                        }
+                        if (Test-Path -LiteralPath $vp) { $py = $vp }
+                    }
+                    if (-not $result) {
+                        $lock = Join-Path $Root 'requirements.lock'
+                        $dry = @('-m','pip','install','--dry-run','--only-binary=:all:','--disable-pip-version-check','-r',$lock)
+                        $rcDry = Invoke-Logged -Exe $py -Argv $dry -Id 'deps-dry-run'
+                        if ($rcDry -ne 0) {
+                            $logText = Get-Content -LiteralPath (Join-Path $artifactDir 'deps-dry-run.log') -Raw -ErrorAction SilentlyContinue
+                            $sd = ''
+                            if ("$logText" -match '(?im)Building wheel for ([A-Za-z0-9_.\-]+)') { $sd = $Matches[1] }
+                            elseif ("$logText" -match '(?im)package has no wheels|sdist') { $sd = 'sm-package' }
+                            $fix = if ($sd) { "обновите пин $sd в requirements.lock до версии с колесом cp315-win_amd64 (например PyYAML 6.0.4; 6.0.3 колеса нет): python -m pip index versions $sd; python -m pip download --only-binary=:all: $sd" } else { 'проверьте requirements.lock и доступ к PyPI' }
+                            Add-Blocker 'deps' "dry-run --only-binary=:all: нашёл sdist: $sd" $fix
+                            $result = New-Step -Id $id -Phase 'dry-run' -Status 'BLOCK' -Detail "dry-run rc=$rcDry (sdist: $sd)" -Remedy $fix -Rc $rcDry
+                        } else {
+                            $rc = Invoke-Logged -Exe $py -Argv @('-m','pip','install','--only-binary=:all:','--retries',"$Retries",'--timeout','60','--disable-pip-version-check','-r',$lock) -Id 'deps'
+                            if ($rc -eq 0) {
+                                $null = & $py -m pip check > (Join-Path $artifactDir 'pip-check.txt') 2>&1
+                                $rcCheck = $LASTEXITCODE
+                                if ($rcCheck -ne 0) {
+                                    $result = New-Step -Id $id -Phase 'verify' -Status 'FAIL' -Detail "pip check rc=$rcCheck (конфликт версий)" -Retryable $false -Remedy 'сверьте requirements.lock; исправьте конфликт и повторите' -Rc $rcCheck -NextCmd (Get-NextCommand $id)
+                                } else {
+                                    $bad = @(Test-EnvReady -Info $info -Flags $flagsReg)
+                                    $result = New-Step -Id $id -Phase 'verify' -Detail 'pip dry-run + install (--only-binary=:all:) + pip check + сверка версий с lock: OK' -Bytes (Get-DirBytes (Join-Path $Root '.venv'))
+                                    if ($bad.Count) { $result = New-Step -Id $id -Phase 'verify' -Status 'FAIL' -Detail ('версии после установки не сошлись с lock: ' + ($bad -join '; ')) -Retryable $true -Remedy 'pip install --force-reinstall -r requirements.lock --only-binary=:all:' -NextCmd (Get-NextCommand $id) }
+                                }
+                            } else {
+                                $result = New-Step -Id $id -Phase 'install' -Status 'FAIL' -Detail "pip install rc=$rc" -Retryable $true -Remedy 'сетевой сбой/прокси/нет колеса: повторите с -Resume; подробности в install.log' -NextCmd (Get-NextCommand $id) -Rc $rc
+                            }
+                        }
+                    }
+                }
+            }
+            'models' {
+                $info = Find-Python -Explicit $Python -TargetDir $target
+                if ($info -and $info.Usable) { $pyInfo = $info; $py = $info.Path }
+                $pyFor = Get-InterpreterPath -PythonInfo $info -Root $Root -Venv:$Venv
+                if (-not $info -or -not (Test-Path -LiteralPath $pyFor)) {
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'нет интерпретатора для загрузки моделей' -Remedy 'сначала шаг python и deps'
+                } else {
+                    $env:STANZA_RESOURCES_DIR = $resources
+                    $env:PYTHONUTF8 = '1'
+                    $base = 'tokenize,mwt,pos,lemma,depparse'
+                    $extra = @()
+                    if ($Models) {
+                        if ($Models -eq 'all') { $extra = @('ner','sentiment') }
+                        else { $extra = @($Models -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notin ($base -split ',') }) }
+                    }
+                    $processors = (($base -split ',') + $extra) -join ','
+                    $checker = Join-Path $PSScriptRoot 'check_models.py'
+                    $needDownload = $true
+                    if (Test-Path -LiteralPath $checker) {
+                        $env:STANZA_RESOURCES_DIR = $resources
+                        $null = & $pyFor $checker --processors $processors --json > (Join-Path $artifactDir 'models-check-before.json') 2>&1
+                        $needDownload = ($LASTEXITCODE -ne 0)
+                    }
+                    if (-not $needDownload) {
+                        $result = New-Step -Id $id -Phase 'preflight' -Status 'SKIP' -Detail "модели готовы: $resources (5+ процессоров)"
+                    } elseif ($OfflineKit -and (Test-Path -LiteralPath $OfflineKit)) {
+                        $offArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'offline_kit.ps1'),'-Action','unpack','-Archive',$OfflineKit,'-TargetDir',$Root,'-ModelsDir',$resources)
+                        if ($Force) { $offArgs += '-Force' }
+                        $rc = Invoke-Logged -Exe 'powershell.exe' -Argv $offArgs -Id 'offline-unpack'
+                        $result = if ($rc -eq 0) { New-Step -Id $id -Phase 'offline' -Detail "модели распакованы из офлайн-набора $OfflineKit" } else { New-Step -Id $id -Phase 'offline' -Status 'FAIL' -Detail "распаковка rc=$rc" -Retryable $false -Remedy 'проверьте архив и его .sha256' -Rc $rc }
+                    } else {
+                        $dlOk = $false; $dlDetail = ''
+                        for ($i = 1; $i -le [math]::Max(1,$Retries); $i++) {
+                            $pre = Test-DownloadPreflight -Url 'https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main/resources_1.15.0.json'
+                            if (-not $pre.ok) { $dlDetail = "ресурсы Stanza недоступны (HTTP $($pre.code))" }
+                            $pyCode = "import stanza; stanza.download('de', processors='$processors', verbose=False)"
+                            $rc = Invoke-Logged -Exe $pyFor -Argv @('-c',$pyCode) -Id "models-attempt-$i"
+                            if ($rc -eq 0) { $dlOk = $true; break }
+                            $dlDetail = "stanza.download rc=$rc (попытка $i/$Retries)"
+                            if ($i -lt $Retries) { Write-Progress2 -Step $id -Sub "повтор $i/$Retries" -Msg $dlDetail; Start-Sleep -Seconds 10 }
+                        }
+                        if (-not $dlOk) {
+                            $result = New-Step -Id $id -Phase 'download' -Status 'FAIL' -Detail $dlDetail -Retryable $true -Remedy 'TLS-reset/10054: проверьте HTTPS_PROXY/HF_ENDPOINT и повторите с -Resume; или используйте -OfflineKit' -NextCmd (Get-NextCommand $id)
+                        } else {
+                            $result = New-Step -Id $id -Phase 'download' -Detail "stanza.download('de', processors='$processors') + манифест" -Bytes (Get-DirBytes $resources)
+                        }
+                    }
+                    if ($result.status -eq 'OK') {
+                        $null = & $pyFor $checker --processors $processors --json --load > (Join-Path $artifactDir 'models-check-after.json') 2>&1
+                        if ($LASTEXITCODE -ne 0) {
+                            $result = New-Step -Id $id -Phase 'verify' -Status 'FAIL' -Detail 'манифест процессоров/pipeline не прошёл проверку' -Retryable $true -Remedy 'удалите повреждённые файлы моделей (нужен -Force) и повторите загрузку' -NextCmd (Get-NextCommand $id)
+                        }
+                    }
+                }
+            }
+            'snippet' {
+                $info = Find-Python -Explicit $Python -TargetDir $target
+                if ($info -and $info.Usable) { $pyInfo = $info; $py = $info.Path }
+                $pyFor = Get-InterpreterPath -PythonInfo $info -Root $Root -Venv:$Venv
+                if (-not $pyFor) {
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'нет python для command в mcp-snippet.json' -Remedy 'сначала шаг python'
+                } else {
+                    $entry = [ordered]@{
+                        command = $pyFor
+                        args = @((Join-Path $Root 'MCP-stanza-german\server.py'))
+                        # RULE_ROOT сервер определяет сам; env содержит только нужные переменные
+                        env = [ordered]@{ PYTHONUTF8 = '1'; STANZA_RESOURCES_DIR = $resources }
+                    }
+                    $obj = [ordered]@{ mcpServers = [ordered]@{ 'stanza-german' = $entry } }
+                    $mcpSnippetJson = $obj | ConvertTo-Json -Depth 6
+                    $snippetPath = Save-McpSnippet -ArtifactDir $artifactDir -Root $Root -Json $mcpSnippetJson
+                    $valid = Read-McpSnippet
+                    # шим use.ps1 / python.cmd: абсолютный путь + переменные процесса
+                    $use = "@echo off`r`n`$env:PYTHONUTF8='1'`r`n`$env:STANZA_RESOURCES_DIR='$resources'`r`n`"$pyFor`" %*`r`n"
+                    [IO.File]::WriteAllText((Join-Path $Root 'python.cmd'), $use, (New-Object System.Text.ASCIIEncoding))
+                    $usePs = "`$env:PYTHONUTF8='1'`r`n`$env:STANZA_RESOURCES_DIR='$resources'`r`n& '$pyFor' @args`r`n"
+                    [IO.File]::WriteAllText((Join-Path $Root 'use.ps1'), $usePs, (New-Object System.Text.UTF8Encoding($false)))
+                    $serverCheck = $null
+                    $serverScript = Join-Path $PSScriptRoot 'server_check.py'
+                    if (Test-Path -LiteralPath $serverScript) {
+                        $null = & $pyFor $serverScript --json > (Join-Path $artifactDir 'server-check.json') 2>&1
+                        if ($LASTEXITCODE -eq 0) {
+                            try { $sc = Get-Content -LiteralPath (Join-Path $artifactDir 'server-check.json') -Raw -Encoding UTF8 | ConvertFrom-Json; $serverStatus = $sc.rule_status } catch { }
+                        }
+                    }
+                    $nextAction.kind = 'mcp_registration'
+                    $nextAction.command = ''
+                    $nextAction.snippet = $mcpSnippetJson
+                    $nextAction.hint = "Добавьте запись stanza-german из $snippetPath в конфиг MCP-клиента и перезапустите клиент"
+                    $result = if ($valid.ok) {
+                        New-Step -Id $id -Phase 'verify' -Detail "mcp-snippet.json создан и проверен ($snippetPath); сервер: $serverStatus" -Remedy 'запись в конфиг клиента выполняет человек (next_action)'
+                    } else {
+                        New-Step -Id $id -Phase 'verify' -Status 'FAIL' -Detail "snippet не прошёл проверку: $($valid.reason)" -Retryable $false -Remedy 'проверьте путь/кодировку mcp-snippet.json'
+                    }
+                }
+            }
+            'doctor' {
+                $info = Find-Python -Explicit $Python -TargetDir $target
+                if ($info -and $info.Usable) { $pyInfo = $info; $py = $info.Path }
+                $pyFor = Get-InterpreterPath -PythonInfo $info -Root $Root -Venv:$Venv
+                if (-not $pyFor) {
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'нет python для doctor.py' -Remedy 'сначала шаг python'
+                } else {
+                    $env:STANZA_RESOURCES_DIR = $resources
+                    $rc = Invoke-Logged -Exe $pyFor -Argv @((Join-Path $Root 'scripts\doctor.py'),'--json') -Id 'doctor'
+                    $counts = ''
+                    try { $d = Get-Content -LiteralPath (Join-Path $artifactDir 'doctor.log') -Raw -Encoding UTF8 | ConvertFrom-Json; $counts = "OK $($d.counts.OK), WARN $($d.counts.WARN), FAIL $($d.counts.FAIL)" } catch { }
+                    $result = if ($rc -eq 0) { New-Step -Id $id -Phase 'verify' -Detail "doctor: $counts" }
+                              else { New-Step -Id $id -Phase 'verify' -Status 'FAIL' -Detail "doctor rc=$rc ($counts)" -Retryable $true -Remedy 'исправьте FAIL из doctor.log; повторите с -Resume' -NextCmd (Get-NextCommand $id) -Rc $rc }
+                }
+            }
+            'acceptance' {
+                $info = Find-Python -Explicit $Python -TargetDir $target
+                if ($info -and $info.Usable) { $pyInfo = $info; $py = $info.Path }
+                $pyFor = Get-InterpreterPath -PythonInfo $info -Root $Root -Venv:$Venv
+                if (-not $pyFor) {
+                    $result = New-Step -Id $id -Phase 'preflight' -Status 'BLOCK' -Detail 'нет python для приёмки' -Remedy 'сначала шаг python'
+                } else {
+                    $env:STANZA_RESOURCES_DIR = $resources
+                    $rc = Invoke-Logged -Exe $pyFor -Argv @((Join-Path $PSScriptRoot 'acceptance.py'),'--json') -Id 'acceptance'
+                    try { $acceptance = Get-Content -LiteralPath (Join-Path $artifactDir 'acceptance.log') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+                    $f1 = ''
+                    if ($acceptance -and $acceptance.f1) { $f1 = "corpus52 $($acceptance.f1.corpus52) / heldout_51 $($acceptance.f1.heldout_51)" }
+                    $result = if ($rc -eq 0 -and $acceptance -and $acceptance.verdict -eq 'PASS') {
+                        New-Step -Id $id -Phase 'verify' -Detail "приёмка зелёная: doctor, smoke fast/full, валидаторы, mcp_probe; F1 $f1"
+                    } else {
+                        New-Step -Id $id -Phase 'verify' -Status 'FAIL' -Detail "приёмка rc=$rc ($f1); verdict=$($acceptance.verdict)" -Retryable $true -Remedy 'см. acceptance.log; повторите с -Resume -Acceptance' -NextCmd (Get-NextCommand $id) -Rc $rc
+                    }
+                }
+            }
+            default {
+                $result = New-Step -Id $id -Phase 'unknown' -Status 'FAIL' -Detail "неизвестный шаг $id" -Retryable $false
             }
         }
+    } catch {
+        $result = New-Step -Id $id -Phase 'exception' -Status 'FAIL' -Detail "$_" -Retryable $true -Remedy 'внутренняя ошибка шага; повторите с -Resume' -NextCmd (Get-NextCommand $id)
     }
+    if (-not $result) { $result = New-Step -Id $id -Phase 'unknown' -Status 'FAIL' -Detail 'шаг не вернул результат' -Retryable $true }
+    $result.seconds = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
+    Add-StepResult $result
+}
 
-    # 5. doctor — финальная проверка (тяжёлую приёмку с F1 не запускаем: см. УСТАНОВКА.md).
-    # Идёт и при коде 5: «осталось одно действие человека» не отменяет проверку окружения —
-    # иначе установщик на чистом состоянии (mcp-конфига же нет) никогда не показал бы doctor.
-    if (($code -eq 0 -or $code -eq $Code_ReadyHuman) -and $want -contains "doctor") {
-        $pyFor = Get-PyUse
-        $a = @((Join-Path $Root "scripts\doctor.py"))
-        if ($CheckOnly) { $a += "--soft-models" }
-        $rc = Run-Cmd $pyFor $a "doctor" "doctor нашёл FAIL: список и лечение — УСТАНОВКА.md (окружение: setup.ps1, модели: unpack_models.py)" (-not $DryRun)
-        # подсказка «нашёл FAIL» печатается только когда шаг действительно упал: при code 5
-        # doctor = OK, а фраза в строке шага путала бы («OK 1 мин · doctor нашёл FAIL»).
-        # $done — это List[OrderedDictionary]: в PS 5.1 у него нет свойства hint — только ключ.
-        if ($rc -eq 0 -and $done.Count -gt 0) { $done[$done.Count - 1]["hint"] = "окружение в порядке (doctor: 18 позиций — окружение, модели, данные, git)" }
-        if ($rc -ne 0 -and $code -eq 0) { $code = $Code_Step }
+# ------------------------------------------------------------------ жизненный контур
+if ($mode -eq 'make-offline-kit' -or $MakeOfflineKit) {
+    $t0 = Get-Date
+    $kitArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'offline_kit.ps1'),'-Action','make','-TargetDir',$Root,'-ArtifactDir',$artifactDir,'-ModelsDir',$resources,'-Python',$py)
+    if ($Force) { $kitArgs += '-Force' }
+    $rc = Invoke-Logged -Exe 'powershell.exe' -Argv $kitArgs -Id 'offline-kit'
+    Add-StepResult (New-Step -Id 'offline-kit' -Phase 'package' -Seconds ([math]::Round(((Get-Date) - $t0).TotalSeconds,1)) -Status $(if ($rc -eq 0) {'OK'} else {'FAIL'}) -Detail "сборка офлайн-набора rc=$rc" -Rc $rc -Retryable ($rc -ne 0))
+}
+if ($mode -eq 'uninstall') {
+    $removed = @()
+    foreach ($f in @('mcp-snippet.json','python.cmd','use.ps1')) {
+        $p = Join-Path $Root $f
+        if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force; $removed += $f }
     }
+    if ($Force) {
+        foreach ($d in @((Join-Path $Root '.venv'), $resources)) {
+            if (Test-Path -LiteralPath $d) { Remove-Item -LiteralPath $d -Recurse -Force; $removed += $d }
+        }
+    }
+    Add-StepResult (New-Step -Id 'uninstall' -Phase 'cleanup' -Detail ('удалено: ' + ($removed -join ', ')))
+}
+if ($mode -eq 'raise-python' -or ($blockers | Where-Object { $_.component -eq 'python' })) {
+    $nextAction.kind = 'raise-python'
+    $nextAction.command = 'winget upgrade --id Python.Python.3.15 -e'
+    $nextAction.snippet = 'Нужна Python 3.15.2 x64 per-user; более старые версии не поддерживаются (колёса cp315, F1 0.777/0.686).'
+}
+if ($mode -eq 'check-updates') {
+    $t0 = Get-Date
+    $pyFor = if ($py) { $py } else { (Get-InterpreterPath -PythonInfo (Find-Python -TargetDir $target) -Root $Root -Venv:$Venv) }
+    $rc = 4
+    if ($pyFor) { $rc = Invoke-Logged -Exe $pyFor -Argv @((Join-Path $PSScriptRoot 'pins.py'),'--latest','--json') -Id 'check-updates' }
+    $detail = ''
+    try { $detail = ((Get-Content -LiteralPath (Join-Path $artifactDir 'check-updates.log') -Raw -Encoding UTF8) -split "`n" | Select-Object -First 8) -join ' ' } catch { }
+    Add-StepResult (New-Step -Id 'check-updates' -Phase 'verify' -Seconds ([math]::Round(((Get-Date)-$t0).TotalSeconds,1)) -Status $(if ($rc -eq 0) {'OK'} else {'FAIL'}) -Detail $detail -Rc $rc -Retryable ($rc -ne 0))
 }
 
-# ------------------------------------------------------------------ итог + отчёт
+# ------------------------------------------------------------------ итог и отчёт
+$retryableFail = @($stepResults | Where-Object { $_.status -eq 'FAIL' -and $_.retryable })
+$hardFail = @($stepResults | Where-Object { $_.status -eq 'FAIL' -and -not $_.retryable })
+$reboot = @($stepResults | Where-Object { $_.rc -eq 3010 -or $_.detail -match 'перезагрузк' })
+if ($mode -eq 'uninstall' -or $mode -eq 'make-offline-kit') { $code = $(if ($hardFail.Count -or $retryableFail.Count) { $Code_Step } else { 0 }) }
+elseif ($blockers.Count) { $code = $Code_Human }
+elseif ($reboot.Count) { $code = $Code_Reboot }
+elseif ($retryableFail.Count) { $code = $Code_Step }
+elseif ($hardFail.Count) { $code = $Code_Broken }
+else { $code = 0 }
 
-$verdict = @{ 0 = "ГОТОВО"; 2 = "НУЖЕН ЧЕЛОВЕК"; 3 = "ШАГ УПАЛ"; 4 = "СЛОМАН ЗАПУСК"; 5 = "ГОТОВО, НУЖНО ОДНО ДЕЙСТВИЕ ЧЕЛОВЕКА" }[$code]
-$lastStep = ($done | Where-Object { $_.status -eq "FAIL" -or $_.status -eq "BLOCK" } | Select-Object -First 1)
-Say ""
-if ($code -eq $Code_ReadyHuman) {
-    Say "ГОТОВО: установка завершена. Осталось ОДНО действие человека:" Yellow
-    foreach ($a in $humanActions) { Say ("  • {0}" -f $a.what) Yellow; foreach ($l in ($a.how -split "`n")) { Say ("      " + $l) Yellow } }
-}
-Say ("итог: $verdict (код $code)" + $(if ($lastStep) { " — " + $lastStep.id + ": " + $lastStep.detail + "; " + $lastStep.hint } else { "" })) $(if ($code -eq 0 -or $code -eq 5) { "Green" } else { "Red" })
-if (-not $CheckOnly -and -not $DryRun -and ($code -eq 0 -or $code -eq 5)) {
-    Say "приёмка (F1 0.777 / 0.686, 52/45) отдельными командами — см. таблицу приёмки в УСТАНОВКА.md"
-}
-Say ("лог: $Log")
+if (-not $nextAction.command -and $retryableFail.Count) { $nextAction.command = $retryableFail[0].next_cmd }
+if (-not $nextAction.kind -and $blockers.Count) { $nextAction.kind = 'human'; $nextAction.command = $blockers[0].fix_cmd }
 
-$totalSec = [math]::Round(((Get-Date) - $StartedAt).TotalSeconds, 1)
-$freeAfter = Get-FreeGB $Root
-$stanzaMB = Get-DirMB (Join-Path $env:LOCALAPPDATA "StanfordNLP")
-$hfMB = Get-DirMB (Join-Path $env:USERPROFILE ".cache\huggingface")
-$venvMB = Get-DirMB (Join-Path $Root ".venv")
-$stepArr = @($done | ForEach-Object { [pscustomobject]@{ id = $_.id; status = $_.status; seconds = $_.seconds; detail = $_.detail; hint = $_.hint } })
-# PS 5.1: ConvertTo-Json падает («Argument types do not match») на массиве OrderedDictionary —
-# человеческие действия разворачиваем в pscustomobject
-$humanArr = @($humanActions | ForEach-Object { [pscustomobject]@{ what = $_.what; how = $_.how } })
+$snippetPresent = Test-Path -LiteralPath (Join-Path $Root 'mcp-snippet.json')
+$serverOk = @($stepResults | Where-Object { $_.id -eq 'snippet' -and $_.status -eq 'OK' }).Count -gt 0
+$verdict = $(if ($code -eq 0 -and $serverOk) { 'ГОТОВО: сервер установлен и проверен' }
+             elseif ($code -eq 0) { 'ГОТОВО' }
+             elseif ($code -eq 2) { 'НУЖЕН ЧЕЛОВЕК' }
+             elseif ($code -eq 3) { 'ШАГ УПАЛ (retryable)' }
+             elseif ($code -eq 6) { 'НУЖНА ПЕРЕЗАГРУЗКА' } else { 'СЛОМАН ЗАПУСК' })
+
+$secs = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+$sizes = [ordered]@{
+    packages_mb = [math]::Round((Get-DirBytes $(if ($Venv) { (Join-Path $Root '.venv') } else { '' })) / 1MB, 1)
+    models_mb = [math]::Round((Get-DirBytes $resources) / 1MB, 1)
+    downloads_mb = [math]::Round((Get-DirBytes (Join-Path $artifactDir 'downloads')) / 1MB, 1)
+}
+$timing = [ordered]@{ started = $started.ToString('yyyy-MM-ddTHH:mm:ssZ'); finished = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ'); total_seconds = $secs }
 $report = [ordered]@{
-    started = $StartedAt.ToString("yyyy-MM-dd HH:mm:ss"); finished = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-    total_sec = $totalSec; code = $code; verdict = $verdict; root = $Root
-    mode = $(if ($InventoryOnly) { "inventory" } elseif ($CheckOnly) { "check-only" } elseif ($DryRun) { "dry-run" } else { "install" })
-    python = $py; free_gb_before = $freeGB; free_gb_after = $freeAfter
-    install_mode = $(if ($UseVenv) { "venv" } else { "global" })
-    venv_mb = $venvMB; stanza_cache_mb = $stanzaMB; hf_cache_mb = $hfMB
-    inventory_blocking = $invBlocking; human_actions = $humanArr; steps = $stepArr
+    schema_version = 2; code = $code; ok = ($code -eq 0); verdict = $verdict
+    arch = $arch; mode = $mode; mcp_registration = $mcpRegistration
+    report_path = (Join-Path $artifactDir 'install-report.json')
+    mcp_snippet_path = $snippetPath
+    python_path = $pyInfo.Path
+    stanza_resources = $resources
+    steps = @($stepResults.ToArray()); blockers = @($blockers.ToArray()); failures = @($failures.ToArray())
+    next_action = $nextAction; sizes = $sizes; timings = $timing
+    acceptance = $acceptance; server_status = $serverStatus; plan = $planArr
+    snippet_present = $snippetPresent
 }
-try {
-    [IO.File]::WriteAllText((Join-Path $Root "install-report.json"), ($report | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding $false))
-    $txt = New-Object System.Collections.Generic.List[string]
-    $txt.Add("install-report: $Root  $($report.started) → $($report.finished)  всего $totalSec с  код $code  $verdict")
-    $txt.Add(("{0,-12} {1,-7} {2,7} {3}" -f 'ШАГ', 'СТУС', 'СЕК', 'ДЕТАЛЬ'))
-    foreach ($s in $stepArr) { $txt.Add(("{0,-12} {1,-7} {2,7} {3}" -f $s.id, $s.status, $s.seconds, ($s.detail + " " + $s.hint).Trim())) }
-    $txt.Add(("место: до {0} ГБ → после {1} ГБ | {2} | StanfordNLP {3} МБ | HF-кэш {4} МБ" -f $freeGB, $freeAfter, $(if ($UseVenv) { ".venv " + $venvMB + " МБ" } else { "глобально в " + $py }), $stanzaMB, $hfMB))
-    if ($humanActions.Count) { $txt.Add("действие человека:"); foreach ($a in $humanActions) { $txt.Add("  - " + $a.what + ": " + ($a.how -replace "`n", " / ")) } }
-    [IO.File]::WriteAllText((Join-Path $Root "install-report.txt"), ($txt -join "`r`n"), (New-Object System.Text.UTF8Encoding $false))
-    Say ("отчёт: install-report.txt / install-report.json")
-} catch { Say "отчёт не записан (нет прав на запись в корне проекта)" }
-Say ("готово за {0} мин (код {1})" -f [math]::Round($totalSec / 60, 1), $code)
+try { $reportPath = Save-Report -Report $report -ArtifactDir $artifactDir } catch { Say "не удалось записать отчёт: $_" Red }
+Add-LogLine -ArtifactDir $artifactDir -Text ("ИТОГ: $verdict (код $code) за $secs с")
 
 if ($Json) {
-    # PS 5.1 ломается на ConvertTo-Json у List[object] из OrderedDictionary — разворачиваем в pscustomobject
-    [pscustomobject]@{
-        ok = ($code -eq 0 -or $code -eq 5); code = $code; verdict = $verdict; root = $Root
-        mode = $report.mode
-        python = $py; freeGB = $freeGB; gh = $(if ($gh) { $gh.why }); mcp_snippet = $mcpSnippet
-        install_mode = $(if ($UseVenv) { "venv" } else { "global" })
-        total_sec = $totalSec; venv_mb = $venvMB; stanza_cache_mb = $stanzaMB; hf_cache_mb = $hfMB
-        inventory_blocking = $invBlocking; human_actions = $humanArr
-        steps = $stepArr; plan = [string[]]($plan | ForEach-Object { "$_" })
-        inventory = @($inv.items)
-    } | ConvertTo-Json -Depth 6
+    Emit-Json $report
+} else {
+    Say ''
+    Say "итог: $verdict (код $code) за $secs с" $(if ($code -eq 0) { 'Green' } else { 'Red' })
+    if ($code -eq 0 -and $snippetPresent) {
+        Say 'Сервер установлен и проверен. Осталось одно действие человека:' Green
+        Say "1) откройте mcp-snippet.json: $snippetPath" Yellow
+        Say '2) добавьте запись stanza-german в конфиг MCP-клиента (mcp.json и аналоги)' Yellow
+        Say '3) перезапустите MCP-клиент и проверьте: .\install.ps1 -Check mcp' Yellow
+    }
+    foreach ($b in $blockers) { Say ("БЛОКЕР: {0}: {1}; fix: {2}" -f $b.component, $b.reason, $b.fix_cmd) Yellow }
+    foreach ($f in $failures) { Say ("СБОЙ: {0}: {1}; remedy: {2}" -f $f.id, $f.detail, $f.remedy) Red }
+    if ($nextAction.command) { Say ("next_action.command: " + $nextAction.command) }
+    Say ("отчёт: $reportPath; лог: $logFile; NDJSON: $progressFile")
 }
-try { [IO.File]::AppendAllText($Log, (($logLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding $false)) } catch { }
 Close-ProgressLog
+Release-Artifacts
 exit $code

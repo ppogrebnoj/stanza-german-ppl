@@ -31,3 +31,10 @@ API github.txt
 "API github.txt"
 # отчёты сессии заказчика (копируются вручную)
 ОТЧЁТ-*.md
+
+# контракт v2: артефакты установки и создаваемые шимы/сниппет
+.tmp/
+.stanza/
+mcp-snippet.json
+use.ps1
+python.cmd

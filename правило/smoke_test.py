@@ -183,6 +183,7 @@ def main():
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--strict", action="store_true")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--json", action="store_true", help="машинный вывод для приёмки (-Acceptance)")
     a = ap.parse_args()
 
     cfg = check_config()
@@ -200,20 +201,29 @@ def main():
     warn = sum(1 for s, _, _ in results if s == "WARN")
     fail = sum(1 for s, _, _ in results if s == "FAIL")
     skip = sum(1 for s, _, _ in results if s == "SKIP")
-    if not a.quiet:
+    if not a.quiet and not a.json:
         for status, name, detail in results:
             if status == "SKIP" and not a.full:
                 continue
             print(f"  [{status:4}] {name:24} {detail}")
     mode = "full" if a.full else "fast"
-    print(f"\nsmoke_test ({mode}): OK {ok}, WARN {warn}, FAIL {fail}, SKIP {skip}")
+    if a.json:
+        import json
+        print(json.dumps({"mode": mode, "counts": {"OK": ok, "WARN": warn, "FAIL": fail, "SKIP": skip},
+                          "results": [{"status": s, "name": n, "detail": d} for s, n, d in results]},
+                         ensure_ascii=False, indent=1))
+    else:
+        print(f"\nsmoke_test ({mode}): OK {ok}, WARN {warn}, FAIL {fail}, SKIP {skip}")
     if fail:
-        print("ИТОГ: НЕ РАБОТАЕТ — см. FAIL выше")
+        if not a.json:
+            print("ИТОГ: НЕ РАБОТАЕТ — см. FAIL выше")
         return 1
     if warn and a.strict:
-        print("ИТОГ: WARN при --strict = ошибка")
+        if not a.json:
+            print("ИТОГ: WARN при --strict = ошибка")
         return 1
-    print("ИТОГ: работает")
+    if not a.json:
+        print("ИТОГ: работает")
     return 0
 
 

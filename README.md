@@ -11,7 +11,7 @@
 | `ПРАВИЛО.md` | **как резать**: запреты и их коды, длины, исключения, цифры |
 | `ВОПРОСЫ.md` | только открытые вопросы к заказчику |
 | `УСТАНОВКА.md` | §1 человеку: Python/Git, доступ, конфиг MCP, приёмка, офлайн, сбои, обновления · §2 агенту: порядок, коды 0/2/3/4, запреты |
-| `README.md` | этот файл: карта проекта и команды |
+| `README.md` | этот файл: карта проекта, команды, блок «Установка» с SHA256 |
 | `LICENSE` | условия использования — MIT |
 
 Истории решений отдельным файлом нет: принятое воплощено в `ПРАВИЛО.md` и `config.json`,
@@ -37,12 +37,17 @@ KI_WORK/
 ├─ MCP-stanza-german/           ← MCP-сервер: нарезка, разбор, судья (для чата)
 │   └─ mcp.json.example         ← образец конфига: человек кладёт его в свой клиент сам
 ├─ scripts/                     ← установка и проверка окружения (см. УСТАНОВКА.md)
-│   ├─ all.ps1                  ← установка ОДНОЙ командой: префлайт + шаги + коды 0/2/3/4
+│   ├─ all.ps1                  ← оркестратор v2: шаги, коды 0/2/3/4/6, отчёт schema_version 2
+│   ├─ _env.ps1 / _download.ps1 ← единый поиск Python и загрузки с SHA256/зеркалами
+│   ├─ _state.ps1 / progress.ps1← артефакты, mutex, NDJSON-поток в файл и в stdout
+│   ├─ check_models.py          … 5 процессоров по манифесту + минимальная загрузка pipeline
+│   ├─ server_check.py          … диагностика MCP-сервера и rule_status
+│   ├─ acceptance.py            … doctor + smoke + валидаторы + mcp_probe → F1/вердикт
+│   ├─ install_status.py        … сводка по install-report.json
+│   ├─ offline_kit.ps1          … офлайн-набор: репозиторий + колёса + модели + SHA256
 │   ├─ doctor.py                … что готово, что нет (FAIL/OK, --json)
 │   ├─ mcp_probe.py             … проверить MCP-сервер по stdio без клиента (код 0/1)
-│   ├─ setup.ps1                … venv + пины + git-хук + doctor
-│   ├─ unpack_models.py         … распаковать офлайн-архив моделей (свой, из кэша Stanza)
-│   └─ pack_models.py           … собрать офлайн-архив моделей из кэша Stanza (для переноса)
+│   └─ setup.ps1                … совместимость: venv + пины + git-хук (поиск Python из _env.ps1)
 │
 ├─ requirements.txt             ← прямые зависимости (пины) и requirements.lock (полное замыкание)
 │
@@ -86,76 +91,52 @@ python scripts/mcp_probe.py
 
 Числа правила живут только в `config.json` → правка правила = правка JSON, без кода.
 
-## Установка (новая машина)
+## Установка (Windows x64, три команды)
 
-Нужны **Python 3.15 x64** (эталон проекта: torch 2.15.0 / numpy 2.5.5), **git** и
-**MSVC Build Tools с workload `VCTools`** (у `pyyaml` нет колеса `cp315` — без `cl.exe`
-`pip install` упирается в тупик). Свободно **≥ 11 ГБ**. Права администратора нужны только на
-Build Tools (остальное — от своего пользователя, `--scope user`). `winget` не обязателен: на машине
-без Магазина те же компоненты ставятся официальными установщиками по прямой ссылке
-(`python-3.15.2-amd64.exe /quiet`, `Git-2.56.1-64-bit.exe /VERYSILENT`), а сам winget поднимается
-бутстрапом из zip `microsoft/winget-cli` — `УСТАНОВКА.md` §1.1 (замер 19.11: среда «с нуля» за
-41 мин, всё через winget). Версия Python строго 3.15 — даунгрейд стека запрещён (колёса torch
-cp315, цифры приёмки на 3.15). `gh` и токены нужны **только тем, кто правит репозиторий** (push):
-клон и установка — без них, репозиторий публичный, модели качает Stanford.
-
-Сначала — замер среды (одна команда, ничего не меняет; «нет в PATH» ≠ «не установлено»):
+Скачайте один файл `bootstrap.ps1`, сверьте хеш, запустите. Бутстрап поднимает winget
+(`Microsoft.WinGet.Client` из PSGallery + `Repair-WinGetPackageManager -AllUsers`), скачивает
+исходники из GitHub Release с проверкой SHA256, ставит Python 3.15.2 x64 (per-user, реестр,
+py launcher, PATH), Git, пакеты колёсами и модели Stanza, затем проверяет установку.
 
 ```powershell
-.\install.ps1 -Inventory          # 19 позиций: OK / MISSING / WRONG / BASE_ONLY / LOW / NOTE, у каждой — команда доустановки
+curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
+(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash      # сверить со значением ниже и в bootstrap.ps1.sha256
+powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 ```
 
-Дальше — одна команда, она неинтерактивна (пакеты и модели с ретраями, живой прогресс на консоль,
-подробности в `install-report.txt` / `install-report.json`):
+SHA256 ассета `bootstrap.ps1` (релиз публикует рядом `bootstrap.ps1.sha256`):
+
+```
+2acb7867e758fcadba52a62dcf4746a66afa5390e0652e445c1907532b446ce6
+```
+
+Агент управляет процессом по машинному контракту: `-Json`, `-ProgressJson` (NDJSON),
+`install-report.json` (schema_version 2) и коды 0/2/3/4/6. Всё, что создаёт установщик, лежит в
+`<проект>\.tmp`: `install.log`, `progress.ndjson`, `downloads\`, `install-report.json`,
+`install-report-<UTC>.json`, `mcp-snippet.json` (+ копия в корне проекта).
 
 ```powershell
-git clone https://github.com/ppogrebnoj/stanza-german-ppl.git C:\KI_WORK && cd C:\KI_WORK
-.\install.ps1                     # = scripts\all.ps1; «ГОТОВО за N мин» (код 0)
-# агенту/журналу: .\install.ps1 -Json -ProgressJson -Log install.log   (NDJSON-события → итоговый объект)
+.\install.ps1 -Check inventory -Json       # только чтение: что есть на машине
+.\install.ps1 -Check ready -Json           # код 0 на установленной машине
+.\install.ps1 -Check mcp -Json             # почему клиент не видит сервер
+.\install.ps1 -Acceptance -Json            # doctor + smoke + валидаторы + mcp_probe, F1 0.777 / 0.686
+.\install.ps1 -Resume -Steps models -Yes   # продолжить после обрыва сети
 ```
 
-В консоли видно шаги `[3/5]` и подшаги: `[2/5] deps · pip torch 2.15.0 · 1.2/2.4 ГБ · 43% ·
-ETA 6 мин` (torch ~2.4 ГБ, модели de ~1.6 ГБ). Шаги идемпотентны: готовые дают `SKIP`, повторный
-запуск безопасен.
+Полный реестр ключей — `docs/flags.json`; `-Check capabilities -Json` выдаёт его же.
+Неизвестный ключ даёт код 4. Модели: ровно пять процессоров
+`tokenize,mwt,pos,lemma,depparse` (~315 МБ; `-Models ner,sentiment` докачивает остальные).
+Пакеты ставятся только колёсами: `pip install --dry-run --only-binary=:all: -r requirements.lock`.
+Запись в конфиг MCP-клиента делает человек: установщик создаёт `mcp-snippet.json` и не трогает
+`mcp.json`; код остаётся 0, а готовый фрагмент лежит в `next_action`.
 
-**Зависимости ставятся ГЛОБАЛЬНО в системный Python 3.15 — это поведение по умолчанию.** Так же, как
-их ставил человек до появления venv (`doctor.py`: «нет `.venv` — работа идёт на системном Python
-(допустимо)»). `.venv` — **опция**: `install.ps1 -Venv` создаёт `<проект>\.venv` и ставит всё туда
-(/dir можно задать иначе: `-Venv` в `setup.ps1` + `-VenvDir <путь>`). Если `.venv` уже есть,
-он используется и без `-Venv` — чтобы не держать две копии torch по 2.4 ГБ. Что
-получилось — видно в префлайне (`пакеты: есть (глобально)|есть (.venv)`) и в `install-report.json`
-(поле `install_mode`: `global` / `venv`).
+**Коды выхода:** 0 готово (при необходимости `next_action` с MCP-сниппетом) ·
+2 нужен человек (`blockers[].fix_cmd`) · 3 шаг упал, `retryable: true` (`next_action.command`) ·
+4 ошибка скрипта/среды, не-x64, неизвестный параметр · 6 нужна перезагрузка/перелогин.
 
-Ключи: `-Venv` · `-CheckOnly` (ничего не ставить), `-DryRun` (проверить шаги без записи),
-`-Steps venv,deps,models,mcp,doctor`, `-Zip stanza-models-de-*.zip` (офлайн),
-`-InventoryOnly -Json`, `-InstallPython -InstallGit -InstallBuildTools -Yes` (автоустановка
-отсутствующего, админ — на Build Tools; для скачивания не нужны), `-NoProgress`,
-`-Log <файл>`, `-Retries <n>`.
+Подробности — `УСТАНОВКА.md` (человеку и агенту), `docs/flags.json`, `scripts/install_status.py`.
 
-**Коды выхода:** 0 готово · 2 нужен человек (доустановить по `fix`) · 3 шаг упал (повторить ту же
-команду) · 4 сломан запуск (ключ/синтаксис) · **5 всё стоит, осталось ОДНО действие человека** —
-положить запись `stanza-german` в `mcp.json` своего клиента и перезапустить его (установщик конфиг
-клиента **не пишет**, только печатает готовый фрагмент с путями этой машины).
-
-MCP-клиент настраивает сам человек: `MCP-stanza-german\mcp.json.example` или напечатанный
-фрагмент (УСТАНОВКА.md §1.3, §«Осталось одно действие»). Модели de (~1.6 ГБ) качает сам Stanza с
-официального источника Stanford (`stanza-resources` + `huggingface.co`); в репозитории их нет.
-Офлайн — архив из своего кэша: `pack_models.py` → `-Zip`. Запись на GitHub (кому нужны пуши):
-`gh auth login --hostname github.com --git-protocol https --web` + `gh auth setup-git`, либо
-fine-grained PAT (Contents: Read and write) в User-окружение:
-`[Environment]::SetEnvironmentVariable("GH_TOKEN", "<токен>", "User")` (окно перезапустить);
-проверки `gh auth status` и `git push --dry-run` — `УСТАНОВКА.md` §1.2. Для клона и установки
-токен не нужен.
-Приёмка (дословно: `doctor: OK 18, WARN 0, FAIL 0`, smoke `OK 11 … SKIP 2`, `--full OK 14`,
-`segment_f1_corpus52 F1 0.777`, `segment_f1_heldout_51 F1 0.686`, `compliant 52 / 45`,
-`ИТОГ: MCP живой`) — команды в `УСТАНОВКА.md` §1.4 даны для системного Python (глобальный режим);
-с `-Venv` подставьте `.venv\Scripts\python.exe`. Доступ, офлайн, разбор сбоев и замеренные
-времена (среда 41 мин, установка 12 мин, приёмка 18 мин на VMware-шаре) — `УСТАНОВКА.md`
-(§1 человеку, §2 агенту, §2.6 замеры).
-Проект на сетевом/VMware-диске — установка и MCP-вызовы в 4–7 раз дольше (§1.8).
-Поддержка версий и обновления: `python scripts/pins.py --latest --write bench/results/deps.json`;
-снимок читает MCP-сервер (`pipeline_info().updates`).
-
+```
 ## Как пополнять разметку
 
 1. Открываете `данные/СПИСОК_150.md`, размечаете очередную часть слэшами: `… фраза / фраза …`.

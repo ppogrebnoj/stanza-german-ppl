@@ -1,0 +1,42 @@
+name: installer-contract-v2
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell 5.1 contract tests
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tests\test-contract.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Capabilities registry parity
+        shell: powershell
+        run: |
+          $a = powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check capabilities -Json | ConvertFrom-Json
+          $b = powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\all.ps1 -Check capabilities -Json | ConvertFrom-Json
+          $reg = Get-Content .\docs\flags.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (($a.capabilities.flags.name -join ',') -ne ($reg.flags.name -join ',')) { throw 'capabilities != docs/flags.json' }
+          if (($a | ConvertTo-Json -Depth 8) -ne ($b | ConvertTo-Json -Depth 8)) { throw 'install.ps1 output != all.ps1 output' }
+
+      - name: No writes in check modes
+        shell: powershell
+        run: |
+          $before = (Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName + '|' + $_.Length }) -join "`n"
+          $null = powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check inventory -Json
+          if ($LASTEXITCODE -gt 2) { throw "check inventory rc=$LASTEXITCODE" }
+          $after = (Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName + '|' + $_.Length }) -join "`n"
+          if ($before -ne $after) { throw 'read-only check modified files' }
+
+      - name: Python syntax
+        shell: pwsh
+        run: |
+          python -m compileall -q scripts правило bench MCP-stanza-german
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

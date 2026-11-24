@@ -1,38 +1,77 @@
 ﻿#Requires -Version 5.1
 <#
-    install.ps1 — ОДНА команда человека (и агента): тонкий алиас на scripts\all.ps1.
-    Никакой логики: все ключи пробрасываются дословно, источник правды один — all.ps1.
+    install.ps1 — публичный интерфейс установки v2 (человек, агент, bootstrap.ps1, CI).
+    Логики нет: параметры пробрасываются в scripts\all.ps1 без изменений.
+    Реестр разрешённых ключей — docs/flags.json; неизвестный ключ даёт код 4.
 
-        .\install.ps1                      установка до конца (pretty-вывод, живой прогресс)
-        .\install.ps1 -Inventory           только «что есть на машине» + по одной команде на каждое MISSING
-        .\install.ps1 -CheckOnly -Json     то же, что scripts\all.ps1 -CheckOnly -Json (diff JSON пуст)
-        .\install.ps1 -Json -ProgressJson -Log install.log   машинный режим для агента/CI
-
-    Коды выхода совпадают с all.ps1: 0 готово, 2 нужен человек, 3 шаг упал, 4 сломан запуск,
-    5 готово, нужно одно действие человека (MCP-конфиг + перезапуск клиента).
+        .\install.ps1 -Yes
+        .\install.ps1 -Check inventory -Json
+        .\install.ps1 -Acceptance -Json -ProgressJson
 #>
 [CmdletBinding()]
 param(
     [Parameter(ValueFromRemainingArguments = $true)][object[]]$Rest
 )
 $ErrorActionPreference = 'Continue'
-$target = Join-Path $PSScriptRoot 'scripts\all.ps1'
-if (-not (Test-Path $target)) {
-    Write-Host "СЛОМАН ЗАПУСК: нет $target — обновите репозиторий" -ForegroundColor Red
-    exit 4
-}
-# проброс «как есть»: -Flag без значения = switch, -Param <значение> = параметр.
-# Значений, начинающихся с «-», у ключей all.ps1 нет (пути, числа, списки шагов) — поэтому
-# разбор безопасен; всё, что не распарсится, уйдёт в all.ps1 и будет его ошибка привязки (код 4).
+$root = (Resolve-Path $PSScriptRoot).Path
+$target = Join-Path $root 'scripts\all.ps1'
 $bound = @{}
+$errors = @()
+$flags = @()
+$flagsPath = Join-Path $root 'docs\flags.json'
+if (Test-Path -LiteralPath $flagsPath) {
+    try {
+        $reg = Get-Content -LiteralPath $flagsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $flags = @($reg.flags)
+    } catch { }
+}
+$byName = @{}
+foreach ($f in $flags) { $byName["$($f.name)"] = $f }
+
 $i = 0
 while ($Rest -and $i -lt $Rest.Count) {
     $a = "$($Rest[$i])"
     if ($a -like '-*') {
         $name = $a.TrimStart('-')
-        if ($i + 1 -lt $Rest.Count -and "$($Rest[$i + 1])" -notlike '-*') { $bound[$name] = $Rest[$i + 1]; $i += 2 }
-        else { $bound[$name] = $true; $i += 1 }
-    } else { $i += 1 }
+        if (-not $byName.ContainsKey($name)) {
+            $errors += "неизвестный параметр -$name"
+            $i++
+            continue
+        }
+        $kind = "$($byName[$name].kind)"
+        if ($kind -eq 'switch') {
+            $bound[$name] = $true
+            $i++
+        } else {
+            if ($i + 1 -ge $Rest.Count -or "$($Rest[$i + 1])" -like '-*') {
+                $errors += "параметр -$name требует значения"
+                $i++
+            } else {
+                $bound[$name] = "$($Rest[$i + 1])"
+                $i += 2
+            }
+        }
+    } else { $i++ }   # позиционные аргументы игнорируются (их нет в контракте)
+}
+
+$wantsJson = $bound.ContainsKey('Json')
+if ($wantsJson) { try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { } }
+if ($errors.Count) {
+    if (-not $wantsJson) { foreach ($e in $errors) { Write-Host "СЛОМАН ЗАПУСК: $e (код 4)" -ForegroundColor Red } }
+    if ($wantsJson) {
+        $msg = ($errors -join '; ')
+        [Console]::Out.WriteLine(([pscustomobject][ordered]@{
+            schema_version = 2; code = 4; ok = $false
+            failures = @([pscustomobject]@{ id = 'params'; detail = $msg; retryable = $false })
+        } | ConvertTo-Json -Depth 5))
+    }
+    exit 4
+}
+if (-not (Test-Path -LiteralPath $target)) {
+    if ($wantsJson) {
+        [Console]::Out.WriteLine(([pscustomobject][ordered]@{ schema_version = 2; code = 4; ok = $false; failures = @([pscustomobject]@{ id = 'entry'; detail = "нет $target"; retryable = $false }) } | ConvertTo-Json -Depth 5))
+    } else { Write-Host "СЛОМАН ЗАПУСК: нет $target — обновите репозиторий" -ForegroundColor Red }
+    exit 4
 }
 if ($bound.Count -gt 0) { & $target @bound } else { & $target }
 exit $LASTEXITCODE

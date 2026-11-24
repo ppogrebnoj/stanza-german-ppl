@@ -44,6 +44,7 @@
 $script:Prog = @{
     Mode       = 'quiet'      # pretty | ndjson | quiet
     LogPath    = ''
+    EventFile  = ''        # NDJSON-поток в файл: пишется ВСЕГДА (контракт v2, progress.ndjson)
     Utf8NoBom  = (New-Object System.Text.UTF8Encoding($false))
     Writer     = $null        # буферизованный stdout (только ndjson)
     FlushTick  = 0            # когда последний раз сбрасывали буфер
@@ -128,7 +129,8 @@ function Open-ProgressLog {
         [switch]$ProgressJson,
         [string]$LogPath = "",
         [string[]]$Steps = @(),      # объявленный план шагов — из него берётся [n/m]
-        [int]$TotalSteps = 0         # если плана нет, но известно число шагов
+        [int]$TotalSteps = 0,        # если плана нет, но известно число шагов
+        [string]$EventFile = ''      # файл NDJSON-событий (всегда, независимо от -ProgressJson)
     )
 
     if ($Json -and -not $ProgressJson) { $mode = 'quiet' }
@@ -153,6 +155,7 @@ function Open-ProgressLog {
 
     $script:Prog.Mode       = $mode
     $script:Prog.LogPath    = if ($LogPath) { [string]$LogPath } else { '' }
+    $script:Prog.EventFile  = if ($EventFile) { [string]$EventFile } else { '' }
     $script:Prog.Plan       = @()
     foreach ($s in $Steps) { $script:Prog.Plan += [string]$s }
     if ($script:Prog.Plan.Count -gt 0) { $script:Prog.TotalSteps = $script:Prog.Plan.Count }
@@ -261,6 +264,9 @@ function Write-Step {
     }
     if ($script:Prog.LogPath) {
         try { [System.IO.File]::AppendAllText($script:Prog.LogPath, $line + "`n", $script:Prog.Utf8NoBom) } catch { }
+    }
+    if ($script:Prog.EventFile) {
+        try { [System.IO.File]::AppendAllText($script:Prog.EventFile, $line + "`n", $script:Prog.Utf8NoBom) } catch { }
     }
     return
 }
@@ -383,6 +389,9 @@ function Write-Progress2 {
     }
     if ($prog.LogPath) {
         try { [System.IO.File]::AppendAllText($prog.LogPath, $line + "`n", $prog.Utf8NoBom) } catch { }
+    }
+    if ($prog.EventFile) {
+        try { [System.IO.File]::AppendAllText($prog.EventFile, $line + "`n", $prog.Utf8NoBom) } catch { }
     }
     return
 }

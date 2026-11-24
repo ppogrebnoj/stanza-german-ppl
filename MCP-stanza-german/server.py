@@ -72,6 +72,11 @@ def _run_tool(name: str, fn) -> dict:
     ms = (time.perf_counter() - t0) * 1000
     extra = ""
     if isinstance(res, dict):
+        # Клиент всегда видит состояние правила и фактический RULE_ROOT — даже когда правило
+        # не подключено (иначе «сервер отвечает, но судьи нет» выглядит как поломка сервера).
+        st = _rule_status_text()
+        res["rule_status"] = st
+        extra = " rule_status=%s" % st
         v = res.get("verdict")
         if v is not None:
             extra = " verdict=%s" % v
@@ -338,6 +343,20 @@ def _rule_root() -> str:
     return os.environ.get("RULE_ROOT", RULE_ROOT_DEFAULT)
 
 
+def _rule_status_text() -> str:
+    """Тот же статус, что пишется в журнал на старте; всегда с фактическим путём."""
+    root = _rule_root()
+    if _RULE is not None and os.path.exists(_config_path()):
+        try:
+            cfg = rule_config()
+            return "rule %s, config_hash=%s; RULE_ROOT=%s" % (
+                cfg.get("_version"), _canonical_hash(cfg), root)
+        except Exception as exc:  # noqa: BLE001
+            return "rule error: %s; RULE_ROOT=%s" % (exc, root)
+    reason = _RULE_NOTE or "validator.py не подключён"
+    return "rule not connected: %s; RULE_ROOT=%s" % (reason, root)
+
+
 def _config_path() -> str:
     return os.path.join(_rule_root(), "config.json")
 
@@ -360,6 +379,7 @@ def _load_rule() -> None:
         _RULE_NOTE = (
             f"правило не подключено: в {root} нет validator.py "
             f"(искали также reference/validator_v3.py); проверьте RULE_ROOT")
+        _log("RULE_STATUS: %s; RULE_ROOT=%s" % (_RULE_NOTE, root))
         return
     try:
         ref_dir = os.path.dirname(path)
@@ -373,6 +393,7 @@ def _load_rule() -> None:
         _RULE = mod
     except Exception as exc:  # noqa: BLE001
         _RULE_NOTE = f"правило не подключено: {exc}"
+        _log("RULE_STATUS: %s; RULE_ROOT=%s" % (_RULE_NOTE, root))
 
 
 def get_rule():
@@ -707,13 +728,9 @@ def _warmup() -> None:
 
 
 def main() -> None:
-    rule_status = "rule not connected"
-    if _RULE is not None and os.path.exists(_config_path()):
-        try:
-            cfg = rule_config()
-            rule_status = "rule %s, config_hash=%s" % (cfg.get("_version"), _canonical_hash(cfg))
-        except Exception:  # noqa: BLE001
-            rule_status = "rule error"
+    rule_status = _rule_status_text()
+    if rule_status.startswith(("rule not connected", "rule error")):
+        _log("RULE_STATUS: причина: %s; фактический RULE_ROOT=%s" % (rule_status, _rule_root()))
     # stanza импортируется лениво (см. _stanza): на старте сервера его ещё нет, а в баннере
     # нужна только версия — берём её из importlib.metadata, без импорта 63-секундного пакета
     _log(

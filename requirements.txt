@@ -20,3 +20,5 @@ stanza==1.15.0
 torch==2.15.0
 numpy==2.5.5
 mcp==1.27.2
+# PyYAML приходит транзитивно от huggingface-hub; 6.0.4 — последняя с колесом cp315-win_amd64
+PyYAML>=6.0.4

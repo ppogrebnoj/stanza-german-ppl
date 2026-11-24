@@ -54,6 +54,11 @@ try {
 # Ключи файла разбираются вручную из $args (см. Invoke-InventoryCli в конце файла).
 $script:KI_InvItems = New-Object System.Collections.Generic.List[object]
 
+# Единый поиск/классификация Python живёт в scripts\_env.ps1 (all.ps1 и setup.ps1 тоже
+# берут оттуда версию, разрядность, Store-alias и PEP668). Повторного кода нет.
+$envLib = Join-Path $PSScriptRoot '_env.ps1'
+if (Test-Path -LiteralPath $envLib) { try { . $envLib } catch { } }
+
 # ------------------------------------------------------------------ служебное
 
 function Out-InvLine {
@@ -118,6 +123,9 @@ function Get-InvPyProbe {
     if (-not $Exe) { return $null }
     if ($Exe -like "*WindowsApps*") { return @{ ok = $false; store = $true; path = $Exe } }
     if (-not (Test-Path -LiteralPath $Exe)) { return $null }
+    $shared = $null
+    if (Test-Path 'function:Get-PythonInfo') { $shared = Get-PythonInfo -Path $Exe }
+    if ($shared -and $shared.StoreAlias) { return @{ ok = $false; store = $true; path = $Exe } }
 
     $probe = "import sys,struct,importlib.util as u;" +
              "print('%d.%d.%d %s' % (sys.version_info[0],sys.version_info[1],sys.version_info[2],'x64' if struct.calcsize('P')==8 else 'x86'));" +
@@ -130,6 +138,9 @@ function Get-InvPyProbe {
     $pipFound = $false; $pip = ""; $pipUnknown = $false; $venv = $false; $ep = $false; $venvUnknown = $false
     if ($out.Count -ge 4) {
         $ver = "$($out[0])".Trim()
+        if ($shared) {   # источник правды — scripts\_env.ps1
+            $ver = "$($shared.Version) " + $(if ("$($shared.Bits)" -eq '64') { 'x64' } else { 'x86' })
+        }
         if ($ver -match "^(\d+)\.(\d+)\.(\d+)\s+(x64|x86)$") { $major = [int]$matches[1]; $minor = [int]$matches[2] }
         else { $ver = "" }
         $ps = "$($out[1])".Trim()

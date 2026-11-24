@@ -46,11 +46,14 @@ try {
     }
 } catch { }
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+# Единый поиск интерпретатора: scripts\_env.ps1 (используют также all.ps1 и inventory.ps1).
+. (Join-Path $PSScriptRoot '_env.ps1')
 if (-not $VenvDir) { $VenvDir = Join-Path $Root ".venv" }
 # Явно заданный -VenvDir тоже означает «работать в venv»: иначе каталогу не на что применить.
 $UseVenv = $Venv -or ($PSBoundParameters.ContainsKey("VenvDir") -and [string]$VenvDir)
 $DestLabel = if ($UseVenv) { ".venv" } else { "системный Python (глобально)" }
-$Reqs = if ($UseLock) { Join-Path $Root "requirements.lock" } else { Join-Path $Root "requirements.txt" }
+# Контракт v2: lock по умолчанию, только колёса (компилятор не нужен).
+$Reqs = Join-Path $Root "requirements.lock"
 
 function Step($n, $text) { Write-Host ""; Write-Host "[$n] $text" -ForegroundColor Cyan; Prog @{ ev = "step_start"; step = "$n"; sub = $text } }
 function Fail($text) { Write-Host "ОШИБКА: $text" -ForegroundColor Red; Prog @{ ev = "step_fail"; step = "setup"; msg = $text }; exit 1 }
@@ -134,57 +137,18 @@ if ($DryRun) { Write-Host "режим  : dry-run (ничего не меняет
 
 # ---------------------------------------------------------------- 1. Python
 Step 1 "поиск Python 3.15"
-# Поддерживается только 3.15: под неё есть колёса torch 2.15.0 / numpy 2.5.5,
-# и на ней сняты эталонные цифры F1 (0.777 / 0.686).
-$WANT = "3.15"
-$cands = @{}
-$seen  = @()
-
-function Get-PyVer($exe) {
-    try {
-        $v = & $exe -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
-        if ($LASTEXITCODE -eq 0 -and $v) { return "$v".Trim() }
-    } catch { }
-    return $null
-}
-
-if ($Python) {
-    if (-not (Test-Path $Python)) { Fail "нет файла -Python $Python" }
-    $v = Get-PyVer $Python
-    if ($v) { $cands[$v] = (Resolve-Path $Python).Path }
-} else {
-    # все версии через py launcher: " -V:3.15 *        C:\...\python.exe"
-    try {
-        foreach ($line in (& py -0p 2>$null)) {
-            $pVer = $null; $pPath = $null
-            if ($line -match '-V:(\d+)\.(\d+)') { $pVer = "$($Matches[1]).$($Matches[2])" }
-            if ($line -match 'python\.exe') { $pPath = ($line -split '\s+')[-1].Trim() }
-            if ($pVer -and $pPath) { $seen += $pVer; if (Test-Path $pPath) { $cands[$pVer] = $pPath } }
-        }
-    } catch { }
-    # python из PATH
-    try {
-        $out = & python -c "import sys; print(sys.executable)" 2>$null
-        if ($LASTEXITCODE -eq 0 -and $out) {
-            $p = "$out".Trim(); $v = Get-PyVer $p
-            if ($v) { $seen += $v; if (-not $cands.ContainsKey($v)) { $cands[$v] = $p } }
-        }
-    } catch { }
-}
-
-if (-not $cands.ContainsKey($WANT)) {
-    $have = if ($seen.Count) { ($seen | Sort-Object -Unique) -join ', ' } else { 'не найдено ни одного' }
-    Fail ("нужен Python $WANT x64. Найдено: $have.`n" +
-          "  Поставьте, текущие версии это не затронет:`n" +
-          "    winget install --id Python.Python.3.15 -e --accept-package-agreements`n" +
-          "  без winget (нет Магазина) — прямой ссылкой:`n" +
-          "    curl.exe -L -o %TEMP%\py315.exe https://www.python.org/ftp/python/3.15.2/python-3.15.2-amd64.exe`n" +
-          "    %TEMP%\py315.exe /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0`n" +
-          "  версии 3.12/3.13 не подходят (колёса torch cp315, эталонные цифры на 3.15)`n" +
+# Поиск — одна функция в scripts\_env.ps1 (реестр, py -0p, PATH, TargetDir, явный -Python).
+$info = Find-Python -Explicit $Python -TargetDir (Get-DefaultTargetDir)
+if (-not $info -or -not $info.Usable) {
+    $why = if ($info) { "$($info.Version) [$($info.Reason)]: $($info.Path)" } else { 'не найдено ни одного' }
+    Fail ("нужен Python 3.15.2 x64 per-user (без PEP668). Найдено: $why.\n" +
+          "  Поставьте официальным установщиком (это не затронет другие версии):\n" +
+          "    winget install --id Python.Python.3.15 -e --accept-package-agreements\n" +
+          "  без winget: python-3.15.2-amd64.exe /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0\n" +
+          "  (__pycache__ и externally-managed интерпретаторы не подходят: pip не сможет писать сюда колёса)\n" +
           "  затем запустите этот скрипт снова.")
 }
-
-$py = $cands[$WANT]
+$py = $info.Path
 $ver = & $py -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
 Write-Host "  выбран: $py ($ver)"
 Write-Host "  пины: requirements.txt (torch 2.15.0 / numpy 2.5.5)"
@@ -218,7 +182,7 @@ if ($SkipDeps) {
     if (-not (Test-Path $Reqs)) { Fail "нет файла $Reqs" }
     $reqCount = @(Get-Content $Reqs | Where-Object { $_ -match '^\s*[A-Za-z]' }).Count
     Run-Pip @("-m", "pip", "install", "--retries", "5", "--timeout", "60", "-U", "pip") "deps-pip" "не удалось обновить pip"
-    Run-Pip @("-m", "pip", "install", "--retries", "5", "--timeout", "60", "-r", $Reqs) "deps" "не удалось установить зависимости"
+    Run-Pip @("-m", "pip", "install", "--only-binary=:all:", "--retries", "5", "--timeout", "60", "-r", $Reqs) "deps" "не удалось установить зависимости"
 }
 
 # ---------------------------------------------------------------- 4. git-хук
