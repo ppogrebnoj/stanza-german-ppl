@@ -160,6 +160,7 @@ jobs:
           $j = ($out -join "`n") | ConvertFrom-Json
           if (-not $j.detail) { "::error::нет причины проверки mcp"; exit 1 }
           "mcp check: код $code, причина: $($j.detail)"
+          exit 0   # код 2 = BLOCK, допустимое состояние; не возвращаем его как rc шага
 
       - name: "install.ps1 -Check ready -Json"
         shell: powershell
@@ -168,3 +169,4 @@ jobs:
           $code = $LASTEXITCODE
           if ($code -ge 4) { "::error::-Check ready сломан: код $code"; exit 1 }
           "ready check: код $code (2 = среда ещё не собрана — нормально на чистом раннере)"
+          exit 0   # 1/2/3 — ожидаемые состояния на чистом раннере
