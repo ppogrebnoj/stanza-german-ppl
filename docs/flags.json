@@ -1,6 +1,12 @@
 {
   "source": "docs/flags.json",
   "contract": "Только канонические флаги; legacy-алиасы удалены. Unknown flag => code 4.",
+  "readers": [
+    "bootstrap.ps1 reads this file through installer/lib/flags.ps1 and forwards flags unchanged",
+    "install.ps1 and scripts/all.ps1 forwarders read it through installer/lib/flags.ps1",
+    "installer/install.ps1 trusts the already-parsed flag set; it never re-implements validation"
+  ],
+  "exit_codes_note": "Code 5 / DELIVERY added; code 2 redefined as BLOCK (not delivery). Before installer/install.ps1 is available => 5; after it exists but the invocation is broken => 4.",
   "checks": ["inventory", "ready", "plan", "mcp", "status", "capabilities"],
   "steps": ["winget", "powershell", "python", "git", "workspace", "venv", "deps", "models", "snippet", "doctor", "acceptance"],
   "exit_codes": {
@@ -16,7 +22,7 @@
     {"name": "Check", "kind": "value", "values": ["inventory", "ready", "plan", "mcp", "status", "capabilities"], "default": "inventory", "description": "режим только чтение; файлы отчётов не пишутся"},
     {"name": "Acceptance", "kind": "switch", "description": "добавить шаг acceptance с приёмкой F1"},
     {"name": "Json", "kind": "switch", "description": "финальный JSON в stdout"},
-    {"name": "ProgressJson", "kind": "switch", "description": "NDJSON-события в stdout; в -Check файл не пишется"},
+    {"name": "ProgressJson", "kind": "switch", "description": "NDJSON-события в stdout; в -Check файл не пишется; несовместим с -Json (code 4)"},
     {"name": "ArtifactDir", "kind": "value", "default": ".tmp", "description": "каталог install.log, progress.ndjson, отчётов и mcp-snippet"},
     {"name": "Python", "kind": "value", "description": "явный интерпретатор 3.15 x64"},
     {"name": "TargetDir", "kind": "value", "default": "%LOCALAPPDATA%\\Programs\\Python\\Python315", "description": "каталог установки Python"},

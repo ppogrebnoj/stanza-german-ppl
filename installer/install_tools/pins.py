@@ -5,10 +5,10 @@
 меняется Python, колёса под него могут отсутствовать — установка падает уже
 после скачивания гигабайтов. Скрипт отвечает на два вопроса заранее и без установки:
 
-    python scripts/pins.py             # матрица: какой пин под какой Python существует (wheel)
-    python scripts/pins.py --latest    # вышли ли новые версии на PyPI
-    python scripts/pins.py --latest --write bench/results/deps.json   # снимок для сервера
-    python scripts/pins.py --json      # то же машинно (для CI)
+    python installer/install_tools/pins.py             # матрица колёс по версиям Python
+    python installer/install_tools/pins.py --latest    # обновления на PyPI
+    python installer/install_tools/pins.py --latest --write bench/results/deps.json
+    python installer/install_tools/pins.py --json      # машинно (для CI)
 
 Что проверяется:
   * для каждого пина (requirements.txt) — наличие wheel под Python 3.15..3.17
@@ -33,7 +33,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import _paths as P  # noqa: E402
 
 PY_TARGETS = ["3.15", "3.16", "3.17"]     # 3.15 — эталон; остальные — на будущее
@@ -242,7 +242,7 @@ def render_latest(matrix, cache) -> None:
         elif latest == ver:
             status = "актуально"
         else:
-            status = f"есть новее ({latest}) — проверить колёса: python scripts/pins.py"
+            status = f"есть новее ({latest}) — проверить колёса: python installer/install_tools/pins.py"
         print(f"{pkg:<12} {ver:<12} {str(latest):<12} {status}")
 
 

@@ -239,7 +239,7 @@ function Write-Step {
     }
 
     # --- NDJSON-событие (та же схема, что в Write-Progress2; здесь не горячий путь)
-    if ($script:Prog.Mode -ne 'ndjson' -and -not $script:Prog.LogPath) { return }
+    if ($script:Prog.Mode -ne 'ndjson' -and -not $script:Prog.LogPath -and -not $script:Prog.EventFile) { return }
     $jSec = if ($null -eq $sec) { 'null' } else { [string][long]$sec }
     $tsKey = [long]([DateTime]::UtcNow.Ticks / 10000000)
     if ($tsKey -ne $script:Prog.TsKey) {

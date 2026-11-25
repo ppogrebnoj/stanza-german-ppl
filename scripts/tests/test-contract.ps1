@@ -71,7 +71,7 @@ Check-Ok ($r.rc -eq 2 -and "$($r.json.detail)" -match 'mcp-snippet') 'check mcp 
 
 # 5. отчёт + NDJSON в файле
 $art = Join-Path $tmp 'art'
-$r = Invoke-Ki $entry @('-Steps','doctor','-Json','-ProgressJson','-ArtifactDir',$art)
+$r = Invoke-Ki $entry @('-Steps','doctor','-Json','-ArtifactDir',$art)
 $report = $null
 try { $report = Get-Content -LiteralPath (Join-Path $art 'install-report.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
 $need = @('code','ok','phase','root','python','precheck_report','report','steps')
@@ -109,6 +109,43 @@ Check-Ok ($missingInstaller.Count -eq 0 -and $rootLeftovers.Count -eq 0 -and
           (Test-Path -LiteralPath (Join-Path $root 'bootstrap.ps1')) -and
           (Test-Path -LiteralPath (Join-Path $root 'bootstrap.ps1.sha256')) -and
           (Test-Path -LiteralPath (Join-Path $root 'installer\install.ps1'))) 'installer layout' ("missing=$($missingInstaller -join ',') root=$($rootLeftovers -join ',')")
+
+# 9. venv BLOCK -> rc=2 and next_cmd contains -Steps venv,deps
+. (Join-Path $root 'installer\lib\common.ps1')
+. (Join-Path $root 'installer\lib\steps\venv.ps1')
+$fakeRoot = Join-Path $tmp 'fake-root'
+New-Item -ItemType Directory -Force -Path (Join-Path $fakeRoot '.venv\Scripts') | Out-Null
+[IO.File]::WriteAllText((Join-Path $fakeRoot '.venv\pyvenv.cfg'), '', (New-Object System.Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText((Join-Path $fakeRoot '.venv\Scripts\python.exe'), 'not-an-exe', (New-Object System.Text.UTF8Encoding($false)))
+$venvCtx = [pscustomobject]@{ Root = $fakeRoot; ArtifactDir = $art; Python = ''; TargetDir = ''; Force = $false }
+$rv = Invoke-Step_venv $venvCtx 2>$null
+Check-Ok ($rv.status -eq 'BLOCK' -and $rv.rc -eq 2 -and "$($rv.next_cmd)" -match '\-Steps\s+venv,deps') 'venv BLOCK rc=2 next_cmd' ("status=$($rv.status) rc=$($rv.rc) next=$($rv.next_cmd)")
+
+# 10. deps conflict after clean lock install -> rc=1 non-retryable
+$badLock = Join-Path $tmp 'bad.lock'
+[IO.File]::WriteAllText($badLock, "ImpossiblePackage==0.0.0`n", (New-Object System.Text.UTF8Encoding($false)))
+if (-not (Test-Path -LiteralPath $art)) { New-Item -ItemType Directory -Force -Path $art | Out-Null }
+Set-LockInstalledMarker -ArtifactDir $art
+$ds = Test-DepsState -Root $root -ArtifactDir $art -LockPath $badLock
+Check-Ok ((-not $ds.ok) -and $ds.rc -eq 1 -and (-not $ds.retryable)) 'deps lock conflict rc=1 non-retryable' ("rc=$($ds.rc) retryable=$($ds.retryable)")
+Remove-LockInstalledMarker -ArtifactDir $art
+
+# 11. 2/BLOCK and 5/DELIVERY are different scenarios
+$r2 = Invoke-Ki $entry @('-Check','mcp','-Json')
+$missingKit = Join-Path $tmp 'missing-kit.zip'
+$r5 = Invoke-Ki $entry @('-OfflineKit',$missingKit,'-Json')
+Check-Ok ($r2.rc -eq 2 -and "$($r2.json.detail)" -match 'mcp-snippet' -and $r5.rc -eq 5 -and "$($r5.json.detail)" -match 'not delivered') 'BLOCK 2 vs DELIVERY 5' ("r2=$($r2.rc) r5=$($r5.rc)")
+
+# 12. -Check writes no report/progress files
+$checkArt = Join-Path $tmp 'check-art'
+$null = Invoke-Ki $entry @('-Check','ready','-Json','-ArtifactDir',$checkArt)
+$checkFiles = @(Get-ChildItem -LiteralPath $checkArt -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'install-report|progress\.ndjson' })
+Check-Ok ($checkFiles.Count -eq 0) 'check mode writes no report artifacts' ("files=$($checkFiles.Count)")
+
+# 13. -Resume -Steps deps reinstalls from lock and sets marker after rc=0
+$depsText = [IO.File]::ReadAllText((Join-Path $root 'installer\lib\steps\deps.ps1'))
+$resumeOk = $depsText.Contains('$state.ok -and -not $Ctx.Resume') -and $depsText.Contains('Remove-LockInstalledMarker') -and $depsText.Contains('Set-LockInstalledMarker')
+Check-Ok $resumeOk 'resume deps always reinstalls from lock' ("source_contract=$resumeOk")
 
 Write-Host "`nитого: $total проверок, ошибок $($failures.Count)" $(if ($failures.Count) { 'Red' } else { 'Green' })
 if ($failures.Count) { exit 1 }

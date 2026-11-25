@@ -9,16 +9,22 @@ function Invoke-Step_deps {
     $warn = @()
     if ($busy.Count -gt 0) { $warn += "venv busy: $($busy -join ' | ')" }
 
-    $timeoutMs = 300000
-    if ($env:KI_IMPORT_TIMEOUT_SEC) {
+    # KI_DEPS_TOTAL_TIMEOUT_SEC is the total import-smoke budget (default 900s).
+    # KI_IMPORT_TIMEOUT_SEC is kept as a legacy alias when the total is not set.
+    $timeoutMs = 900000
+    $timeoutVar = 'KI_DEPS_TOTAL_TIMEOUT_SEC'
+    if (-not [Environment]::GetEnvironmentVariable($timeoutVar) -and $env:KI_IMPORT_TIMEOUT_SEC) { $timeoutVar = 'KI_IMPORT_TIMEOUT_SEC' }
+    $raw = [Environment]::GetEnvironmentVariable($timeoutVar)
+    if ($raw) {
         $n = 0
-        if ([int]::TryParse($env:KI_IMPORT_TIMEOUT_SEC, [ref]$n) -and $n -gt 0) { $timeoutMs = $n * 1000 }
+        if ([int]::TryParse($raw, [ref]$n) -and $n -gt 0) { $timeoutMs = $n * 1000 }
     }
     $state = Test-DepsState -Root $Ctx.Root -ArtifactDir $Ctx.ArtifactDir -TimeoutMs $timeoutMs
-    if ($state.ok) {
+    if ($state.ok -and -not $Ctx.Resume) {
         return New-StepResult -Id 'deps' -Status SKIP -Detail $state.detail -Warnings (@($warn) + @($state.warnings))
     }
 
+    # -Resume -Steps deps always reinstalls from lock; idempotent by design.
     Remove-LockInstalledMarker -ArtifactDir $Ctx.ArtifactDir
     $lock = Join-Path $Ctx.Root 'installer\requirements.lock'
     $null = & $py -m pip install --only-binary=:all: --retries $Ctx.Retries --timeout 60 -r $lock 2>&1

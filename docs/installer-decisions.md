@@ -57,7 +57,11 @@ installer/
 | 4 | `BROKEN` | Сломан запуск / неизвестный флаг |
 | 5 | `DELIVERY` | Ошибка доставки исходников или ассетов |
 
-Код 6 удалён.
+Код 6 удалён. Код **5 / DELIVERY** введён отдельно; код **2** переопределён как **BLOCK**.
+Граница: пока `installer/install.ps1` недоступен (доставка/распаковка не завершены) — `5`;
+после появления оркестратора сломанный вызов/неизвестный флаг — `4`. Потребители
+`release.yml`, `install_status.py`, `test-contract.ps1`, `docs/*`, `scripts/*` на exit 2
+аудированы: нигде 2 не трактуется как доставка.
 
 ## 4. Контракт `venv`
 
@@ -99,13 +103,19 @@ Repair-path: отдельного `-RepairVenv` нет. Перед удален�
 | Ситуация | Код | Retryable |
 |---|---|---|
 | `.venv` отсутствует | 2 / BLOCK | false |
-| 셰 network / TLS / timeout | 3 / FAIL | true |
+| Сеть / network / TLS / timeout | 3 / FAIL | true |
 | Доставка сорвана | 5 / DELIVERY | true |
 | Конфликт после чистой установки из lock | 1 / FAIL | false |
 | Импорт упал без маркера чистой установки | 3 / FAIL | true |
 
-Import smoke: таймаут 300 с (`KI_IMPORT_TIMEOUT_SEC`), stderr не является ошибкой
-сам по себе; в отчёт пишется `stderr_tail`.
+Import smoke: общий бюджет `KI_DEPS_TOTAL_TIMEOUT_SEC` = 900 с по умолчанию
+(legacy alias — `KI_IMPORT_TIMEOUT_SEC`). При исчерпании: `rc=3`, `retryable=true`,
+`detail = "import smoke timeout after Ns"`. stderr не является ошибкой сам по себе;
+в отчёт пишется `stderr_tail`.
+
+`-Resume -Steps deps` **всегда** выполняет `pip install -r installer\requirements.lock`
+(идемпотентно) и ставит маркер `deps-installed-from-lock.json` только после `rc=0`.
+Без Resume корректное состояние даёт `SKIP`.
 
 ## 6. Порядок шагов
 
@@ -114,7 +124,64 @@ winget -> powershell -> python -> git -> workspace -> venv -> deps ->
 models -> snippet -> [precheck report] -> doctor -> [acceptance] -> [final report]
 ```
 
-## 7. Отложено в следующую сессию
+## 7. Правила rc/retryable для остальных шагов
+
+Для `winget`, `powershell`, `python`, `git`, `workspace`, `models`, `snippet`, `doctor`,
+`acceptance` действует одно правило:
+
+| Ситуация | Код | Retryable |
+|---|---|---|
+| Отсутствует prerequisite | 2 / BLOCK | false |
+| Сеть / таймаут / временный сбой | 3 / FAIL | true |
+| Несовместимая версия или битый конфиг | 1 / FAIL | false |
+| Сломан запуск / неизвестный флаг | 4 / BROKEN | false |
+| Не доставлены ассеты | 5 / DELIVERY | true |
+
+`venv` и `deps` имеют уточнённые контракты выше.
+
+## 8. Контракт реестра флагов
+
+`docs/flags.json` — единственный реестр. Читают его **только через**
+`installer/lib/flags.ps1`: `bootstrap.ps1`, корневой `install.ps1`, `scripts/all.ps1`.
+`installer/install.ps1` получает уже размеченный набор флагов и не дублирует валидацию.
+`-Json` и `-ProgressJson` взаимоисключающи: вместе дают `4 / BROKEN`.
+
+`-Check` режимы ровно шесть: `inventory`, `ready`, `plan`, `mcp`, `status`,
+`capabilities`. Любое другое значение — `4 / BROKEN`. `-Check` не пишет файлы.
+
+## 9. Артефакты
+
+Целевой набор:
+
+```text
+.tmp\install.log
+.tmp\install-report-precheck.json
+.tmp\install-report.json
+.tmp\progress.ndjson
+.tmp\mutex
+mcp-snippet.json (+ копия в корне)
+```
+
+Отчёты пишутся атомарно: `*.tmp` → `Move-Item -Force`. `-Check status` сначала читает
+final, при отсутствии — precheck; если нет обоих — `2 / BLOCK`, `detail = "no report yet"`.
+Шаг `snippet` создаёт `mcp-snippet.json` в `.tmp` и копию в корень проекта.
+
+## 10. bootstrap и служебные инструменты
+
+`bootstrap.ps1` принимает `-Steps`, `-Resume`, `-Acceptance`, `-Force` и передаёт их
+без изменений в `installer/install.ps1`; все `next_cmd` в контракте опираются на это.
+
+`-Force` используется ровно в трёх местах: `workspace` (git init/reset для ZIP-копии),
+`models` (удаление битых моделей) и `-Uninstall`. На текущем ПК не применяется.
+
+`scripts/pins.py` перенесён в `installer/install_tools/pins.py`; workflow `pins.yml`
+вызывает новый путь. `bench/results/deps.json` остаётся снимком обновлений.
+
+Проверка версии venv использует кортеж `sys.version_info[:2] == (3, 15)` и отдельно
+требует `releaselevel == 'final'`; pre-release `3.15.0a1` не проходит.
+Busy-check определяет процесс по `ExecutablePath == <root>\.venv\Scripts\python.exe`.
+
+## 11. Отложено в следующую сессию
 
 - ASCII-переименование 13 локальных / ~12 удалённых кириллических путей
   (`rule/`, `data/`, `RULE.md`, `SPEC.md`, `QUESTIONS.md`, `INSTALL.md`,

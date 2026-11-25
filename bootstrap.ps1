@@ -60,6 +60,8 @@ if ($arch -ne 'AMD64' -or [IntPtr]::Size -ne 8) {
     Emit-Broken 4 "Windows x64 and 64-bit PowerShell required; got $arch / $([IntPtr]::Size * 8) bit"
 }
 
+# Boundary: until installer/install.ps1 exists, any source/asset problem is
+# 5 / DELIVERY. Once it exists, broken invocation/flags are 4 / BROKEN.
 $entry = Join-Path $PSScriptRoot 'installer\install.ps1'
 $root = $PSScriptRoot
 if (-not (Test-Path -LiteralPath $entry)) {
@@ -92,6 +94,7 @@ if (-not (Test-Path -LiteralPath $entry)) {
 }
 
 if (-not $parsed.bound.ContainsKey('Check') -and -not $parsed.bound.ContainsKey('Yes')) { $parsed.bound['Yes'] = $true }
+# Forward all canonical flags unchanged, including -Steps/-Resume/-Acceptance/-Force.
 $b = $parsed.bound
 & $entry @b
 exit $LASTEXITCODE

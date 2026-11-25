@@ -29,18 +29,18 @@ jobs:
       - name: Матрица поддержки (wheel по версиям Python)
         env:
           PYTHONUTF8: "1"
-        run: python scripts/pins.py
+        run: python installer/install_tools/pins.py
 
       - name: Доступные обновления на PyPI
         env:
           PYTHONUTF8: "1"
-        run: python scripts/pins.py --latest
+        run: python installer/install_tools/pins.py --latest
 
       - name: Снимок обновлений (bench/results/deps.json)
         env:
           PYTHONUTF8: "1"
         run: |
-          python scripts/pins.py --latest --write bench/results/deps.json \
+          python installer/install_tools/pins.py --latest --write bench/results/deps.json \
             || echo "::warning::нет данных PyPI — снимок не обновлён, сервер покажет available: false"
 
       - name: Коммит снимка в master

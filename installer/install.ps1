@@ -53,6 +53,10 @@ function Severity([int]$Code) {
     switch ($Code) { 4 { 100 } 5 { 90 } 1 { 80 } 2 { 70 } 3 { 60 } default { 0 } }
 }
 if ($Json) { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { } }
+if ($Json -and $ProgressJson) {
+    Emit ([pscustomobject][ordered]@{ code = 4; ok = $false; detail = '-Json and -ProgressJson are mutually exclusive'; retryable = $false })
+    exit 4
+}
 
 # ------------------------------------------------------------- read-only checks
 if ($Check) {
@@ -90,7 +94,8 @@ if ($Check) {
         'status' {
             $art = if ($ArtifactDir) { $ArtifactDir } else { Join-Path $Root '.tmp' }
             $report = Join-Path $art 'install-report.json'
-            if (-not (Test-Path -LiteralPath $report)) { Emit ([pscustomobject]@{ code = 2; ok = $false; detail = 'no install-report.json' }); exit 2 }
+            if (-not (Test-Path -LiteralPath $report)) { $report = Join-Path $art 'install-report-precheck.json' }
+            if (-not (Test-Path -LiteralPath $report)) { Emit ([pscustomobject]@{ code = 2; ok = $false; detail = 'no report yet' }); exit 2 }
             [Console]::Out.WriteLine((Get-Content -LiteralPath $report -Raw -Encoding UTF8))
             exit 0
         }
@@ -116,6 +121,10 @@ if ($Uninstall) {
     }
     Emit ([pscustomobject]@{ code = 0; ok = $true; detail = 'uninstall completed' })
     exit 0
+}
+if ($OfflineKit -and -not (Test-Path -LiteralPath $OfflineKit)) {
+    Emit ([pscustomobject]@{ code = 5; ok = $false; detail = "offline kit not delivered: $OfflineKit"; retryable = $true })
+    exit 5
 }
 if ($CheckUpdates -or $RaisePython -or $Update -or $OfflineKit) {
     Emit ([pscustomobject]@{ code = 0; ok = $true; detail = 'flag accepted; handling deferred to next session' })
@@ -153,7 +162,7 @@ $results = New-Object System.Collections.Generic.List[object]
 $finalCode = 0
 $preWritten = $false
 foreach ($id in $stepIds) {
-    if ($Resume -and @('OK','SKIP') -contains "$($prev[$id])") {
+    if ($Resume -and $id -ne 'deps' -and @('OK','SKIP') -contains "$($prev[$id])") {
         $r = New-StepResult -Id $id -Status SKIP -Detail 'resume: already done'
     } else {
         $fn = Get-Command "Invoke-Step_$id" -ErrorAction SilentlyContinue

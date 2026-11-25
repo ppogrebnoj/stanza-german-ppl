@@ -24,9 +24,9 @@ function Test-VenvBusy {
     try {
         $procs = Get-CimInstance Win32_Process -ErrorAction Stop
         foreach ($p in $procs) {
-            $cl = "$($p.CommandLine)"
-            if ($cl -and $cl.ToLowerInvariant().Contains($vp.ToLowerInvariant())) {
-                $busy += "pid=$($p.ProcessId) $cl"
+            $exe = "$($p.ExecutablePath)"
+            if ($exe -and $exe.ToLowerInvariant() -eq $vp.ToLowerInvariant()) {
+                $busy += "pid=$($p.ProcessId) exe=$exe"
             }
         }
     } catch { }
@@ -40,15 +40,16 @@ function Test-CorrectVenv {
     if (-not (Test-Path -LiteralPath $vp -PathType Leaf)) { $res.detail = '.venv python missing'; return $res }
     $res.exists = $true
 
-    $code = @(& $vp -c "import sys,struct;print('%s|%d.%d|%d' % (sys.prefix, sys.version_info[0], sys.version_info[1], struct.calcsize('P')*8))" 2>$null)
+    $probe = "import sys,struct;print('%s|%d.%d|%d|%s' % (sys.prefix, sys.version_info[0], sys.version_info[1], struct.calcsize('P')*8, sys.version_info.releaselevel))"
+    $code = @(& $vp -c $probe 2>$null)
     $rc = $LASTEXITCODE
     if ($rc -ne 0 -or $code.Count -eq 0) { $res.detail = 'cannot run .venv python'; return $res }
     $parts = ("$($code[0])" -split '\|')
-    $prefix = "$($parts[0])"; $ver = "$($parts[1])"; $bits = "$($parts[2])"
+    $prefix = "$($parts[0])"; $ver = "$($parts[1])"; $bits = "$($parts[2])"; $release = "$($parts[3])"
     $cfg = Join-Path $Root '.venv\pyvenv.cfg'
     $prefixOk = $prefix.ToLowerInvariant().StartsWith((Join-Path $Root '.venv').ToLowerInvariant())
-    if ($ver -ne '3.15' -or $bits -ne '64' -or -not (Test-Path -LiteralPath $cfg) -or -not $prefixOk) {
-        $res.detail = "bad venv: python=$ver bits=$bits prefix=$prefix"
+    if ($ver -ne '3.15' -or $release -ne 'final' -or $bits -ne '64' -or -not (Test-Path -LiteralPath $cfg) -or -not $prefixOk) {
+        $res.detail = "bad venv: python=$ver release=$release bits=$bits prefix=$prefix"
         return $res
     }
     $null = & $vp -m pip --version 2>$null
@@ -77,7 +78,7 @@ function Remove-LockInstalledMarker {
 }
 
 function Test-DepsState {
-    param([string]$Root, [string]$ArtifactDir, [int]$TimeoutMs = 300000)
+    param([string]$Root, [string]$ArtifactDir, [int]$TimeoutMs = 300000, [string]$LockPath = '')
     $py = Join-Path $Root '.venv\Scripts\python.exe'
     $warnings = @()
     $clean = Test-LockInstalledMarker $ArtifactDir
@@ -88,7 +89,7 @@ function Test-DepsState {
         return [pscustomobject]@{ ok = $false; detail = "pip check rc=$pipRc"; clean = $clean; rc = $(if ($clean) { 1 } else { 3 }); retryable = (-not $clean); warnings = $warnings }
     }
 
-    $lock = Join-Path $Root 'installer\requirements.lock'
+    $lock = if ($LockPath) { $LockPath } else { Join-Path $Root 'installer\requirements.lock' }
     $checkScript = @'
 import importlib.metadata as m, json, sys
 bad = []
@@ -106,8 +107,13 @@ with open(sys.argv[1], encoding="utf-8") as f:
             bad.append("%s %s != %s" % (name, got, want))
 print(json.dumps(bad))
 '@
-    $out = @(& $py -c $checkScript $lock 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $out.Count -eq 0) {
+    # Multi-line code via `python -c` loses quoting in PS 5.1; use a temporary file.
+    $checkPy = Join-Path $ArtifactDir 'lock_check.py'
+    [IO.File]::WriteAllText($checkPy, $checkScript, (New-Object System.Text.UTF8Encoding($false)))
+    $out = @(& $py $checkPy $lock 2>$null)
+    $checkRc = $LASTEXITCODE
+    Remove-Item -LiteralPath $checkPy -Force -ErrorAction SilentlyContinue
+    if ($checkRc -ne 0 -or $out.Count -eq 0) {
         return [pscustomobject]@{ ok = $false; detail = 'lock version check failed'; clean = $clean; rc = 3; retryable = $true; warnings = $warnings }
     }
     $bad = ("$($out[0])" | ConvertFrom-Json)
@@ -129,7 +135,8 @@ print(json.dumps(bad))
         $se = $proc.StandardError.ReadToEnd()
         if (-not $proc.WaitForExit($TimeoutMs)) {
             try { $proc.Kill() } catch { }
-            return [pscustomobject]@{ ok = $false; detail = "import smoke timeout ${TimeoutMs}ms"; clean = $clean; rc = 3; retryable = $true; warnings = $warnings }
+            $sec = [math]::Round($TimeoutMs / 1000)
+            return [pscustomobject]@{ ok = $false; detail = "import smoke timeout after ${sec}s"; clean = $clean; rc = 3; retryable = $true; warnings = $warnings }
         }
         if ($proc.ExitCode -ne 0) {
             $tail = (@($se -split "`n") | Select-Object -Last 20) -join ' | '
