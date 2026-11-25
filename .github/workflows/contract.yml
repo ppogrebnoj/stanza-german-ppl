@@ -26,6 +26,9 @@ jobs:
           if (($a.capabilities.flags.name -join ',') -ne ($reg.flags.name -join ',')) { throw 'capabilities != docs/flags.json' }
           if (($a | ConvertTo-Json -Depth 8) -ne ($b | ConvertTo-Json -Depth 8)) { throw 'install.ps1 output != all.ps1 output' }
 
+      - name: ASCII tree contract
+        run: python scripts/check_ascii_tree.py
+
       - name: No writes in check modes
         shell: powershell
         run: |

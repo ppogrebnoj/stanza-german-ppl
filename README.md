@@ -81,7 +81,8 @@ snippet → [precheck report] → doctor → [acceptance] → [final report]`.
 а ход обсуждения остаётся в git.
 
 Все отслеживаемые пути в репозитории — ASCII: `rule/`, `data/`, `RULE.md`, `SPEC.md`,
-`QUESTIONS.md`, `installer/INSTALL.md`, `MARKUP_51.md`, `MARKUP_52.md`, `LIST_150.md`.
+`QUESTIONS.md`, `installer/INSTALL.md`, `data/MARKUP_51.md`, `data/MARKUP_52.md`,
+`data/LIST_150.md`.
 Не-ASCII имена файлов и каталогов больше не используются: при распаковке архивов
 они искажались, и установщик не находил `config.json`.
 
@@ -119,6 +120,10 @@ python rule/smoke_test.py --full
 
 # MCP-сервер: handshake, инструменты, гейт, судья — без запущенного клиента
 python scripts/mcp_probe.py
+
+# контракт ASCII-структуры: имена файлов и legacy-упоминания
+python scripts/check_ascii_tree.py
+python scripts/check_ascii_tree.py --json
 ```
 
 Числа правила живут только в `config.json` → правка правила = правка JSON, без кода.
@@ -137,7 +142,7 @@ python scripts/merge_gate.py --pr N --json
 ## Как пополнять разметку
 
 1. Открываете `data/LIST_150.md`, размечаете очередную часть слэшами: `… фраза / фраза …`.
-2. Кладёте файл в `data/MARKUP_<N>.md` (как `MARKUP_51.md`).
+2. Кладёте файл в `data/MARKUP_<N>.md` (как `data/MARKUP_51.md`).
 3. Я собираю машинный набор (`bench/build_sets.py`), прогоняю аудит и валидатор,
    показываю, где правило с вами не согласно.
 

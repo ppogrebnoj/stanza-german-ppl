@@ -78,7 +78,7 @@ pwsh -ExecutionPolicy Bypass -File .\install.ps1 -Yes
 зависимостей:
 
 ```powershell
-.\install.ps1 -Steps "python,git,deps,models,snippet" -Yes -Venv -Force
+.\install.ps1 -Steps "python,git,deps,models,snippet" -Yes -Force
 ```
 
 Список шагов `-Steps` — строка через запятую; в PowerShell 7 её надо **закавычить**,
@@ -123,7 +123,7 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 | `-Acceptance` | приёмка с F1 |
 | `-Json`, `-ProgressJson` | финальный JSON и NDJSON-поток в stdout (в файл поток пишется всегда). Для работы руками лучше без `-Json`: в этом режиме на экране живая строка прогресса |
 | `-ArtifactDir`, `-Python`, `-TargetDir`, `-ModelsDir` | каталоги и явный интерпретатор |
-| `-Models`, `-OfflineKit`, `-Steps`, `-Resume`, `-Venv`, `-Force` | дополнительные процессоры, офлайн-набор, выбор/продолжение шагов |
+| `-Models`, `-OfflineKit`, `-Steps`, `-Resume`, `-Force` | дополнительные процессоры, офлайн-набор, выбор/продолжение шагов |
 | `-Repair`, `-Uninstall`, `-Update`, `-CheckUpdates`, `-RaisePython`, `-MakeOfflineKit` | жизненный контур |
 
 Сетевые настройки передаются переменными окружения процесса: `HTTP_PROXY` / `HTTPS_PROXY`
@@ -133,7 +133,7 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 
 ```powershell
 .\install.ps1 -Check inventory -Json       # что есть на машине, у каждой позиции — fix
-.\install.ps1 -Check ready -Venv -Json     # код 0 на установленной машине (с -Venv!)
+.\install.ps1 -Check ready -Json          # код 0 на установленной машине
 .\install.ps1 -Check plan -Json            # какие шаги будут выполнены
 .\install.ps1 -Check mcp -Json             # валидность сниппета и причина «клиент не видит сервер»
 .\install.ps1 -Check status -Json          # сводка по install-report.json
@@ -142,8 +142,8 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 
 Эти режимы не пишут файлы, реестр и переменные окружения пользователя.
 
-`-Check ready` без `-Venv` смотрит глобальный Python и даёт `code 2`, даже когда `.venv`
-готов: добавляйте `-Venv`, если ставили окружение через `-Venv`.
+`-Check ready` сначала смотрит `.venv`, затем явный `-Python`. Неканонические флаги
+дают `code 4` (неизвестный параметр).
 
 ### Долгие шаги и прогресс
 
@@ -251,8 +251,8 @@ Range GET по фактическим ассетам. Обрывы TLS (`10054`,
 .\install.ps1 -Uninstall -Force -Yes
 ```
 
-`-Venv` создаёт `.venv` и ставит пакеты туда (`mode: "venv"`); по умолчанию пакеты
-ставятся глобально. `-Force` разрешает перезапись, `git reset --hard` и удаление моделей.
+Шаг `venv` создаёт `.venv`, шаг `deps` ставит пакеты туда (`mode: "venv"`).
+`-Force` разрешает перезапись, `git reset --hard` и удаление моделей.
 
 ## 7. Проверки в CI
 

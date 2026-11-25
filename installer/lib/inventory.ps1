@@ -644,7 +644,6 @@ function Get-Inventory {
         # ---------------------------------------------------------------- MCP-клиент
         $mcpPaths = @(
             "$env:USERPROFILE\.pi\agent\mcp.json",
-            "$env:USERPROFILE\.lmstudio\mcp.json",
             "$env:APPDATA\Claude\claude_desktop_config.json",
             "$env:USERPROFILE\.cursor\mcp.json",
             "$env:APPDATA\Code\User\mcp.json"
