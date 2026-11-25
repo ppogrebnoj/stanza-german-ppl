@@ -2,12 +2,71 @@
 
 ## installer-v3 (unreleased)
 
-- Введена трёхслойная архитектура установки: `bootstrap.ps1` (entry), `installer/install.ps1`
-  (orchestrator), `installer/lib/*` (библиотеки и шаги).
-- Код выхода **5 / DELIVERY** добавлен для сбоев доставки исходников и ассетов.
-- Код выхода **2** переопределён как **BLOCK**: это не «ошибка доставки», а отсутствующий
-  prerequisite / действие человека. Until the orchestrator is available, bootstrap returns 5;
-  after it exists, a broken invocation returns 4.
-- `-Json` и `-ProgressJson` сделаны взаимоисключающими (4 / BROKEN).
-- Отчёты `install-report-precheck.json` и `install-report.json` пишутся атомарно.
+### Архитектура и порядок шагов
+
+- Три слоя: `bootstrap.ps1` (entry), `installer/install.ps1` (orchestrator),
+  `installer/lib/*` + `installer/lib/steps/*` (библиотеки и шаги).
+- Entry не содержит логики установки; оркестратор только вызывает `Invoke-Step*`;
+  `pip`, `curl`, `git`, `stanza.download` живут в библиотеках/шагах.
+- `doctor` и `acceptance` — обычные шаги в цикле, без отдельного послевызова.
+- Порядок: `winget → powershell → python → git → workspace → venv → deps → models →
+  snippet → [precheck report] → doctor → [acceptance] → [final report]`.
+- `docs/flags.json` — единственный реестр; читается только через
+  `installer/lib/flags.ps1`. `-Check` ровно шесть режимов: `inventory`, `ready`, `plan`,
+  `mcp`, `status`, `capabilities`. `-Json` и `-ProgressJson` взаимоисключающи (4/BROKEN).
+
+### Exit codes
+
+| Код | Статус | Значение |
+|---|---|---|
+| 0 | OK / SKIP | успех или шаг уже сделан |
+| 1 | FAIL | non-retryable, повтор той же команды не поможет |
+| 2 | BLOCK | нужно действие человека / недостающий prerequisite |
+| 3 | FAIL | retryable, сеть/таймаут/временный сбой |
+| 4 | BROKEN | сломан запуск, неизвестный флаг, битая раскладка после появления оркестратора |
+| 5 | DELIVERY | исходники/ассеты не доставлены до появления `installer/install.ps1` |
+
+Код 6 удалён. Код 2 переопределён как BLOCK; 5 введён отдельно. Граница 4/5: пока
+оркестратор недоступен — 5; после его появления сломанный вызов — 4. Потребители
+`release.yml`, `install_status.py`, `test-contract.ps1`, `docs/*`, `scripts/*` аудированы.
+
+Для шагов `winget`, `powershell`, `python`, `git`, `workspace`, `models`, `snippet`,
+`doctor`, `acceptance`: отсутствует prerequisite → 2; сеть/таймаут → 3; несовместимая
+версия/битый конфиг → 1; сломан запуск → 4; не доставлены ассеты → 5.
+
+### Контракт `venv`
+
+Корректный venv: `<root>\.venv\Scripts\python.exe` существует; `sys.version_info[:2] == (3, 15)`
+и `releaselevel == 'final'`; 64-bit; `pyvenv.cfg` есть; `sys.prefix` внутри `.venv`;
+`python -m pip --version` → 0. Отсутствует — создаём; корректный — SKIP; некорректный —
+BLOCK/2. `next_cmd` для BLOCK всегда содержит `-Steps venv,deps`:
+
+```powershell
+Remove-Item -Recurse -Force .\.venv; .\bootstrap.ps1 -Steps venv,deps
+```
+
+Для сломанного pip: `.venv\Scripts\python.exe -m ensurepip --upgrade` перед тем же вызовом.
+Busy-check использует `ExecutablePath`; для destructive-действий busy → BLOCK, для
+`deps/models/doctor` → WARN; `Remove-Item` в `try/catch` тоже даёт rc=2.
+
+### Контракт `deps`
+
+Корректные пакеты: `python -m pip check` → 0; версии из `importlib.metadata` совпадают с
+`installer\requirements.lock`; import smoke `stanza, torch, numpy, mcp, pyphen` проходит.
+ `-Resume -Steps deps` всегда выполняет `pip install -r installer\requirements.lock`
+и ставит маркер только после rc=0. Конфликт после чистой установки из lock → 1,
+`retryable:false`; сеть/таймаут → 3, `retryable:true`; доставка → 5.
+Бюджет import smoke: `KI_DEPS_TOTAL_TIMEOUT_SEC=900` (alias `KI_IMPORT_TIMEOUT_SEC`);
+при исчерпании detail = `import smoke timeout after Ns`. stderr сам по себе не ошибка,
+в отчёт пишется `stderr_tail`.
+
+### Прочее
+
+- Отчёты пишутся атомарно (`*.tmp` → `Move-Item -Force`); `-Check status` fallback на precheck,
+  иначе 2/BLOCK `no report yet`.
+- Артефакты: `.tmp\install.log`, `.tmp\install-report-precheck.json`,
+  `.tmp\install-report.json`, `.tmp\progress.ndjson`, `.tmp\mutex`,
+  `mcp-snippet.json` (+ копия в корне).
+- `bootstrap.ps1` передаёт `-Steps`, `-Resume`, `-Acceptance`, `-Force` без изменений.
+- `-Force`: `workspace`, `models`, `-Uninstall`. `pins.py` перенесён в `install_tools/`.
 - `bootstrap.ps1.sha256` хранится рядом с `bootstrap.ps1` в корне.

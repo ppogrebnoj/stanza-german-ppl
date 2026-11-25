@@ -17,6 +17,43 @@
     "4": "BROKEN",
     "5": "DELIVERY"
   },
+  "exit_codes_detail": {
+    "2": "BLOCK: missing prerequisite or human action; not delivery",
+    "5": "DELIVERY: source/assets not delivered before installer/install.ps1 exists",
+    "4_vs_5_boundary": "before orchestrator is available => 5; after it exists, broken invocation => 4"
+  },
+  "contracts": {
+    "venv": {
+      "valid": ["python.exe exists", "sys.version_info[:2] == (3, 15)", "releaselevel == 'final'", "64-bit", "pyvenv.cfg inside .venv", "sys.prefix inside .venv", "python -m pip --version rc=0"],
+      "invalid": {"code": 2, "retryable": false, "next_cmd": "Remove-Item -Recurse -Force .\\.venv; .\\bootstrap.ps1 -Steps venv,deps"},
+      "broken_pip_next_cmd": ".\\.venv\\Scripts\\python.exe -m ensurepip --upgrade; .\\bootstrap.ps1 -Steps venv,deps"
+    },
+    "deps": {
+      "valid": ["pip check rc=0", "versions equal installer/requirements.lock", "import stanza,torch,numpy,mcp,pyphen"],
+      "resume_always_reinstalls_from_lock": true,
+      "marker": "deps-installed-from-lock.json set only after pip rc=0",
+      "clean_lock_conflict": {"code": 1, "retryable": false},
+      "network_timeout": {"code": 3, "retryable": true},
+      "import_timeout_env": "KI_DEPS_TOTAL_TIMEOUT_SEC",
+      "import_timeout_default_sec": 900,
+      "import_timeout_detail": "import smoke timeout after Ns"
+    }
+  },
+  "artifacts": [
+    ".tmp\\install.log",
+    ".tmp\\install-report-precheck.json",
+    ".tmp\\install-report.json",
+    ".tmp\\progress.ndjson",
+    ".tmp\\mutex",
+    "mcp-snippet.json (+ root copy)"
+  ],
+  "default_step_rules": {
+    "missing_prerequisite": {"code": 2, "retryable": false},
+    "network_timeout": {"code": 3, "retryable": true},
+    "incompatible_version_or_bad_config": {"code": 1, "retryable": false},
+    "broken_invocation": {"code": 4, "retryable": false},
+    "asset_not_delivered": {"code": 5, "retryable": true}
+  },
   "flags": [
     {"name": "Yes", "kind": "switch", "description": "разрешить установку системного софта и связанные шаги"},
     {"name": "Check", "kind": "value", "values": ["inventory", "ready", "plan", "mcp", "status", "capabilities"], "default": "inventory", "description": "режим только чтение; файлы отчётов не пишутся"},
