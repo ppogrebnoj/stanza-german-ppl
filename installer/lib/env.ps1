@@ -166,11 +166,7 @@ function Find-Python {
 }
 
 function Get-InterpreterPath {
-    param([object]$PythonInfo, [string]$Root = (Get-ProjectRoot), [switch]$Venv)
-    if ($Venv) {
-        $vp = Join-Path $Root '.venv\Scripts\python.exe'
-        if (Test-Path -LiteralPath $vp) { return $vp }
-    }
+    param([object]$PythonInfo, [string]$Root = (Get-ProjectRoot))
     if ($PythonInfo) { return $PythonInfo.Path }
     return ''
 }

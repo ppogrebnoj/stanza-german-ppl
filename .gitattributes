@@ -3,7 +3,7 @@
 # в Git for Windows (#!/bin/sh^M -> "bad interpreter") и даёт ложные diff'ы.
 * text=auto eol=lf
 
-# Хук обязан быть LF всегда (лежит под кириллическим каталогом — шаблон без кириллицы).
+# Хук обязан быть LF всегда (лежит в ASCII-каталоге rule/git-hooks — шаблон без кириллицы).
 **/pre-commit text eol=lf
 *.sh text eol=lf
 

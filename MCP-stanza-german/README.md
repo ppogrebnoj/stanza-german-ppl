@@ -45,17 +45,14 @@ python MCP-stanza-german\server.py
   "mcpServers": {
     "stanza": {
       "command": "python",
-      "args": ["<КОРЕНЬ ПРОЕКТА>\\MCP-stanza-german\\server.py"]
+      "args": ["<PROJECT_ROOT>\\MCP-stanza-german\\server.py"]
     }
   }
 }
 ```
 
-Замените `<КОРЕНЬ ПРОЕКТА>` на каталог, куда склонирован проект (в JSON нужен
+Замените `<PROJECT_ROOT>` на каталог, куда склонирован проект (в JSON нужен
 абсолютный путь — в конфиге клиента относительные не работают).
-
-**LM Studio:** Settings → MCP Servers → Add — укажите `command: python` и
-`args: <КОРЕНЬ ПРОЕКТА>\MCP-stanza-german\server.py`.
 
 ## Инструменты
 
@@ -93,8 +90,12 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
 
 Инструменты судьи (`check_segmentation`, `rule_self_test`, `rule_info`) работают поверх
 отдельного проекта правила — `rule` (`validator.py`, `config.json`). Путь задаётся переменной `RULE_ROOT`
-(дефолт — папка `rule` рядом с сервером, то есть `<КОРЕНЬ ПРОЕКТА>\rule`:
-`server.py` вычисляет его от своего расположения, `E:\...` в коде не зашит). **Правила нет — сервер работает как раньше:**
+(дефолт — папка `rule` рядом с сервером, то есть `<PROJECT_ROOT>\rule`:
+`server.py` вычисляет его от своего расположения, `E:\...` в коде не зашит).
+
+Минимальная строка сниппета: `"env": { "RULE_ROOT": "<PROJECT_ROOT>\\rule", "PYTHONUTF8": "1" }`.
+
+**Правила нет — сервер работает как раньше:**
 инструменты судьи просто не регистрируются, причина — в `pipeline_info().notes`.
 
 `config.json` перечитывается на **каждый** вызов: цикл «дельта → перепроверка» работает без
@@ -106,8 +107,8 @@ jagt die kleine Katze im Garten*» → клиент вызывает `parse_germ
   "mcpServers": {
     "stanza-german": {
       "command": "python",
-      "args": ["<КОРЕНЬ ПРОЕКТА>\\MCP-stanza-german\\server.py"],
-      "env": { "RULE_ROOT": "<КОРЕНЬ ПРОЕКТА>\\rule", "PYTHONUTF8": "1" }
+      "args": ["<PROJECT_ROOT>\\MCP-stanza-german\\server.py"],
+      "env": { "RULE_ROOT": "<PROJECT_ROOT>\\rule", "PYTHONUTF8": "1" }
     }
   }
 }
