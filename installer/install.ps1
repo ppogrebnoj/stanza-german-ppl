@@ -52,6 +52,15 @@ function StepCode([object]$R) {
 function Severity([int]$Code) {
     switch ($Code) { 4 { 100 } 5 { 90 } 1 { 80 } 2 { 70 } 3 { 60 } default { 0 } }
 }
+function Invoke-CheckRunner([string]$Name) {
+    $py = Join-Path $Root '.venv\Scripts\python.exe'
+    if (-not (Test-Path -LiteralPath $py)) { $py = $Python }
+    if (-not $py) { Emit ([pscustomobject]@{ code = 2; ok = $false; detail = 'no python' }); exit 2 }
+    $null = & $py (Join-Path $Root 'scripts\run_checks.py') --check $Name --json 2>&1
+    $rc = $LASTEXITCODE
+    Emit ([pscustomobject]@{ code = $rc; ok = ($rc -eq 0); detail = "$Name rc=$rc" })
+    exit $rc
+}
 if ($Json) { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { } }
 if ($Json -and $ProgressJson) {
     Emit ([pscustomobject][ordered]@{ code = 4; ok = $false; detail = '-Json and -ProgressJson are mutually exclusive'; retryable = $false })
@@ -73,15 +82,10 @@ if ($Check) {
             Emit ([pscustomobject][ordered]@{ code = 0; ok = $true; mode = 'plan'; steps = @($reg.steps) })
             exit 0
         }
-        'ready' {
-            $py = Join-Path $Root '.venv\Scripts\python.exe'
-            if (-not (Test-Path -LiteralPath $py)) { $py = $Python }
-            if (-not $py) { Emit ([pscustomobject]@{ code = 2; ok = $false; detail = 'no python' }); exit 2 }
-            $null = & $py (Join-Path $Root 'scripts\doctor.py') --json 2>&1
-            $rc = $LASTEXITCODE
-            Emit ([pscustomobject]@{ code = $(if ($rc -eq 0) { 0 } else { 1 }); ok = ($rc -eq 0); detail = "doctor rc=$rc" })
-            exit $(if ($rc -eq 0) { 0 } else { 1 })
-        }
+        'doctor' { Invoke-CheckRunner 'doctor' }
+        'models' { Invoke-CheckRunner 'models' }
+        'acceptance' { Invoke-CheckRunner 'acceptance' }
+        'mcp_probe' { Invoke-CheckRunner 'mcp_probe' }
         'mcp' {
             $snippet = Join-Path $Root 'mcp-snippet.json'
             $ok = $false

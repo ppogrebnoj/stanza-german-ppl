@@ -133,16 +133,21 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 
 ```powershell
 .\install.ps1 -Check inventory -Json       # что есть на машине, у каждой позиции — fix
-.\install.ps1 -Check ready -Json          # код 0 на установленной машине
+.\install.ps1 -Check doctor -Json          # код 0 на установленной машине
+.\install.ps1 -Check models -Json          # ресурсы Stanza по манифесту
+.\install.ps1 -Check acceptance -Json      # полная приёмка (~51 с)
+.\install.ps1 -Check mcp_probe -Json       # живой MCP-сервер (~12 с тёплый прогон)
 .\install.ps1 -Check plan -Json            # какие шаги будут выполнены
 .\install.ps1 -Check mcp -Json             # валидность сниппета и причина «клиент не видит сервер»
 .\install.ps1 -Check status -Json          # сводка по install-report.json
 .\install.ps1 -Check capabilities -Json    # реестр параметров
 ```
 
-Эти режимы не пишут файлы, реестр и переменные окружения пользователя.
+Эти режимы не пишут install-report/progress и не меняют реестр/переменные окружения.
+Медленные проверки могут оставлять `server.log` и `__pycache__` — это их собственные
+побочные эффекты, а не запись отчёта установщика.
 
-`-Check ready` сначала смотрит `.venv`, затем явный `-Python`. Неканонические флаги
+`-Check doctor` сначала смотрит `.venv`, затем явный `-Python`. Неканонические флаги
 дают `code 4` (неизвестный параметр).
 
 ### Долгие шаги и прогресс
@@ -186,12 +191,6 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 mcp_snippet_path, python_path, stanza_resources, steps[], blockers[], failures[],
 next_action, sizes, timings, acceptance`.
 
-Сводка человеку и агенту:
-
-```powershell
-python scripts/install_status.py            # или --json
-```
-
 ## 4. Сеть, офлайн и объёмы
 
 Загрузки идут с ретраями, `-4`, `--http1.1`, `-C -`, фоллбэком `Invoke-WebRequest`,
@@ -225,7 +224,7 @@ Range GET по фактическим ассетам. Обрывы TLS (`10054`,
 
 ```powershell
 .\python.cmd scripts\server_check.py --json
-.\python.cmd scripts\mcp_probe.py --json
+.\python.cmd scripts\run_checks.py --check mcp_probe --json
 ```
 
 Список инструментов сервера: `parse_german`, `segment_german`, `check_segmentation`,

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """acceptance.py — приёмка: doctor + smoke fast/full + валидаторы + mcp_probe.
 
-    python scripts/acceptance.py --json
+    python scripts/run_checks.py --check acceptance --json
 
 В JSON: checks[], f1 {corpus52, heldout_51}, validators, mcp_probe, verdict PASS/FAIL.
 Эталон: F1 0.777 / 0.686, валидаторы 52/52 и 45/51. Ничего не меняет (кроме логов
@@ -17,7 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]   # installer/lib/checks -> корень проекта
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "rule"))
 import _paths as P  # noqa: E402
@@ -97,8 +97,8 @@ def main() -> int:
     checks = []
 
     py = sys.executable
-    rc, out = run([py, str(ROOT / "scripts" / "doctor.py"), "--json"])
-    doc = parse_json_obj(out) or {}
+    rc, out = run([py, str(ROOT / "scripts" / "run_checks.py"), "--check", "doctor", "--json"])
+    doc = (parse_json_obj(out) or {}).get("data") or {}
     checks.append(check("doctor", rc == 0 and bool(doc.get("ok")),
                         str(doc.get("counts", out[:200]))))
 
@@ -117,8 +117,8 @@ def main() -> int:
     for name, v in vals.items():
         checks.append(check(f"validator_{name}", bool(v.get("ok")), str(v)))
 
-    rc, out = run([py, str(ROOT / "scripts" / "mcp_probe.py"), "--json"])
-    probe = parse_json_obj(out) or {}
+    rc, out = run([py, str(ROOT / "scripts" / "run_checks.py"), "--check", "mcp_probe", "--json"])
+    probe = (parse_json_obj(out) or {}).get("data") or {}
     checks.append(check("mcp_probe", rc == 0 and bool(probe.get("ok")),
                         str(probe.get("problems", out[:300]))))
 

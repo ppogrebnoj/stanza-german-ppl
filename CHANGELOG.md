@@ -2,6 +2,15 @@
 
 ## installer-v3 (unreleased)
 
+### Python-проверки (follow-up #3, п. 4)
+
+- `doctor.py`, `check_models.py`, `acceptance.py`, `mcp_probe.py` перенесены в
+  `installer/lib/checks/`; единая точка запуска — `scripts/run_checks.py`, реестр —
+  `installer/lib/checks/manifest.json`.
+- `-Check ready` заменён на `-Check doctor`; добавлены `models`, `acceptance`, `mcp_probe`.
+  `-Check mcp` (проверка сниппета) не изменён.
+- `mcp_probe` убран из `smoke.yml`; остался ручной запуск.
+
 ### ASCII-пути (follow-up #3)
 
 - Все отслеживаемые файлы и каталоги переведены в ASCII без правки содержимого:
@@ -39,7 +48,7 @@
 
 Код 6 удалён. Код 2 переопределён как BLOCK; 5 введён отдельно. Граница 4/5: пока
 оркестратор недоступен — 5; после его появления сломанный вызов — 4. Потребители
-`release.yml`, `install_status.py`, `test-contract.ps1`, `docs/*`, `scripts/*` аудированы.
+`release.yml`, `test-contract.ps1`, `docs/*`, `scripts/*` аудированы.
 
 Для шагов `winget`, `powershell`, `python`, `git`, `workspace`, `models`, `snippet`,
 `doctor`, `acceptance`: отсутствует prerequisite → 2; сеть/таймаут → 3; несовместимая
