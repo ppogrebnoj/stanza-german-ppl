@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Common helpers for installer steps. No step logic here.
 
 function New-StepResult {
@@ -78,8 +78,8 @@ function Remove-LockInstalledMarker {
 }
 
 function Test-DepsState {
-    param([string]$Root, [string]$ArtifactDir, [int]$TimeoutMs = 300000, [string]$LockPath = '')
-    $py = Join-Path $Root '.venv\Scripts\python.exe'
+    param([string]$Root, [string]$ArtifactDir, [int]$TimeoutMs = 300000, [string]$LockPath = '', [string]$PythonPath = '')
+    $py = if ($PythonPath) { $PythonPath } else { Join-Path $Root '.venv\Scripts\python.exe' }
     $warnings = @()
     $clean = Test-LockInstalledMarker $ArtifactDir
 

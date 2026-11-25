@@ -126,7 +126,9 @@ $badLock = Join-Path $tmp 'bad.lock'
 [IO.File]::WriteAllText($badLock, "ImpossiblePackage==0.0.0`n", (New-Object System.Text.UTF8Encoding($false)))
 if (-not (Test-Path -LiteralPath $art)) { New-Item -ItemType Directory -Force -Path $art | Out-Null }
 Set-LockInstalledMarker -ArtifactDir $art
-$ds = Test-DepsState -Root $root -ArtifactDir $art -LockPath $badLock
+$ciPy = (Get-Command python -ErrorAction SilentlyContinue).Source
+if (-not $ciPy) { $ciPy = (Get-Command py -ErrorAction SilentlyContinue).Source }
+$ds = Test-DepsState -Root $root -ArtifactDir $art -LockPath $badLock -PythonPath $ciPy
 Check-Ok ((-not $ds.ok) -and $ds.rc -eq 1 -and (-not $ds.retryable)) 'deps lock conflict rc=1 non-retryable' ("rc=$($ds.rc) retryable=$($ds.retryable)")
 Remove-LockInstalledMarker -ArtifactDir $art
 
