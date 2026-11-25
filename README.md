@@ -79,6 +79,11 @@ snippet → [precheck report] → doctor → [acceptance] → [final report]`.
 Истории решений отдельным файлом нет: принятое воплощено в `RULE.md` и `config.json`,
 а ход обсуждения остаётся в git.
 
+Все отслеживаемые пути в репозитории — ASCII: `rule/`, `data/`, `RULE.md`, `SPEC.md`,
+`QUESTIONS.md`, `installer/INSTALL.md`, `MARKUP_51.md`, `MARKUP_52.md`, `LIST_150.md`.
+Не-ASCII имена файлов и каталогов больше не используются: при распаковке архивов
+они искажались, и установщик не находил `config.json`.
+
 ## Как запустить
 
 Используйте `.venv\Scripts\python.exe` вместо системного `python`.
