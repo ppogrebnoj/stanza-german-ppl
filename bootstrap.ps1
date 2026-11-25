@@ -1,57 +1,30 @@
 ﻿#Requires -Version 5.1
 <#
-    bootstrap.ps1 — ОДИН файл для чистой Windows x64: поднимает winget, получает исходники
-    проекта из GitHub Release (постоянный адрес latest/download), проверяет SHA256 и
-    запускает install.ps1 с теми же параметрами вызова.
+    bootstrap.ps1 - ENTRY POINT ONLY.
 
-        curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
-        (Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash
+    Safe one-liner:
+        irm https://.../bootstrap.ps1 -OutFile bootstrap.ps1
+        irm https://.../bootstrap.ps1.sha256 -OutFile bootstrap.ps1.sha256
+        # verify SHA256, then:
         powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 
-    Секретов нет. Полный прогон работает без вопросов: bootstrap сам добавляет -Yes,
-    если человек не задал -Check (установка системного софта — смысл bootstrap).
-    Коды и NDJSON/JSON — те же, что у install.ps1 (текущий контракт).
+    This file parses flags, obtains the project source when needed, calls
+    installer/install.ps1 and returns its exit code. No installation step logic.
 #>
 [CmdletBinding()]
 param(
     [Parameter(ValueFromRemainingArguments = $true)][object[]]$Rest
 )
-
 $ErrorActionPreference = 'Continue'
 $Repo = 'ppogrebnoj/stanza-german-ppl'
 $ReleaseBase = "https://github.com/$Repo/releases/latest/download"
 $AppDir = Join-Path $env:LOCALAPPDATA 'stanza-german-ppl\app'
 $Work = Join-Path $env:TEMP 'stanza-german-bootstrap'
-$Code_Ready = 0; $Code_Human = 2; $Code_Step = 3; $Code_Broken = 4
 
-# реестр ключей: тот же, что docs/flags.json (bootstrap не содержит секретов и не читает токены)
-$switchNames = @('Yes','Acceptance','Json','ProgressJson','Resume','Venv','Force','Repair','Uninstall','Update','CheckUpdates','RaisePython','MakeOfflineKit','Inventory','InventoryOnly','CheckOnly','DryRun')
-$valueNames = @('Check','ArtifactDir','Python','TargetDir','ModelsDir','Models','OfflineKit','Steps','Retries','Zip','Log')
-$allowed = @($switchNames + $valueNames)
-
-$bound = @{}
-$bad = @()
-$i = 0
-while ($Rest -and $i -lt $Rest.Count) {
-    $a = "$($Rest[$i])"
-    if ($a -like '-*') {
-        $name = $a.TrimStart('-')
-        if ($allowed -notcontains $name) { $bad += "неизвестный параметр -$name"; $i++; continue }
-        if ($switchNames -contains $name) { $bound[$name] = $true; $i++ }
-        else {
-            if ($i + 1 -ge $Rest.Count -or "$($Rest[$i+1])" -like '-*') { $bad += "-$name требует значения"; $i++ }
-            else { $bound[$name] = "$($Rest[$i+1])"; $i += 2 }
-        }
-    } else { $i++ }
-}
-$wantsJson = $bound.ContainsKey('Json')
-if ($wantsJson) { try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { } }
-function Say { param([string]$Text, [string]$Color)
-    if ($wantsJson) { return }
-    if ($Color) { Write-Host $Text -ForegroundColor $Color } else { Write-Host $Text }
-}
-function Emit-Broken { param([int]$Code, [string]$Detail, [bool]$Retryable = $false)
-    if ($wantsJson) {
+function Say { param([string]$Text, [string]$Color) if (-not $script:wantsJson) { if ($Color) { Write-Host $Text -ForegroundColor $Color } else { Write-Host $Text } } }
+function Emit-Broken {
+    param([int]$Code, [string]$Detail, [bool]$Retryable = $false)
+    if ($script:wantsJson) {
         [Console]::Out.WriteLine(([pscustomobject][ordered]@{
             code = $Code; ok = $false
             failures = @([pscustomobject]@{ id = 'bootstrap'; detail = $Detail; retryable = $Retryable })
@@ -59,86 +32,66 @@ function Emit-Broken { param([int]$Code, [string]$Detail, [bool]$Retryable = $fa
     } else { Say "bootstrap: $Detail" Red }
     exit $Code
 }
-if ($bad.Count) { Emit-Broken $Code_Broken (($bad -join '; ')) }
 
-$arch = $env:PROCESSOR_ARCHITEW6432
-if (-not $arch) { $arch = $env:PROCESSOR_ARCHITECTURE }
+$flagsLib = Join-Path $PSScriptRoot 'installer\lib\flags.ps1'
+if (-not (Test-Path -LiteralPath $flagsLib)) {
+    # Standalone one-liner: fetch the two minimal parser files from master.
+    $libDir = Split-Path -Parent $flagsLib
+    if (-not (Test-Path -LiteralPath $libDir)) { New-Item -ItemType Directory -Force -Path $libDir | Out-Null }
+    if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'docs'))) { New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot 'docs') | Out-Null }
+    $raw = 'https://raw.githubusercontent.com/ppogrebnoj/stanza-german-ppl/master'
+    & curl.exe -fL --retry 3 --connect-timeout 20 -4 --http1.1 -o $flagsLib "$raw/installer/lib/flags.ps1" 2>$null
+    & curl.exe -fL --retry 3 --connect-timeout 20 -4 --http1.1 -o (Join-Path $PSScriptRoot 'docs\flags.json') "$raw/docs/flags.json" 2>$null
+}
+if (-not (Test-Path -LiteralPath $flagsLib)) { Emit-Broken 4 'no installer/lib/flags.ps1; run from project or release bundle' }
+. $flagsLib
+$regPath = Join-Path $PSScriptRoot 'docs\flags.json'
+if (-not (Test-Path -LiteralPath $regPath)) { $regPath = Join-Path $AppDir 'docs\flags.json' }
+try { $reg = Read-FlagsRegistry -Path $regPath } catch { Emit-Broken 4 "flags registry: $_" }
+$parsed = Convert-InstallerArgs -Rest $Rest -Registry $reg
+$script:wantsJson = $parsed.bound.ContainsKey('Json')
+if ($script:wantsJson) { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { } }
+if ($parsed.errors.Count) { Emit-Broken 4 ($parsed.errors -join '; ') }
+
+$arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
 if (-not $arch) { $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture }
 $arch = (($arch -replace '^x86[-_]?64$', 'AMD64' -replace '^x64$', 'AMD64')).ToUpperInvariant()
 if ($arch -ne 'AMD64' -or [IntPtr]::Size -ne 8) {
-    Emit-Broken $Code_Broken "нужна Windows x64 (AMD64), 64-битный PowerShell; текущая: $arch / $([IntPtr]::Size * 8) бит. Загрузки не начинались"
+    Emit-Broken 4 "Windows x64 and 64-bit PowerShell required; got $arch / $([IntPtr]::Size * 8) bit"
 }
 
-$checkMode = "$($bound['Check'])".ToLowerInvariant()
-if ($bound.ContainsKey('Inventory') -or $bound.ContainsKey('InventoryOnly')) { $checkMode = 'inventory' }
-if ($bound.ContainsKey('CheckOnly')) { $checkMode = 'ready' }
-if ($bound.ContainsKey('DryRun')) { $checkMode = 'plan' }
-$readOnly = [bool]$checkMode
-
-if (-not $readOnly) {
-    # 1. winget (App Installer) — PSGallery + Repair-WinGetPackageManager -AllUsers.
-    # Неблокирующий шаг: при отсутствии Магазина install.ps1 ставит софт прямыми ссылками.
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Say 'winget не найден: поднимаю Microsoft.WinGet.Client из PSGallery' Yellow
-        try {
-            Install-Module Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser -ErrorAction Stop
-            Import-Module Microsoft.WinGet.Client -Force -ErrorAction Stop
-            Repair-WinGetPackageManager -AllUsers -ErrorAction Stop
-        } catch { Say ("winget недоступен, продолжаем по прямой ссылке: " + $_) Yellow }
-        try {
-            $env:Path = (@([Environment]::GetEnvironmentVariable('Path', 'Machine'),
-                           [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'
-        } catch { }
-    }
-
-    # 2. исходники из релиза: постоянный latest/download + SHA256 рядом
-    if (-not (Test-Path -LiteralPath (Join-Path $AppDir 'install.ps1'))) {
-        if (-not (Test-Path -LiteralPath $Work)) { New-Item -ItemType Directory -Force -Path $Work | Out-Null }
-        $zip = Join-Path $Work 'stanza-german-ppl-source.zip'
-        $sha = Join-Path $Work 'stanza-german-ppl-source.zip.sha256'
-        Say "скачиваю исходники: $ReleaseBase/stanza-german-ppl-source.zip" Cyan
-        & curl.exe -fL --retry 3 --retry-delay 3 --connect-timeout 20 -4 --http1.1 -o $zip "$ReleaseBase/stanza-german-ppl-source.zip" 2>$null
-        $rcZip = $LASTEXITCODE
-        if ($rcZip -ne 0) {
-            Say 'ассет релиза недоступен: пробую codeload с master' Yellow
-            $rcZip = 0
-            & curl.exe -fL --retry 3 --connect-timeout 20 -4 --http1.1 -o $zip "https://codeload.github.com/$Repo/zip/refs/heads/master" 2>$null
-            $rcZip = $LASTEXITCODE
-        }
-        if ($rcZip -ne 0) { Emit-Broken $Code_Step 'не скачан архив репозитория (проверьте сеть и HTTPS_PROXY)' $true }
-        if (-not (Test-Path -LiteralPath $sha)) {
-            & curl.exe -fL --retry 2 --connect-timeout 15 -4 --http1.1 -o $sha "$ReleaseBase/stanza-german-ppl-source.zip.sha256" 2>$null
-        }
-        if (Test-Path -LiteralPath $sha) {
-            $want = ((Get-Content -LiteralPath $sha -Raw -Encoding ASCII) -split '\s+')[0].ToLowerInvariant()
-            $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($want -and $want -ne $got) { Emit-Broken $Code_Broken "SHA256 архива не совпал: ждали $want, получили $got" }
-        } else {
-            Say 'ВНИМАНИЕ: .sha256 рядом с архивом нет — целостность не проверена' Yellow
-        }
-        $stage = Join-Path $Work 'src'
-        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-        # Не Expand-Archive: в PS 5.1 он декодирует имена внутри архива по системной
-        # ANSI-кодировке, и кириллица превращается в «РїСЂР°РІРёР»Рѕ» — тогда установщик
-        # не находит ни правило/config.json, ни git-hooks. Явный UTF-8 сохраняет имена.
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $stage, (New-Object System.Text.UTF8Encoding($false)))
-        $found = Get-ChildItem -LiteralPath $stage -Recurse -Filter install.ps1 -File | Select-Object -First 1
-        if (-not $found) { Emit-Broken $Code_Broken 'в архиве нет install.ps1' }
-        $srcDir = $found.Directory.FullName
-        if (-not (Test-Path -LiteralPath $AppDir)) { New-Item -ItemType Directory -Force -Path $AppDir | Out-Null }
-        Copy-Item -LiteralPath (Join-Path $srcDir '*') -Destination $AppDir -Recurse -Force
-        Copy-Item -LiteralPath (Join-Path $srcDir '.github') -Destination $AppDir -Recurse -Force -ErrorAction SilentlyContinue
-        Say "исходники: $AppDir" Green
-    } else {
-        Say "исходники уже есть: $AppDir" Cyan
-    }
-    # bootstrap — это осознанный полный прогон: системный софт ставится без лишнего вопроса.
-    if (-not $bound.ContainsKey('Yes')) { $bound['Yes'] = $true }
-} elseif (-not (Test-Path -LiteralPath (Join-Path $AppDir 'install.ps1'))) {
-    Emit-Broken $Code_Human "режим -Check до первой установки: нет $AppDir\install.ps1; сначала запустите bootstrap.ps1 без -Check"
+$entry = Join-Path $PSScriptRoot 'installer\install.ps1'
+$root = $PSScriptRoot
+if (-not (Test-Path -LiteralPath $entry)) {
+    $root = $AppDir
+    $entry = Join-Path $root 'installer\install.ps1'
+}
+if (-not (Test-Path -LiteralPath $entry)) {
+    if (-not (Test-Path -LiteralPath $Work)) { New-Item -ItemType Directory -Force -Path $Work | Out-Null }
+    $zip = Join-Path $Work 'stanza-german-ppl-source.zip'
+    $sha = Join-Path $Work 'stanza-german-ppl-source.zip.sha256'
+    Say "downloading source: $ReleaseBase/stanza-german-ppl-source.zip" Cyan
+    & curl.exe -fL --retry 4 --retry-delay 3 --connect-timeout 20 -4 --http1.1 -o $zip "$ReleaseBase/stanza-german-ppl-source.zip" 2>$null
+    if ($LASTEXITCODE -ne 0) { Emit-Broken 5 'source download failed' $true }
+    & curl.exe -fL --retry 3 --connect-timeout 20 -4 --http1.1 -o $sha "$ReleaseBase/stanza-german-ppl-source.zip.sha256" 2>$null
+    if (Test-Path -LiteralPath $sha) {
+        $want = ((Get-Content -LiteralPath $sha -Raw -Encoding ASCII) -split '\s+')[0].ToLowerInvariant()
+        $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($want -and $want -ne $got) { Emit-Broken 5 "source SHA256 mismatch: $want != $got" }
+    } else { Emit-Broken 5 'source .sha256 missing' $true }
+    $stage = Join-Path $Work 'src'
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $stage, (New-Object System.Text.UTF8Encoding($false)))
+    $found = Get-ChildItem -LiteralPath $stage -Recurse -Filter 'install.ps1' -File | Select-Object -First 1
+    if (-not $found) { Emit-Broken 5 'no install.ps1 in source archive' }
+    if (-not (Test-Path -LiteralPath $AppDir)) { New-Item -ItemType Directory -Force -Path $AppDir | Out-Null }
+    Copy-Item -LiteralPath (Join-Path $found.Directory.FullName '*') -Destination $AppDir -Recurse -Force
+    $entry = Join-Path $AppDir 'installer\install.ps1'
+    if (-not (Test-Path -LiteralPath $entry)) { Emit-Broken 5 'extracted source has no installer/install.ps1' }
 }
 
-$install = Join-Path $AppDir 'install.ps1'
-& $install @bound
+if (-not $parsed.bound.ContainsKey('Check') -and -not $parsed.bound.ContainsKey('Yes')) { $parsed.bound['Yes'] = $true }
+$b = $parsed.bound
+& $entry @b
 exit $LASTEXITCODE
