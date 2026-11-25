@@ -7,7 +7,7 @@
     "installer/install.ps1 trusts the already-parsed flag set; it never re-implements validation"
   ],
   "exit_codes_note": "Code 5 / DELIVERY added; code 2 redefined as BLOCK (not delivery). Before installer/install.ps1 is available => 5; after it exists but the invocation is broken => 4.",
-  "checks": ["inventory", "ready", "plan", "mcp", "status", "capabilities"],
+  "checks": ["inventory", "doctor", "models", "acceptance", "mcp_probe", "plan", "mcp", "status", "capabilities"],
   "steps": ["winget", "powershell", "python", "git", "workspace", "venv", "deps", "models", "snippet", "doctor", "acceptance"],
   "exit_codes": {
     "0": "OK / SKIP",
@@ -56,7 +56,7 @@
   },
   "flags": [
     {"name": "Yes", "kind": "switch", "description": "разрешить установку системного софта и связанные шаги"},
-    {"name": "Check", "kind": "value", "values": ["inventory", "ready", "plan", "mcp", "status", "capabilities"], "default": "inventory", "description": "режим только чтение; файлы отчётов не пишутся"},
+    {"name": "Check", "kind": "value", "values": ["inventory", "doctor", "models", "acceptance", "mcp_probe", "plan", "mcp", "status", "capabilities"], "default": "inventory", "description": "режим только чтение: установщик не пишет install-report/progress; проверки могут писать server.log/__pycache__"},
     {"name": "Acceptance", "kind": "switch", "description": "добавить шаг acceptance с приёмкой F1"},
     {"name": "Json", "kind": "switch", "description": "финальный JSON в stdout"},
     {"name": "ProgressJson", "kind": "switch", "description": "NDJSON-события в stdout; в -Check файл не пишется; несовместим с -Json (code 4)"},

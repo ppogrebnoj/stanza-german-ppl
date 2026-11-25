@@ -8,9 +8,9 @@
   * какой RULE_ROOT увидит сервер (env или папка рядом с server.py);
   * git: remote и установленный хук pre-commit.
 
-Запуск:
-    python scripts/doctor.py            # человекочитаемо, код возврата 1 при FAIL
-    python scripts/doctor.py --json     # машинно (для CI и приёмки)
+Запуск через единую точку:
+    python scripts/run_checks.py --check doctor
+    python scripts/run_checks.py --check doctor --json
 
 Ничего не меняет на диске.
 """
@@ -24,7 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+ROOT = Path(__file__).resolve().parents[3]   # installer/lib/checks -> корень проекта
+sys.path.insert(0, str(ROOT / "scripts"))
 import _paths as P  # noqa: E402
 
 results = []   # (status, name, detail)

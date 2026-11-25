@@ -5,8 +5,8 @@
 не нужен запущенный клиент и его перезапуск. Полезно на новой машине и в CI.
 
 Запуск из корня проекта:
-    python scripts\\mcp_probe.py
-    python scripts\\mcp_probe.py --json
+    python scripts\\run_checks.py --check mcp_probe
+    python scripts\\run_checks.py --check mcp_probe --json
 
 Коды выхода: 0 всё в порядке · 1 что-то не так (напечатано что) · 2 в этом python нет пакета mcp.
 """
@@ -19,7 +19,7 @@ import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]   # installer/lib/checks -> корень проекта
 SERVER = ROOT / "MCP-stanza-german" / "server.py"
 LOG = ROOT / "MCP-stanza-german" / "server.log"
 # Таймаут на ОДИН вызов инструмента. pipeline_info поднимает пайплайн Stanza (torch + stanza +

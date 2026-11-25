@@ -49,7 +49,7 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: |
-          python scripts/doctor.py --help
+          python installer/lib/checks/doctor.py --help
           python scripts/unpack_models.py --help
           python scripts/pack_models.py --help
           python -c "import json;json.load(open('MCP-stanza-german/mcp.json.example',encoding='utf-8'))"
@@ -94,12 +94,7 @@ jobs:
       - name: doctor (FAIL 0 ожидается)
         env:
           PYTHONUTF8: "1"
-        run: python scripts/doctor.py
-
-      - name: MCP-сервер по stdio — handshake, инструменты, гейт, судья
-        env:
-          PYTHONUTF8: "1"
-        run: python scripts/mcp_probe.py
+        run: python scripts/run_checks.py --check doctor --json
 
   installer:
     name: install.ps1 / all.ps1 — текущий контракт (Windows)
@@ -162,11 +157,11 @@ jobs:
           "mcp check: code $code, reason: $($j.detail)"
           exit 0   # code 2 = BLOCK; do not return it as step rc
 
-      - name: "install.ps1 -Check ready -Json"
+      - name: "install.ps1 -Check doctor -Json"
         shell: powershell
         run: |
-          $out = powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Check ready -Json
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Check doctor -Json
           $code = $LASTEXITCODE
-          if ($code -ge 4) { "::error::-Check ready сломан: код $code"; exit 1 }
+          if ($code -ge 4) { "::error::-Check doctor сломан: код $code"; exit 1 }
           "ready check: code $code (2 = environment not installed yet; normal on clean runner)"
           exit 0   # 1/2/3 are expected states on a clean runner

@@ -140,7 +140,7 @@ Check-Ok ($r2.rc -eq 2 -and "$($r2.json.detail)" -match 'mcp-snippet' -and $r5.r
 
 # 12. -Check writes no report/progress files
 $checkArt = Join-Path $tmp 'check-art'
-$null = Invoke-Ki $entry @('-Check','ready','-Json','-ArtifactDir',$checkArt)
+$null = Invoke-Ki $entry @('-Check','doctor','-Json','-ArtifactDir',$checkArt)
 $checkFiles = @(Get-ChildItem -LiteralPath $checkArt -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'install-report|progress\.ndjson' })
 Check-Ok ($checkFiles.Count -eq 0) 'check mode writes no report artifacts' ("files=$($checkFiles.Count)")
 

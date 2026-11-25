@@ -1,0 +1,63 @@
+{
+  "source": "installer/lib/checks/manifest.json",
+  "contract": "Единый реестр Python-проверок. Публичные имена -Check дублируются в docs/flags.json и сверяются через scripts/run_checks.py --list.",
+  "python": "3.15 x64 only",
+  "checks": [
+    {
+      "name": "doctor",
+      "path": "doctor.py",
+      "stage": "fast",
+      "cost": {"warm_s": 1.9, "cold_s": 2.0},
+      "timeout_s": 120,
+      "flags": ["--json", "--soft-models"],
+      "env": [],
+      "side_effects": ["none"],
+      "requires": ["python315_x64", "venv"],
+      "status_map": {"0": "OK", "1": "FAIL"},
+      "callers": ["install.ps1 -Check doctor", "smoke.yml", "steps/doctor.ps1", "acceptance.py"],
+      "notes": "--soft-models зарезервирован; текущие вызывающие его не передают"
+    },
+    {
+      "name": "models",
+      "path": "check_models.py",
+      "stage": "install",
+      "cost": {"warm_s": 1.8, "cold_s": 1.8},
+      "timeout_s": 120,
+      "flags": ["--processors", "--json", "--load"],
+      "env": ["STANZA_RESOURCES_DIR"],
+      "side_effects": ["none"],
+      "requires": ["python315_x64", "stanza"],
+      "status_map": {"0": "OK", "1": "FAIL"},
+      "callers": ["steps/models.ps1"],
+      "notes": "step models сохраняет свою трактовку rc!=0 как FAIL retryable=3"
+    },
+    {
+      "name": "acceptance",
+      "path": "acceptance.py",
+      "stage": "acceptance",
+      "cost": {"warm_s": 51.0, "cold_s": 55.0},
+      "timeout_s": 1800,
+      "flags": ["--json"],
+      "env": ["PYTHONUTF8"],
+      "side_effects": ["server_log", "pycache"],
+      "requires": ["python315_x64", "venv", "models"],
+      "status_map": {"0": "OK", "1": "FAIL"},
+      "callers": ["steps/acceptance.ps1", "-Acceptance"],
+      "notes": "агрегатор; внутри вызывает doctor и mcp_probe через scripts/run_checks.py"
+    },
+    {
+      "name": "mcp_probe",
+      "path": "mcp_probe.py",
+      "stage": "manual",
+      "cost": {"warm_s": 11.7, "cold_s": 135.0},
+      "timeout_s": 900,
+      "flags": ["--json"],
+      "env": ["MCP_PROBE_TIMEOUT", "RULE_ROOT", "PYTHONUTF8"],
+      "side_effects": ["server_log", "pycache"],
+      "requires": ["python315_x64", "venv", "models"],
+      "status_map": {"0": "OK", "1": "FAIL", "2": "BLOCK"},
+      "callers": ["manual CLI", "acceptance.py"],
+      "notes": "iz smoke.yml убран; release-шаг — отдельная задача"
+    }
+  ]
+}

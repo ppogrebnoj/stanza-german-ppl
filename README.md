@@ -35,7 +35,7 @@ powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 Проверка после установки:
 
 ```powershell
-.\install.ps1 -Check ready -Json
+.\install.ps1 -Check doctor -Json
 .\install.ps1 -Check mcp -Json
 ```
 
@@ -118,8 +118,12 @@ python bench/build_sets.py
 python rule/smoke_test.py
 python rule/smoke_test.py --full
 
+# единая точка запуска Python-проверок (Python 3.15 x64)
+python scripts/run_checks.py --list
+python scripts/run_checks.py --check doctor --json
+
 # MCP-сервер: handshake, инструменты, гейт, судья — без запущенного клиента
-python scripts/mcp_probe.py
+python scripts/run_checks.py --check mcp_probe --json
 
 # контракт ASCII-структуры: имена файлов и legacy-упоминания
 python scripts/check_ascii_tree.py

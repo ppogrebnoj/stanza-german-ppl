@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """check_models.py — проверка ресурсов Stanza по манифесту процессоров.
 
-    python scripts/check_models.py --processors tokenize,mwt,pos,lemma,depparse --json
-    python scripts/check_models.py --processors ... --load     # + минимальная загрузка pipeline
+    python scripts/run_checks.py --check models --json
+    python scripts/run_checks.py --check models --json -- --processors ... --load
 
 Каталог берётся из STANZA_RESOURCES_DIR (единственный источник — scripts/_env.ps1).
 Ничего не скачивает и не меняет: код 0 = ресурсы готовы, 1 = чего-то нет.
@@ -15,7 +15,7 @@ import os
 import sys
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent.parent
+BASE = Path(__file__).resolve().parents[3]   # installer/lib/checks -> корень проекта
 DEFAULT_PROCESSORS = "tokenize,mwt,pos,lemma,depparse"
 
 

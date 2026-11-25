@@ -6,8 +6,8 @@ function Invoke-Step_doctor {
     if (-not $py) {
         return New-StepResult -Id 'doctor' -Status BLOCK -Rc 2 -Detail 'no Python interpreter for doctor' -NextCmd 'bootstrap.ps1 -Steps python,venv,deps,doctor'
     }
-    $script = Join-Path $Ctx.Root 'scripts\doctor.py'
-    $null = & $py $script --json 2>&1
+    $runner = Join-Path $Ctx.Root 'scripts\run_checks.py'
+    $null = & $py $runner --check doctor --json 2>&1
     $rc = $LASTEXITCODE
     if ($rc -ne 0) {
         return New-StepResult -Id 'doctor' -Status FAIL -Rc 1 -Retryable $false -Detail "doctor rc=$rc" -NextCmd 'see doctor output; fix FAIL positions'

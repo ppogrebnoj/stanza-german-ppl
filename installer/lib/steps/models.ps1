@@ -19,9 +19,9 @@ function Invoke-Step_models {
         if ($rc -ne 0) {
             return New-StepResult -Id 'models' -Status FAIL -Rc 3 -Retryable $true -Detail "stanza.download rc=$rc" -NextCmd 'bootstrap.ps1 -Resume -Steps models' -Warnings $warn
         }
-        $checker = Join-Path $Ctx.Root 'scripts\check_models.py'
-        if (Test-Path -LiteralPath $checker) {
-            $null = & $py $checker --json 2>&1
+        $runner = Join-Path $Ctx.Root 'scripts\run_checks.py'
+        if (Test-Path -LiteralPath $runner) {
+            $null = & $py $runner --check models --json 2>&1
             if ($LASTEXITCODE -ne 0) {
                 return New-StepResult -Id 'models' -Status FAIL -Rc 3 -Retryable $true -Detail 'model processor check failed' -NextCmd 'bootstrap.ps1 -Resume -Steps models' -Warnings $warn
             }
