@@ -88,9 +88,10 @@ snippet → [precheck report] → doctor → [acceptance] → [final report]`.
 
 ## Как запустить
 
-Используйте `.venv\Scripts\python.exe` вместо системного `python`.
-Шимы `python.cmd` (cmd.exe) и `use.ps1` (PowerShell) подставляют
-`STANZA_RESOURCES_DIR` и путь к интерпретатору из `.venv`.
+Используйте `.venv\Scripts\python.exe` вместо системного `python`. Шимы
+`python.cmd` (cmd.exe) и `use.ps1` (PowerShell) создаёт шаг `snippet` установщика;
+они не хранятся в репозитории и подставляют `STANZA_RESOURCES_DIR` и путь к
+интерпретатору из `.venv`.
 
 ```bash
 # нарезать одно предложение

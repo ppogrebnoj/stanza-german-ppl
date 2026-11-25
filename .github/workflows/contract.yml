@@ -58,5 +58,5 @@ jobs:
       - name: Python syntax
         shell: pwsh
         run: |
-          python -m compileall -q scripts rule bench MCP-stanza-german
+          python -m compileall -q scripts rule bench installer/lib/checks MCP-stanza-german
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

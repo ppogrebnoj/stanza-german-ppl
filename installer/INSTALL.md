@@ -1,7 +1,7 @@
 # Установка и управление (Windows x64)
 
 Текущий контракт. Версия MCP-сервера и релиза берётся из
-`MCP-stanza-german/version.json` (сейчас `4.0.4`).
+`MCP-stanza-german/version.json` (сейчас `4.0.5`).
 
 Этот файл, `requirements.txt` и `requirements.lock` лежат в `installer/`.
 `bootstrap.ps1.sha256` лежит рядом с `bootstrap.ps1` в корне; в релизе он публикуется
@@ -97,7 +97,7 @@ pwsh -ExecutionPolicy Bypass -File .\install.ps1 -Yes
 | Python | официальный `python-3.15.2-amd64.exe` | 3.15.2 x64, per-user: реестр `PythonCore\3.15`, `py launcher`, `PATH`, «Установка и удаление программ» |
 | Git | winget `Git.Git` или git-scm.com | последний стабильный |
 | Пакеты | PyPI, `installer/requirements.lock` | `--only-binary=:all:`, компилятор не нужен; `pip check` + сверка версий через `importlib.metadata` |
-| Модели Stanza | StanfordNLP / Hugging Face | `tokenize,mwt,pos,lemma,depparse`, ≈315 МБ, каталог из `STANZA_RESOURCES_DIR` |
+| Модели Stanza | StanfordNLP / Hugging Face | `tokenize,mwt,pos,lemma,depparse`, ≈315 МБ, каталог `<root>\.stanza\models`, переопределяется `STANZA_RESOURCES_DIR` |
 | MCP-клиент | клиент человека | запись в конфиг (`mcp.json` и аналоги) выполняет человек; установщик его не трогает |
 
 Проверка достаточности колёс одной командой:
@@ -119,7 +119,7 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 | Ключ | Назначение |
 |---|---|
 | `-Yes` | разрешить установку системного софта и связанные шаги |
-| `-Check <область>` | только чтение: `inventory`, `ready`, `plan`, `mcp`, `status`, `capabilities` |
+| `-Check <область>` | только чтение: `inventory`, `doctor`, `models`, `acceptance`, `mcp_probe`, `server_check`, `plan`, `mcp`, `status`, `capabilities` |
 | `-Acceptance` | приёмка с F1 |
 | `-Json`, `-ProgressJson` | финальный JSON и NDJSON-поток в stdout (в файл поток пишется всегда). Для работы руками лучше без `-Json`: в этом режиме на экране живая строка прогресса |
 | `-ArtifactDir`, `-Python`, `-TargetDir`, `-ModelsDir` | каталоги и явный интерпретатор |
@@ -137,6 +137,7 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 .\install.ps1 -Check models -Json          # ресурсы Stanza по манифесту
 .\install.ps1 -Check acceptance -Json      # полная приёмка (~51 с)
 .\install.ps1 -Check mcp_probe -Json       # живой MCP-сервер (~12 с тёплый прогон)
+.\install.ps1 -Check server_check -Json    # статическая диагностика сервера (AST, правило, модели)
 .\install.ps1 -Check plan -Json            # какие шаги будут выполнены
 .\install.ps1 -Check mcp -Json             # валидность сниппета и причина «клиент не видит сервер»
 .\install.ps1 -Check status -Json          # сводка по install-report.json
@@ -216,21 +217,20 @@ Range GET по фактическим ассетам. Обрывы TLS (`10054`,
 пишет в журнал причину и фактический `RULE_ROOT`, а каждый ответ инструмента содержит
 поле `rule_status`.
 
-Шимы для запуска сервера и скриптов без ручной настройки окружения — в корне проекта:
+Шимы для запуска сервера и скриптов создаёт шаг `snippet` в корне проекта:
 `python.cmd` (cmd.exe) и `use.ps1` (PowerShell); оба подставляют `STANZA_RESOURCES_DIR`
-и абсолютный путь к интерпретатору из `.venv`.
+и абсолютный путь к интерпретатору из `.venv`. До установки их нет (они в `.gitignore`).
 
 Проверка сервера без запущенного клиента:
 
 ```powershell
-.\python.cmd scripts\server_check.py --json
+.\python.cmd scripts\run_checks.py --check server_check --json
 .\python.cmd scripts\run_checks.py --check mcp_probe --json
 ```
 
 Список инструментов сервера: `parse_german`, `segment_german`, `check_segmentation`,
-`rule_self_test`, `rule_info`, `pipeline_info`. `server_check.py` видит только те
-инструменты, что объявлены декоратором, поэтому четыре из них он показывает отсутствующими —
-это ограничение статического разбора, а не ошибка установки.
+`rule_self_test`, `rule_info`, `pipeline_info`. `server_check` разбирает и декораторы, и
+динамическую регистрацию в `main()`, поэтому видит все шесть.
 
 Приёмка:
 

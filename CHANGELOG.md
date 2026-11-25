@@ -2,6 +2,21 @@
 
 ## installer-v3 (unreleased)
 
+### Окружение и перенос проверок (follow-up #3, п. 2 и 4)
+
+- PyYAML `6.0.4` и platformdirs `4.14.5` — по `installer/requirements.lock`; расхождения
+  между `pip freeze` и lock нет.
+- Каталог моделей зафиксирован: `<root>\.stanza\models`. `STANZA_RESOURCES_DIR`
+  выставляется в PI `mcp.json` и в сниппете установщика; дефолты `env.ps1`/`flags.json`/
+  `models.ps1`/`snippet.ps1` синхронизированы с `_paths.py` и `check_models.py`.
+  `mcp_probe` больше не сбрасывает переменную, а прибивает контрактный путь.
+- `server_check.py` перенесён в `installer/lib/checks/` и зарегистрирован как
+  `-Check server_check`; AST-разбор видит и декораторы, и динамическую регистрацию
+  инструментов в `main()`. Упоминание удалённого `install_status.py` убрано из тестов.
+- Следы LM Studio удалены из PI-конфига; managed PI обновлён `1.4.0 → 1.6.1`.
+- CI `compileall` и документация приведены к контракту (`ready`, шимы `snippet`, `ModelsDir`).
+- Версия MCP-сервера/релиза поднята до `4.0.5` для публикации ассетов с этими правками.
+
 ### Python-проверки (follow-up #3, п. 4)
 
 - `doctor.py`, `check_models.py`, `acceptance.py`, `mcp_probe.py` перенесены в

@@ -144,6 +144,10 @@ $null = Invoke-Ki $entry @('-Check','doctor','-Json','-ArtifactDir',$checkArt)
 $checkFiles = @(Get-ChildItem -LiteralPath $checkArt -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'install-report|progress\.ndjson' })
 Check-Ok ($checkFiles.Count -eq 0) 'check mode writes no report artifacts' ("files=$($checkFiles.Count)")
 
+# 12a. -Check server_check — валидная область (код 0/1/2, но не BROKEN 4)
+$rSc = Invoke-Ki $entry @('-Check','server_check','-Json')
+Check-Ok (@(0,1,2) -contains $rSc.rc) 'server_check is a known check area' ("rc=" + $rSc.rc)
+
 # 13. -Resume -Steps deps reinstalls from lock and sets marker after rc=0
 $depsText = [IO.File]::ReadAllText((Join-Path $root 'installer\lib\steps\deps.ps1'))
 $resumeOk = $depsText.Contains('$state.ok -and -not $Ctx.Resume') -and $depsText.Contains('Remove-LockInstalledMarker') -and $depsText.Contains('Set-LockInstalledMarker')

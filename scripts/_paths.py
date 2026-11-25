@@ -8,7 +8,6 @@ stdlib + Stanza, сервер — RULE_ROOT). Здесь — то, что нуж
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # корень проекта
@@ -25,29 +24,12 @@ STANZA_VERSION = "1.15.0"     # версия, под которую снят к�
 LANG = "de"
 
 
-def _fallback_cache_dir() -> Path:
-    """Стандартный каталог Stanza, если сам stanza не импортируется."""
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
-        return base / "StanfordNLP" / "stanza" / "Cache" / STANZA_VERSION / "resources"
-    if sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support" / "StanfordNLP"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache"))
-        return base / "stanfordnlp" / "stanza" / "Cache" / STANZA_VERSION / "resources"
-    return base / "stanza" / "Cache" / STANZA_VERSION / "resources"
-
-
 def stanza_cache_dir() -> Path:
-    """Каталог кэша моделей: STANZA_RESOURCES_DIR, иначе — дефолт самого Stanza."""
+    """Каталог ресурсов: STANZA_RESOURCES_DIR, иначе контрактный <root>\\.stanza\\models."""
     env = os.environ.get("STANZA_RESOURCES_DIR")
     if env:
         return Path(env)
-    try:                                   # точный путь знает установленный stanza
-        from stanza.resources.common import DEFAULT_MODEL_DIR
-        return Path(DEFAULT_MODEL_DIR)
-    except Exception:                      # stanza нет — считаем по платформе
-        return _fallback_cache_dir()
+    return ROOT / ".stanza" / "models"
 
 
 def model_dir() -> Path:

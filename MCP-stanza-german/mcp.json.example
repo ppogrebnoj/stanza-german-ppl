@@ -5,7 +5,8 @@
       "args": ["<PROJECT_ROOT>\\MCP-stanza-german\\server.py"],
       "env": {
         "RULE_ROOT": "<PROJECT_ROOT>\\rule",
-        "PYTHONUTF8": "1"
+        "PYTHONUTF8": "1",
+        "STANZA_RESOURCES_DIR": "<PROJECT_ROOT>\\.stanza\\models"
       }
     }
   }
