@@ -2,8 +2,8 @@
 <#
     offline_kit.ps1 — офлайн-набор: архив репозитория + колёса + модели, с SHA256.
 
-        powershell -File scripts\offline_kit.ps1 -Action make -TargetDir <root> -ArtifactDir <root>\.tmp -Python <python.exe>
-        powershell -File scripts\offline_kit.ps1 -Action unpack -Archive <zip> -TargetDir <root> -ModelsDir <models>
+        powershell -File installer\install_tools\offline_kit.ps1 -Action make -TargetDir <root> -ArtifactDir <root>\.tmp -Python <python.exe>
+        powershell -File installer\install_tools\offline_kit.ps1 -Action unpack -Archive <zip> -TargetDir <root> -ModelsDir <models>
 
     make:  pip download --only-binary=:all: -r requirements.lock -d <tmp>\wheels
     unpack: сверка SHA256 -> распаковка -> копирование исходников/моделей.
@@ -21,11 +21,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not $TargetDir) { $TargetDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+if (-not $TargetDir) { $TargetDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 if (-not $ArtifactDir) { $ArtifactDir = Join-Path $TargetDir '.tmp' }
 if (-not (Test-Path -LiteralPath $ArtifactDir)) { New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null }
-# Единственный источник путей к файлам установки — scripts\_env.ps1.
-. (Join-Path $PSScriptRoot '_env.ps1')
+# Единственный источник путей к файлам установки — installer\lib\env.ps1.
+. (Join-Path $PSScriptRoot '..\lib\env.ps1')
 
 function Get-Sha { param([string]$Path)
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -60,7 +60,13 @@ function New-Kit {
         if (-not $Force) { throw "есть $zip; нужен -Force для перезаписи" }
         Remove-Item -LiteralPath $zip -Force
     }
-    Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zip -CompressionLevel Optimal
+    # Compress-Archive не гарантирует UTF-8 flag в именах внутри ZIP.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $staging, $zip,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false,
+        (New-Object System.Text.UTF8Encoding($false)))
     $hash = Get-Sha $zip
     [IO.File]::WriteAllText("$zip.sha256", "$hash  stanza-offline-kit.zip`n", (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "готово: $zip (SHA256 $hash)"

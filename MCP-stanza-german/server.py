@@ -272,7 +272,7 @@ def parse_german(text: str | list[str]) -> dict:
 def _updates_info() -> dict:
     """Обновления зависимостей — по снимку, без сети и без оценок.
 
-    bench/results/deps.json пишет `python scripts/pins.py --latest --write` (CI раз в неделю).
+    bench/results/deps.json пишет `python installer/install_tools/pins.py --latest --write` (CI раз в неделю).
     Файла нет или он битый -> {"available": false}: сервер не падает и ничего не выдумывает.
     """
     try:

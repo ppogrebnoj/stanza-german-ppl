@@ -15,7 +15,7 @@ param(
     [string]$Tag = ''
 )
 $ErrorActionPreference = 'Stop'
-if (-not $Root) { $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+if (-not $Root) { $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 if (-not $OutDir) { $OutDir = Join-Path $Root '.tmp\release' }
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
 $utf8 = New-Object System.Text.UTF8Encoding($false)
@@ -40,8 +40,8 @@ if ($Tag -ne "v$version") {
 $bootstrap = Join-Path $Root 'bootstrap.ps1'
 if (-not (Test-Path -LiteralPath $bootstrap)) { throw 'нет bootstrap.ps1' }
 $sum = Get-Sha $bootstrap
-# В репозитории контрольная сумма лежит в installer\; в релизе публикуется плоским ассетом.
-[IO.File]::WriteAllText((Join-Path (Join-Path $Root 'installer') 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
+# Контрольная сумма лежит рядом с bootstrap.ps1 в корне и публикуется плоским ассетом.
+[IO.File]::WriteAllText((Join-Path $Root 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
 Copy-Item -LiteralPath $bootstrap -Destination (Join-Path $OutDir 'bootstrap.ps1') -Force
 [IO.File]::WriteAllText((Join-Path $OutDir 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
 
@@ -75,8 +75,10 @@ SHA256 bootstrap.ps1: $sum
 SHA256 stanza-german-ppl-source.zip: $zsum
 
 ``````powershell
-curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
-(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash
+$base = https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download
+curl.exe -L -o bootstrap.ps1 $base/bootstrap.ps1
+curl.exe -L -o bootstrap.ps1.sha256 $base/bootstrap.ps1.sha256
+# verify SHA256 from bootstrap.ps1.sha256, then:
 powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 ``````
 

@@ -1,12 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
-    install.ps1 — публичный интерфейс установки (человек, агент, bootstrap.ps1, CI).
-    Логики нет: параметры пробрасываются в scripts\all.ps1 без изменений.
-    Реестр разрешённых ключей — docs/flags.json; неизвестный ключ даёт код 4.
-
-        .\install.ps1 -Yes
-        .\install.ps1 -Check inventory -Json
-        .\install.ps1 -Acceptance -Json -ProgressJson
+    install.ps1 - compatibility forwarder. Architecture entry is bootstrap.ps1;
+    the real orchestrator is installer/install.ps1. No installation logic here.
 #>
 [CmdletBinding()]
 param(
@@ -14,67 +9,28 @@ param(
 )
 $ErrorActionPreference = 'Continue'
 $root = (Resolve-Path $PSScriptRoot).Path
-$target = Join-Path $root 'scripts\all.ps1'
-$bound = @{}
-$errors = @()
-$flags = @()
-$flagsPath = Join-Path $root 'docs\flags.json'
-if (Test-Path -LiteralPath $flagsPath) {
-    try {
-        $reg = Get-Content -LiteralPath $flagsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $flags = @($reg.flags)
-    } catch { }
-}
-$byName = @{}
-foreach ($f in $flags) { $byName["$($f.name)"] = $f }
-
-$i = 0
-while ($Rest -and $i -lt $Rest.Count) {
-    $a = "$($Rest[$i])"
-    if ($a -like '-*') {
-        $name = $a.TrimStart('-')
-        if (-not $byName.ContainsKey($name)) {
-            $errors += "неизвестный параметр -$name"
-            $i++
-            continue
-        }
-        $kind = "$($byName[$name].kind)"
-        if ($kind -eq 'switch') {
-            $bound[$name] = $true
-            $i++
-        } else {
-            if ($i + 1 -ge $Rest.Count -or "$($Rest[$i + 1])" -like '-*') {
-                $errors += "параметр -$name требует значения"
-                $i++
-            } else {
-                # PowerShell 7 отдаёт `-Steps a,b,c` одним массивом: приводим к строке через
-                # запятую, иначе массив склеивается пробелами и шаги не распознаются.
-                $val = $Rest[$i + 1]
-                if ($val -is [array]) { $bound[$name] = ($val -join ',') } else { $bound[$name] = "$val" }
-                $i += 2
-            }
-        }
-    } else { $i++ }   # позиционные аргументы игнорируются (их нет в контракте)
-}
-
-$wantsJson = $bound.ContainsKey('Json')
-if ($wantsJson) { try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { } }
-if ($errors.Count) {
-    if (-not $wantsJson) { foreach ($e in $errors) { Write-Host "СЛОМАН ЗАПУСК: $e (код 4)" -ForegroundColor Red } }
+. (Join-Path $root 'installer\lib\flags.ps1')
+$reg = Read-FlagsRegistry -Path (Join-Path $root 'docs\flags.json')
+$parsed = Convert-InstallerArgs -Rest $Rest -Registry $reg
+$wantsJson = $parsed.bound.ContainsKey('Json')
+if ($wantsJson) { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { } }
+if ($parsed.errors.Count) {
+    $msg = ($parsed.errors -join '; ')
     if ($wantsJson) {
-        $msg = ($errors -join '; ')
         [Console]::Out.WriteLine(([pscustomobject][ordered]@{
             code = 4; ok = $false
             failures = @([pscustomobject]@{ id = 'params'; detail = $msg; retryable = $false })
         } | ConvertTo-Json -Depth 5))
-    }
+    } else { Write-Host "BROKEN: $msg (code 4)" -ForegroundColor Red }
     exit 4
 }
+$target = Join-Path $root 'installer\install.ps1'
 if (-not (Test-Path -LiteralPath $target)) {
     if ($wantsJson) {
-        [Console]::Out.WriteLine(([pscustomobject][ordered]@{ code = 4; ok = $false; failures = @([pscustomobject]@{ id = 'entry'; detail = "нет $target"; retryable = $false }) } | ConvertTo-Json -Depth 5))
-    } else { Write-Host "СЛОМАН ЗАПУСК: нет $target — обновите репозиторий" -ForegroundColor Red }
+        [Console]::Out.WriteLine('{"code":4,"ok":false,"failures":[{"id":"entry","detail":"no installer/install.ps1","retryable":false}]}')
+    } else { Write-Host 'BROKEN: no installer/install.ps1' -ForegroundColor Red }
     exit 4
 }
-if ($bound.Count -gt 0) { & $target @bound } else { & $target }
+$b = $parsed.bound
+if ($b.Count -gt 0) { & $target @b } else { & $target }
 exit $LASTEXITCODE

@@ -22,7 +22,8 @@
 #>
 [CmdletBinding()]
 param(
-    [switch]$Fast          # пропустить замер на медленном диске Z:
+    [switch]$Fast,         # пропустить замер на медленном диске Z:
+    [switch]$CI            # пропустить timing-only проверки на hosted runner
 )
 
 $ErrorActionPreference = 'Stop'
@@ -387,7 +388,11 @@ Check 'первое событие pct=0, последнее pct=100' (($first7.
 Write-Host ("       1000 событий: " + $t7 + " мс (" + [math]::Round($t7 / 1000.0, 2) + " мс на событие), " +
             "контроль (пустой PS-вызов с той же сигнатурой): " + $t7b + " мс, накладные расходы модуля: " +
             [math]::Round($t7 - $t7b, 1) + " мкс/событие")
-Check ('1000 событий не дороже 6x пустого PS-вызова (' + $t7 + ' мс при контроле ' + $t7b + ' мс; наивный ConvertTo-Json давал ~4.3 с)') ($t7 -lt [Math]::Max(3000, 6 * $t7b)) ("время " + $t7 + " мс, контроль " + $t7b + " мс")
+if ($CI) {
+    Ok 'timing ratio skipped in CI'
+} else {
+    Check ('1000 событий не дороже 6x пустого PS-вызова (' + $t7 + ' мс при контроле ' + $t7b + ' мс; наивный ConvertTo-Json давал ~4.3 с)') ($t7 -lt [Math]::Max(3000, 6 * $t7b)) ("время " + $t7 + " мс, контроль " + $t7b + " мс")
+}
 Check 'без CR/ANSI/BEL на 1000 событий' ((-not $r7.out.Contains("`r")) -and (-not $r7.out.Contains([string][char]27)) -and (-not $r7.out.Contains([string][char]7))) 'найден мусор'
 
 # ============================================================ 8. медленный диск Z:

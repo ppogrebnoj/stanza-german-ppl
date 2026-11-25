@@ -1,36 +1,80 @@
 {
   "source": "docs/flags.json",
-  "contract": "install.ps1 and scripts/all.ps1 accept exactly this set; unknown flag => code 4",
+  "contract": "Только канонические флаги; legacy-алиасы удалены. Unknown flag => code 4.",
+  "readers": [
+    "bootstrap.ps1 reads this file through installer/lib/flags.ps1 and forwards flags unchanged",
+    "install.ps1 and scripts/all.ps1 forwarders read it through installer/lib/flags.ps1",
+    "installer/install.ps1 trusts the already-parsed flag set; it never re-implements validation"
+  ],
+  "exit_codes_note": "Code 5 / DELIVERY added; code 2 redefined as BLOCK (not delivery). Before installer/install.ps1 is available => 5; after it exists but the invocation is broken => 4.",
   "checks": ["inventory", "ready", "plan", "mcp", "status", "capabilities"],
-  "steps": ["winget", "python", "git", "deps", "models", "snippet", "doctor", "acceptance"],
+  "steps": ["winget", "powershell", "python", "git", "workspace", "venv", "deps", "models", "snippet", "doctor", "acceptance"],
+  "exit_codes": {
+    "0": "OK / SKIP",
+    "1": "FAIL non-retryable",
+    "2": "BLOCK",
+    "3": "FAIL retryable",
+    "4": "BROKEN",
+    "5": "DELIVERY"
+  },
+  "exit_codes_detail": {
+    "2": "BLOCK: missing prerequisite or human action; not delivery",
+    "5": "DELIVERY: source/assets not delivered before installer/install.ps1 exists",
+    "4_vs_5_boundary": "before orchestrator is available => 5; after it exists, broken invocation => 4"
+  },
+  "contracts": {
+    "venv": {
+      "valid": ["python.exe exists", "sys.version_info[:2] == (3, 15)", "releaselevel == 'final'", "64-bit", "pyvenv.cfg inside .venv", "sys.prefix inside .venv", "python -m pip --version rc=0"],
+      "invalid": {"code": 2, "retryable": false, "next_cmd": "Remove-Item -Recurse -Force .\\.venv; .\\bootstrap.ps1 -Steps venv,deps"},
+      "broken_pip_next_cmd": ".\\.venv\\Scripts\\python.exe -m ensurepip --upgrade; .\\bootstrap.ps1 -Steps venv,deps"
+    },
+    "deps": {
+      "valid": ["pip check rc=0", "versions equal installer/requirements.lock", "import stanza,torch,numpy,mcp,pyphen"],
+      "resume_always_reinstalls_from_lock": true,
+      "marker": "deps-installed-from-lock.json set only after pip rc=0",
+      "clean_lock_conflict": {"code": 1, "retryable": false},
+      "network_timeout": {"code": 3, "retryable": true},
+      "import_timeout_env": "KI_DEPS_TOTAL_TIMEOUT_SEC",
+      "import_timeout_default_sec": 900,
+      "import_timeout_detail": "import smoke timeout after Ns"
+    }
+  },
+  "artifacts": [
+    ".tmp\\install.log",
+    ".tmp\\install-report-precheck.json",
+    ".tmp\\install-report.json",
+    ".tmp\\progress.ndjson",
+    ".tmp\\mutex",
+    "mcp-snippet.json (+ root copy)"
+  ],
+  "default_step_rules": {
+    "missing_prerequisite": {"code": 2, "retryable": false},
+    "network_timeout": {"code": 3, "retryable": true},
+    "incompatible_version_or_bad_config": {"code": 1, "retryable": false},
+    "broken_invocation": {"code": 4, "retryable": false},
+    "asset_not_delivered": {"code": 5, "retryable": true}
+  },
   "flags": [
     {"name": "Yes", "kind": "switch", "description": "разрешить установку системного софта и связанные шаги"},
-    {"name": "Check", "kind": "value", "values": ["inventory", "ready", "plan", "mcp", "status", "capabilities"], "default": "inventory", "description": "режим только чтение"},
-    {"name": "Acceptance", "kind": "switch", "description": "doctor + smoke fast/full + валидаторы + mcp_probe -> JSON с F1"},
+    {"name": "Check", "kind": "value", "values": ["inventory", "ready", "plan", "mcp", "status", "capabilities"], "default": "inventory", "description": "режим только чтение; файлы отчётов не пишутся"},
+    {"name": "Acceptance", "kind": "switch", "description": "добавить шаг acceptance с приёмкой F1"},
     {"name": "Json", "kind": "switch", "description": "финальный JSON в stdout"},
-    {"name": "ProgressJson", "kind": "switch", "description": "NDJSON-события в stdout (в файл пишутся всегда)"},
-    {"name": "ArtifactDir", "kind": "value", "default": ".tmp", "description": "каталог логов, отчётов, прогресса и загрузок"},
-    {"name": "Python", "kind": "value", "description": "явный интерпретатор (принимается инвентаризацией)"},
+    {"name": "ProgressJson", "kind": "switch", "description": "NDJSON-события в stdout; в -Check файл не пишется; несовместим с -Json (code 4)"},
+    {"name": "ArtifactDir", "kind": "value", "default": ".tmp", "description": "каталог install.log, progress.ndjson, отчётов и mcp-snippet"},
+    {"name": "Python", "kind": "value", "description": "явный интерпретатор 3.15 x64"},
     {"name": "TargetDir", "kind": "value", "default": "%LOCALAPPDATA%\\Programs\\Python\\Python315", "description": "каталог установки Python"},
     {"name": "ModelsDir", "kind": "value", "default": "<root>\\.stanza\\models", "description": "каталог ресурсов моделей Stanza"},
     {"name": "Models", "kind": "value", "description": "дополнительные процессоры (ner,sentiment) или all"},
     {"name": "OfflineKit", "kind": "value", "description": "офлайн-набор: архив репозитория + колёса + модели"},
     {"name": "Steps", "kind": "value", "description": "выполнить указанные шаги (id[,id])"},
     {"name": "Resume", "kind": "switch", "description": "продолжить прерванный прогон, готовые шаги SKIP"},
-    {"name": "Venv", "kind": "switch", "description": "создать .venv и ставить пакеты в него"},
-    {"name": "Force", "kind": "switch", "description": "опасные операции: перезапись, git reset --hard, удаление моделей"},
-    {"name": "Repair", "kind": "switch", "description": "ремонт: переустановить сломанные шаги"},
+    {"name": "Force", "kind": "switch", "description": "опасные операции: git reset, удаление моделей, uninstall"},
+    {"name": "Repair", "kind": "switch", "description": "ремонт сломанных шагов"},
     {"name": "Uninstall", "kind": "switch", "description": "удалить созданные установщиком файлы"},
     {"name": "Update", "kind": "switch", "description": "обновить пакеты и модели"},
     {"name": "CheckUpdates", "kind": "switch", "description": "проверить наличие обновлений без записи"},
     {"name": "RaisePython", "kind": "switch", "description": "команда обновления Python до поддерживаемой версии"},
     {"name": "MakeOfflineKit", "kind": "switch", "description": "собрать офлайн-набор в ArtifactDir"},
-    {"name": "Inventory", "kind": "switch", "alias": "Check inventory", "description": "совместимость: то же, что -Check inventory"},
-    {"name": "InventoryOnly", "kind": "switch", "alias": "Check inventory", "description": "совместимость: то же, что -Check inventory"},
-    {"name": "CheckOnly", "kind": "switch", "alias": "Check ready", "description": "совместимость: то же, что -Check ready"},
-    {"name": "DryRun", "kind": "switch", "alias": "Check plan", "description": "совместимость: то же, что -Check plan"},
-    {"name": "Zip", "kind": "value", "alias": "OfflineKit", "description": "совместимость: архив моделей"},
-    {"name": "Log", "kind": "value", "alias": "ArtifactDir", "description": "совместимость: каталог артефактов"},
     {"name": "Retries", "kind": "value", "description": "число попыток сетевых шагов", "default": "4"}
   ]
 }

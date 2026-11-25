@@ -5,65 +5,65 @@
 
 ## Установка
 
-Windows x64. Нужен **PowerShell 7.7+**: на PowerShell 5.1 установка системного софта и
-разбор путей дают лишние отказы. Подробности — [installer/УСТАНОВКА.md](installer/УСТАНОВКА.md).
+Windows x64, PowerShell 7.7+ (`pwsh`). Подробности —
+[installer/УСТАНОВКА.md](installer/УСТАНОВКА.md). Единственная точка входа —
+`bootstrap.ps1`; `install.ps1` и `scripts/all.ps1` — внутренние forwarder'ы.
 
 ### 1. PowerShell 7.7
-
-В Windows PowerShell 5.1 (он есть на любой Windows):
 
 ```powershell
 curl.exe -L --retry 3 -o "$env:TEMP\ps77.msixbundle" https://github.com/PowerShell/PowerShell/releases/download/v7.7.0/PowerShell-7.7.0.msixbundle
 Add-AppxPackage -Path "$env:TEMP\ps77.msixbundle"
+pwsh -v   # 7.7.0
 ```
 
-Закрыть окно и открыть **PowerShell 7** из меню Пуск. Проверка:
-
-```powershell
-pwsh -v          # 7.7.0
-```
-
-MSIX ставится без администратора и без перезагрузки. Если `Add-AppxPackage` отказал
-(нет App Installer) — portable ZIP, тоже без администратора:
-
-```powershell
-$d = "$env:LOCALAPPDATA\Programs\PowerShell\7.7.0"
-New-Item -ItemType Directory -Force $d | Out-Null
-curl.exe -L --retry 3 -o "$env:TEMP\ps77.zip" https://github.com/PowerShell/PowerShell/releases/download/v7.7.0/PowerShell-7.7.0-win-x64.zip
-Expand-Archive "$env:TEMP\ps77.zip" -DestinationPath $d -Force
-& "$d\pwsh.exe" -v
-```
+Если MSIX недоступен — portable ZIP из того же релиза PowerShell 7.7.
 
 ### 2. Установка проекта
 
-Хеш `bootstrap.ps1` сверьте с `bootstrap.ps1.sha256` из того же релиза.
+Безопасный one-liner: скачать `bootstrap.ps1` и `bootstrap.ps1.sha256` из одного релиза,
+сверить SHA256, затем выполнить установщик:
 
 ```powershell
-curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
-(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash
-pwsh -ExecutionPolicy Bypass -File .\bootstrap.ps1
+$base = "https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download"
+curl.exe -L -o bootstrap.ps1 "$base/bootstrap.ps1"
+curl.exe -L -o bootstrap.ps1.sha256 "$base/bootstrap.ps1.sha256"
+# (Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash сверить с .sha256
+powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 ```
 
-Проверка после установки (должно быть `code 0`):
+Проверка после установки:
 
 ```powershell
-.\install.ps1 -Check ready -Venv
-.\install.ps1 -Check mcp -Venv
+.\install.ps1 -Check ready -Json
+.\install.ps1 -Check mcp -Json
 ```
 
-Если репозиторий уже склонирован и нужен только минимум для MCP-сервера (без `winget`,
-`doctor` и приёмки):
+Минимальный набор для уже склонированного репозитория:
 
 ```powershell
-.\install.ps1 -Steps "python,git,deps,models,snippet" -Yes -Venv -Force
+.\bootstrap.ps1 -Steps "python,git,workspace,venv,deps,models,snippet" -Yes
 ```
 
-Долгие шаги (`deps` ~800 МБ, `models` 315 МБ) идут минутами: запускайте без `-Json`,
-тогда в консоли видна живая строка прогресса. `-Json` нужен только для CI/агента.
+Пакеты ставятся **только в `.venv`**; глобальный Python не трогается. Системные
+компоненты устанавливаются только с `-Yes`; при повторном запуске — `SKIP`.
+Коды выхода: `0 OK/SKIP`, `1 FAIL non-retryable`, `2 BLOCK`, `3 FAIL retryable`,
+`4 BROKEN`, `5 DELIVERY`. Полный контракт — `docs/flags.json` и `CHANGELOG.md`.
 
-Список шагов и параметров — `docs/flags.json`, `-Check capabilities`. Список шагов
-`-Steps` — строка через запятую; в PowerShell 7 её надо **закавычить**
-(`-Steps "python,git,deps,models,snippet"`), иначе массив приходит одним аргументом.
+### 3. Архитектура и порядок шагов
+
+```text
+bootstrap.ps1            entry: получить исходники, вызвать оркестратор, вернуть код
+installer/install.ps1    orchestrator: только список шагов и вызовы Invoke-Step*
+installer/lib/*          библиотеки и шаги (env, download, state, progress, steps/*)
+```
+
+Порядок: `winget → powershell → python → git → workspace → venv → deps → models →
+snippet → [precheck report] → doctor → [acceptance] → [final report]`.
+`doctor` и `acceptance` — обычные шаги, без отдельного послевызова.
+
+Список канонических флагов и шагов — `docs/flags.json` (или `-Check capabilities`).
+`-Steps` — строка через запятую; в PowerShell 7 её надо закавычить.
 
 ## Документы
 
@@ -81,8 +81,8 @@ pwsh -ExecutionPolicy Bypass -File .\bootstrap.ps1
 
 ## Как запустить
 
-При установке с `-Venv` используйте `.venv\Scripts\python.exe` вместо `python`.
-Готовые шимы: `python.cmd` (cmd.exe) и `use.ps1` (PowerShell) — оба подставляют
+Используйте `.venv\Scripts\python.exe` вместо системного `python`.
+Шимы `python.cmd` (cmd.exe) и `use.ps1` (PowerShell) подставляют
 `STANZA_RESOURCES_DIR` и путь к интерпретатору из `.venv`.
 
 ```bash
