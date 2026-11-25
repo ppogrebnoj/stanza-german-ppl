@@ -80,7 +80,8 @@ python scripts/merge_gate.py --pr 4 --repo owner/repo --json
 - `current` — актуальные проверки;
 - `ignored_history` — все вытесненные записи: `name`, `conclusion`, `run_id`,
   `ignore_reason`, `ignore_detail`, `superseded_by_*`;
-- `blocking` — актуальные блокеры с кодом причины;
+- `blocking` — актуальные блокеры с кодом причины; это подмножество `current`
+  с дополнительными полями `reason`/`detail`;
 - `pending`, `dropped_wrong_head`, `notes`.
 
 Этот набор есть **во всех вердиктах**, включая `BLOCK:not_open` и `ERROR` (недостающие

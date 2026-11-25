@@ -390,6 +390,12 @@ def format_report(report: dict, json_mode: bool = False, explain: bool = False) 
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Вывод должен быть UTF-8 и на Windows без PYTHONUTF8: --json пайпится как есть.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(
         description="Вердикт по PR: MERGE / BLOCK / WAIT. Мерж не выполняется.")
     parser.add_argument("--pr", type=int, required=True, help="номер PR")
