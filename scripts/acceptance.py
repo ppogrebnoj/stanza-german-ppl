@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "правило"))
+sys.path.insert(0, str(ROOT / "rule"))
 import _paths as P  # noqa: E402
 
 REF_F1 = {"corpus52": 0.777, "heldout_51": 0.686}
@@ -103,7 +103,7 @@ def main() -> int:
                         str(doc.get("counts", out[:200]))))
 
     for mode in ("fast", "full"):
-        argv = [py, str(ROOT / "правило" / "smoke_test.py"), "--json"]
+        argv = [py, str(ROOT / "rule" / "smoke_test.py"), "--json"]
         if mode == "full":
             argv.append("--full")
         rc, out = run(argv)

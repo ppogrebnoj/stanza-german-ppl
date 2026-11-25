@@ -133,7 +133,7 @@ def check_data():
             continue
         n = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
         ok("data_sets", f"{name}: {n}")
-    for name in ("СПИСОК_150.md", "РАЗМЕТКА_51.md", "РАЗМЕТКА_52.md"):
+    for name in ("LIST_150.md", "MARKUP_51.md", "MARKUP_52.md"):
         if not (P.DATA_DIR / name).exists():
             warn("data_md", f"нет {P.DATA_DIR / name}")
 
@@ -144,7 +144,7 @@ def check_rule_root():
     if env:
         root, src = Path(env), "env RULE_ROOT"
     else:
-        root, src = P.MCP_DIR.parent / "правило", "по умолчанию (рядом с server.py)"
+        root, src = P.MCP_DIR.parent / "rule", "по умолчанию (рядом с server.py)"
     if (root / "validator.py").exists():
         ok("rule_root", f"{root} — {src}")
     else:

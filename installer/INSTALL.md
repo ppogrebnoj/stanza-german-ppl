@@ -258,7 +258,7 @@ Range GET по фактическим ассетам. Обрывы TLS (`10054`,
 
 ```powershell
 powershell -File scripts\tests\test-contract.ps1
-python -m compileall -q scripts правило bench MCP-stanza-german
+python -m compileall -q scripts rule bench MCP-stanza-german
 ```
 
 Контрактный тест проверяет: неизвестный параметр → код `4`, `-Check` не пишет файлы,

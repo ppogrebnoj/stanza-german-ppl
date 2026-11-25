@@ -12,10 +12,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # корень проекта
-RULE_DIR = ROOT / "правило"
+RULE_DIR = ROOT / "rule"
 MCP_DIR = ROOT / "MCP-stanza-german"
 SETS_DIR = ROOT / "bench" / "sets"
-DATA_DIR = ROOT / "данные"
+DATA_DIR = ROOT / "data"
 REQUIRED_MINOR = 15                 # единственная поддерживаемая версия Python (эталон проекта)
 INSTALLER_DIR = ROOT / "installer"   # файлы установки в отдельной папке
 REQS = INSTALLER_DIR / "requirements.txt"    # единственный файл пинов

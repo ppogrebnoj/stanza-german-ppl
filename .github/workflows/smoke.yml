@@ -29,13 +29,13 @@ jobs:
           python-version: "3.15"
 
       - name: Синтаксис всех файлов (только stdlib)
-        run: python -m compileall -q правило bench scripts MCP-stanza-german
+        run: python -m compileall -q rule bench scripts MCP-stanza-german
 
       - name: Гейт целостности (fast, без Stanza)
         env:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: utf-8
-        run: python правило/smoke_test.py
+        run: python rule/smoke_test.py
 
       - name: Наборы воспроизводятся из разметки (байт в байт)
         env:
@@ -83,13 +83,13 @@ jobs:
       - name: Модели рабочие — правило на 52
         env:
           PYTHONUTF8: "1"
-        run: python правило/validator.py --set bench/sets/corpus52.jsonl
+        run: python rule/validator.py --set bench/sets/corpus52.jsonl
 
       - name: Живой прогон (F1, валидатор, нарезчик)
         env:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: utf-8
-        run: python правило/smoke_test.py --full
+        run: python rule/smoke_test.py --full
 
       - name: doctor (FAIL 0 ожидается)
         env:

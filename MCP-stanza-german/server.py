@@ -117,9 +117,9 @@ DEFAULT_CHARS_PER_SEC = 4.0
 
 # Правило сегментации (validator.py + config.json) живёт отдельно от сервера.
 # Путь — переменная окружения RULE_ROOT (поле env в mcp.json), иначе — дефолт:
-# папка «правило» рядом с этим файлом (MCP-stanza-german/../правило). Так сервер
+# папка «правило» рядом с этим файлом (MCP-stanza-german/../rule). Так сервер
 # работает после переноса проекта в любой каталог, без правки кода.
-RULE_ROOT_DEFAULT = str(Path(__file__).resolve().parent.parent / "правило")
+RULE_ROOT_DEFAULT = str(Path(__file__).resolve().parent.parent / "rule")
 
 mcp = FastMCP(
     "stanza-german",

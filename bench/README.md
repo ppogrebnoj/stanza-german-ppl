@@ -24,7 +24,7 @@ python bench/build_sets.py                    # -> sets/corpus52.jsonl, sets/hel
 python bench/pcache.py                        # кэш разборов (один раз)
 python bench/audit.py                         # что нарушает сама разметка заказчика
 python bench/experiments.py --stage all       # все замеры (варианты запретов, cap, однословные блоки, штрафы, сетка)
-python правило/validator.py --set bench/sets/heldout_51.jsonl
+python rule/validator.py --set bench/sets/heldout_51.jsonl
 
 # новые наборы из ИТЕРАЦИИ_3 (новая разметка заказчика)
 python bench/run_bench.py --set file:bench/sets/corpus52.jsonl   --algo all --grid --constraints --syl --pen
@@ -71,5 +71,5 @@ python bench/analyze_gold.py --set bench/sets/corpus52.jsonl
 - `base` — всегда: не резать перед знаком препинания, внутри дефисного слова, после открывающей кавычки.
 - `--constraints` — запреты V4: не резать сразу после предлога, блок не кончается
   служебным словом, механика пунктуации. Рез на границе PP-определения НЕ запрещён
-  (это мягкий штраф, см. `ПРАВИЛО.md` §2).
+  (это мягкий штраф, см. `RULE.md` §2).
 - Длина блока: минимум 2, максимум 7 лексических слов (как в правиле).

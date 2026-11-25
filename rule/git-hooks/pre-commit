@@ -5,11 +5,11 @@
 # запускаться на 3 дня, хотя в коммите было написано «reg 52/52». Гейт ловит это
 # до коммита. WARN (известные расхождения) коммит НЕ блокируют, FAIL — блокирует.
 #
-# Установка:  cp правило/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit
+# Установка:  cp rule/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit
 # Удаление:   rm .git/hooks/pre-commit
-# Полная проверка (со Stanza): python правило/smoke_test.py --full
+# Полная проверка (со Stanza): python rule/smoke_test.py --full
 
-RULE_DIR="правило"
+RULE_DIR="rule"
 [ -f "$RULE_DIR/smoke_test.py" ] || exit 0
 
 # Python ищем в порядке: .venv проекта (эталон 3.15) → py -3.15 → python/python3 из PATH.

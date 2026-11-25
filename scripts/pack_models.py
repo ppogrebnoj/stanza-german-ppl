@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _paths as P  # noqa: E402
 
-# Процессоры, которые реально использует код (server.py + правило/validator.py).
+# Процессоры, которые реально использует код (server.py + rule/validator.py).
 # pretrain нужен depparse напрямую — но только conll17.pt (fasttextwiki.pt не нужен),
 # charlm — tokenize/depparse. constituency/ner/sentiment коду не нужны.
 MINIMAL = ["tokenize", "mwt", "pos", "lemma", "depparse",
