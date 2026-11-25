@@ -132,7 +132,7 @@ jobs:
           if ($LASTEXITCODE -ge 4) { "::error::inventory.ps1 дал код $LASTEXITCODE"; exit 1 }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-inventory.ps1 -CI
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-progress.ps1 -Fast
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-progress.ps1 -Fast -CI
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Регресс текущего контракта
