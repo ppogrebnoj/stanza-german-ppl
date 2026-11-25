@@ -1,0 +1,247 @@
+{
+ "data": {
+  "repository": {
+   "pullRequest": {
+    "number": 4,
+    "url": "https://github.com/ppogrebnoj/stanza-german-ppl/pull/4",
+    "state": "MERGED",
+    "isDraft": false,
+    "merged": true,
+    "mergeable": "UNKNOWN",
+    "mergeStateStatus": "UNKNOWN",
+    "headRefOid": "c500de60bbeb50e041d3840b08ded2754d78b6e7",
+    "baseRefName": "master",
+    "reviewDecision": null,
+    "statusCheckRollup": {
+     "contexts": {
+      "pageInfo": {
+       "hasPreviousPage": false
+      },
+      "nodes": [
+       {
+        "__typename": "CheckRun",
+        "name": "contract",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-25T14:22:32Z",
+        "completedAt": "2026-11-25T14:23:12Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633346827/job/139272143646",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "installer-contract"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "contract",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-25T14:22:17Z",
+        "completedAt": "2026-11-25T14:22:55Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633300829/job/139271981142",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "installer-contract"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "smoke (ubuntu-latest)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-25T14:22:48Z",
+        "completedAt": "2026-11-25T14:22:53Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633347190/job/139272317226",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "smoke (ubuntu-latest)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-25T14:22:17Z",
+        "completedAt": "2026-11-25T14:22:24Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633300682/job/139271982852",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "smoke (windows-latest)",
+        "status": "COMPLETED",
+        "conclusion": "CANCELLED",
+        "startedAt": "2026-11-25T14:22:17Z",
+        "completedAt": "2026-11-25T14:22:31Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633300682/job/139271982570",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "smoke (windows-latest)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-25T14:22:48Z",
+        "completedAt": "2026-11-25T14:23:01Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633347190/job/139272317924",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "полный прогон 3.15 (installer/requirements.txt + модели от Stanford)",
+        "status": "COMPLETED",
+        "conclusion": "CANCELLED",
+        "startedAt": "2026-11-25T14:22:17Z",
+        "completedAt": "2026-11-25T14:22:45Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633300682/job/139271982116",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "полный прогон 3.15 (installer/requirements.txt + модели от Stanford)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-25T14:22:48Z",
+        "completedAt": "2026-11-25T14:27:16Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633347190/job/139272317823",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "install.ps1 / all.ps1 — текущий контракт (Windows)",
+        "status": "COMPLETED",
+        "conclusion": "CANCELLED",
+        "startedAt": "2026-11-25T14:22:17Z",
+        "completedAt": "2026-11-25T14:22:34Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633300682/job/139271982619",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       },
+       {
+        "__typename": "CheckRun",
+        "name": "install.ps1 / all.ps1 — текущий контракт (Windows)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-25T14:22:48Z",
+        "completedAt": "2026-11-25T14:23:45Z",
+        "detailsUrl": "https://github.com/ppogrebnoj/stanza-german-ppl/actions/runs/45633347190/job/139272318084",
+        "checkSuite": {
+         "commit": {
+          "oid": "c500de60bbeb50e041d3840b08ded2754d78b6e7"
+         },
+         "app": {
+          "slug": "github-actions"
+         },
+         "workflowRun": {
+          "workflow": {
+           "name": "smoke"
+          }
+         }
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ }
+}
