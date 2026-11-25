@@ -58,7 +58,15 @@ BARE_DATA_DOC = re.compile(
 
 
 def normalize_rel(path: str) -> str:
-    return str(path).replace("\\", "/").lstrip("./")
+    """Привести путь к slash-форме, срезав ТОЛЬКО префикс `./`.
+
+    lstrip("./") здесь нельзя: он съедал бы ведущую точку в `.venv/`, `.tmp/`,
+    `.github/` и `.gitattributes`, из-за чего исключения не работали.
+    """
+    rel = str(path).replace("\\", "/")
+    while rel.startswith("./"):
+        rel = rel[2:]
+    return rel
 
 
 def is_path_excluded(path: str) -> bool:

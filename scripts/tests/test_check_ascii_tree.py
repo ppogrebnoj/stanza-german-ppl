@@ -30,6 +30,20 @@ class ScanPathsTest(unittest.TestCase):
         ]
         self.assertEqual(C.scan_paths(paths), [])
 
+    def test_non_ascii_inside_excluded_dirs_is_skipped(self):
+        paths = [
+            ".venv/Либ/модуль.py", ".tmp/отчёт.txt", ".stanza/модели/x",
+            ".mypy_cache/кэш/x.json", ".ruff_cache/кэш/x.json",
+            ".pytest_cache/кэш/x", "bench/results/отчёт.md",
+        ]
+        self.assertEqual(C.scan_paths(paths), [])
+
+    def test_leading_dot_paths_are_preserved(self):
+        self.assertEqual(C.normalize_rel("./.gitattributes"), ".gitattributes")
+        self.assertEqual(C.normalize_rel(".github/workflows/contract.yml"),
+                         ".github/workflows/contract.yml")
+        self.assertEqual(C.normalize_rel(".venv/x"), ".venv/x")
+
     def test_ascii_paths_ok(self):
         self.assertEqual(C.scan_paths(["rule/segment.py", "data/MARKUP_51.md", "docs/flags.json"]), [])
 
