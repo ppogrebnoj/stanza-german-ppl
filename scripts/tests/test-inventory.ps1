@@ -30,7 +30,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$InventoryPath = ""
+    [string]$InventoryPath = "",
+    [switch]$CI
 )
 
 $ErrorActionPreference = "Continue"
@@ -265,34 +266,38 @@ if ($wingetOnDisk) {
 # C:\hostedtoolcache\windows\Python\3.15.x\x64), плюс показания запускаителя py -0p.
 # Прежний оракул (два пути) на раннере давал ложный FAIL: python там OK по замеру, а файла
 # по двум ожидаемым путям нет (замер CI 19.11).
-$pyCands = @("$env:LOCALAPPDATA\Programs\Python\Python315\python.exe", "C:\Program Files\Python315\python.exe")
-$pyCands += @(Get-ChildItem -Path "C:\hostedtoolcache\windows\Python" -Filter "python.exe" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$pyCands += @(Get-ChildItem -Path "C:\Python315","C:\Program Files\Python315" -Filter "python.exe" -Recurse -Depth 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$pyOnDisk = @($pyCands | Where-Object { Test-Path -LiteralPath $_ }).Count -gt 0
-if (-not $pyOnDisk) {
-    # py -0p: список установленных CPython (« -V:3.15 *  C:\...\python.exe») — считаем, что 3.15 стоит
-    $pyList = ""
-    try { $pyList = (& py -0p 2>&1 | Out-String) } catch { }
-    if ($pyList -match '3\.15') { $pyOnDisk = $true }
-}
-$pyItem = @($items | Where-Object { $_.name -eq "python" })[0]
-if ($pyOnDisk) {
-    Check "python 3.15 есть на диске → статус не MISSING" ($pyItem.status -ne "MISSING") ("status={0} version={1}" -f $pyItem.status, $pyItem.version)
+if ($CI) {
+    Write-Ok "disk oracle skipped in CI" "python/MSVC host probes are local-machine checks"
 } else {
-    Check "python 3.15 нет на диске → статус MISSING/WRONG" (@("MISSING", "WRONG") -contains $pyItem.status) ("status={0}" -f $pyItem.status)
-}
+    $pyCands = @("$env:LOCALAPPDATA\Programs\Python\Python315\python.exe", "C:\Program Files\Python315\python.exe")
+    $pyCands += @(Get-ChildItem -Path "C:\hostedtoolcache\windows\Python" -Filter "python.exe" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    $pyCands += @(Get-ChildItem -Path "C:\Python315","C:\Program Files\Python315" -Filter "python.exe" -Recurse -Depth 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    $pyOnDisk = @($pyCands | Where-Object { Test-Path -LiteralPath $_ }).Count -gt 0
+    if (-not $pyOnDisk) {
+        # py -0p: список установленных CPython — считаем, что 3.15 стоит
+        $pyList = ""
+        try { $pyList = (& py -0p 2>&1 | Out-String) } catch { }
+        if ($pyList -match '3\.15') { $pyOnDisk = $true }
+    }
+    $pyItem = @($items | Where-Object { $_.name -eq "python" })[0]
+    if ($pyOnDisk) {
+        Check "python 3.15 есть на диске → статус не MISSING" ($pyItem.status -ne "MISSING") ("status={0} version={1}" -f $pyItem.status, $pyItem.version)
+    } else {
+        Check "python 3.15 нет на диске → статус MISSING/WRONG" (@("MISSING", "WRONG") -contains $pyItem.status) ("status={0}" -f $pyItem.status)
+    }
 
-$clOnDisk = $false
-foreach ($r in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-    if (-not $r) { continue }
-    if (Test-Path -Path (Join-Path $r "Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Host*\*\cl.exe")) { $clOnDisk = $true }
-}
-$vsWhereOnDisk = Test-Path -LiteralPath "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-$msvcItem = @($items | Where-Object { $_.name -eq "msvc_vctools" })[0]
-if ($clOnDisk) {
-    Check "cl.exe есть на диске → msvc_vctools не MISSING" ($msvcItem.status -ne "MISSING") ("status={0} version={1}" -f $msvcItem.status, $msvcItem.version)
-} else {
-    Check "cl.exe нет на диске → msvc_vctools не OK" ($msvcItem.status -ne "OK") ("status={0} (vswhere: {1})" -f $msvcItem.status, $vsWhereOnDisk)
+    $clOnDisk = $false
+    foreach ($r in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if (-not $r) { continue }
+        if (Test-Path -Path (Join-Path $r "Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Host*\*\cl.exe")) { $clOnDisk = $true }
+    }
+    $vsWhereOnDisk = Test-Path -LiteralPath "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+    $msvcItem = @($items | Where-Object { $_.name -eq "msvc_vctools" })[0]
+    if ($clOnDisk) {
+        Check "cl.exe есть на диске → msvc_vctools не MISSING" ($msvcItem.status -ne "MISSING") ("status={0} version={1}" -f $msvcItem.status, $msvcItem.version)
+    } else {
+        Check "cl.exe нет на диске → msvc_vctools не OK" ($msvcItem.status -ne "OK") ("status={0} (vswhere: {1})" -f $msvcItem.status, $vsWhereOnDisk)
+    }
 }
 
 # ------------------------------------------------------------------ файл: -Json / FR-15 / -Log

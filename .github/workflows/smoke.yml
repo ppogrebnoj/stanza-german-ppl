@@ -1,4 +1,4 @@
-name: smoke
+﻿name: smoke
 
 # Дёшево и по делу: проект должен собираться и проверяться на чистой машине
 # БЕЗ моделей Stanza (fast-гейт не требует Stanza) — это гарантия, что клон рабочий,
@@ -130,7 +130,7 @@ jobs:
           # -Check-режимы только читают; inventory.ps1 как отдельный CLI тоже работает.
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/inventory.ps1 -Json -NoNetwork
           if ($LASTEXITCODE -ge 4) { "::error::inventory.ps1 дал код $LASTEXITCODE"; exit 1 }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-inventory.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-inventory.ps1 -CI
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test-progress.ps1 -Fast
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
