@@ -4,8 +4,8 @@
 
 ### Окружение и перенос проверок (follow-up #3, п. 2 и 4)
 
-- PyYAML `6.0.4` и platformdirs `4.14.5` — по `installer/requirements.lock`; расхождения
-  между `pip freeze` и lock нет.
+- PyYAML `6.0.4` и platformdirs `4.14.8` — актуальные версии на PyPI, зафиксированы
+  в `installer/requirements.lock`; расхождения между `pip freeze` и lock нет.
 - Каталог моделей зафиксирован: `<root>\.stanza\models`. `STANZA_RESOURCES_DIR`
   выставляется в PI `mcp.json` и в сниппете установщика; дефолты `env.ps1`/`flags.json`/
   `models.ps1`/`snippet.ps1` синхронизированы с `_paths.py` и `check_models.py`.
