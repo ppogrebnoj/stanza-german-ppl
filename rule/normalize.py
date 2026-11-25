@@ -20,9 +20,9 @@
 ЧЕГО НЕ ДЕЛАЕМ. Не правим слова, опечатки, порядок слов, `–`/`—` (это настоящая
 пунктуация), не меняем стиль кавычек `«…»`, `„…“`, не трогаем `...`.
 
-  python правило/normalize.py --text "Ich habe\u00a0bei der Firma gearbeitet."
-  python правило/normalize.py --file страница.txt --show
-  python правило/normalize.py --self-test
+  python rule/normalize.py --text "Ich habe\u00a0bei der Firma gearbeitet."
+  python rule/normalize.py --file страница.txt --show
+  python rule/normalize.py --self-test
 """
 import argparse
 import json

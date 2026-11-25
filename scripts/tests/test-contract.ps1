@@ -102,7 +102,7 @@ Remove-Item Env:\_KI_SAVED_ARCH -ErrorAction SilentlyContinue; Remove-Item Env:\
 Check-Ok ($a1 -eq 'AMD64' -and $a2 -eq 'AMD64') 'arch normalization' ("$a1 / $a2")
 
 # 8. файлы установки лежат в installer\; хеш bootstrap.ps1 — рядом с bootstrap.ps1 в корне
-$needInstaller = @('УСТАНОВКА.md', 'requirements.txt', 'requirements.lock')
+$needInstaller = @('INSTALL.md', 'requirements.txt', 'requirements.lock')
 $missingInstaller = @($needInstaller | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root ('installer\' + $_))) })
 $rootLeftovers = @($needInstaller | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) })
 Check-Ok ($missingInstaller.Count -eq 0 -and $rootLeftovers.Count -eq 0 -and

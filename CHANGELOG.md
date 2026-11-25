@@ -2,6 +2,17 @@
 
 ## installer-v3 (unreleased)
 
+### ASCII-пути (follow-up #3)
+
+- Все отслеживаемые файлы и каталоги переведены в ASCII без правки содержимого:
+  код правила — `rule/`, разметка — `data/`, документы — `RULE.md`, `SPEC.md`,
+  `QUESTIONS.md`, `installer/INSTALL.md`, `data/MARKUP_51.md`, `data/MARKUP_52.md`,
+  `data/LIST_150.md`.
+- Ссылки обновлены в коде, конфигах, CI и документации, включая `RULE_ROOT` в
+  MCP-конфигах и пути в `smoke.yml`/`contract.yml`.
+- Версия, тег, релиз, `bootstrap.ps1`, `bootstrap.ps1.sha256` и `actions/*` в workflows
+  не тронуты; в `installer/` изменена только ссылка на документ, не логика шагов.
+
 ### Архитектура и порядок шагов
 
 - Три слоя: `bootstrap.ps1` (entry), `installer/install.ps1` (orchestrator),

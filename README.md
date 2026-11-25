@@ -6,7 +6,7 @@
 ## Установка
 
 Windows x64, PowerShell 7.7+ (`pwsh`). Подробности —
-[installer/УСТАНОВКА.md](installer/УСТАНОВКА.md). Единственная точка входа —
+[installer/INSTALL.md](installer/INSTALL.md). Единственная точка входа —
 `bootstrap.ps1`; `install.ps1` и `scripts/all.ps1` — внутренние forwarder'ы.
 
 ### 1. PowerShell 7.7
@@ -69,15 +69,20 @@ snippet → [precheck report] → doctor → [acceptance] → [final report]`.
 
 | Файл | Что внутри |
 |---|---|
-| `ТЗ.md` | что нужно, рамки, как устроено, как проверяем качество |
-| `ПРАВИЛО.md` | **как резать**: запреты и их коды, длины, исключения, цифры |
-| `ВОПРОСЫ.md` | только открытые вопросы к заказчику |
-| `installer/УСТАНОВКА.md` | установка, параметры, коды, отчёты, офлайн, MCP, приёмка — подробности текущего контракта |
+| `SPEC.md` | что нужно, рамки, как устроено, как проверяем качество |
+| `RULE.md` | **как резать**: запреты и их коды, длины, исключения, цифры |
+| `QUESTIONS.md` | только открытые вопросы к заказчику |
+| `installer/INSTALL.md` | установка, параметры, коды, отчёты, офлайн, MCP, приёмка — подробности текущего контракта |
 | `README.md` | этот файл: короткая установка и команды запуска |
 | `LICENSE` | условия использования — MIT |
 
-Истории решений отдельным файлом нет: принятое воплощено в `ПРАВИЛО.md` и `config.json`,
+Истории решений отдельным файлом нет: принятое воплощено в `RULE.md` и `config.json`,
 а ход обсуждения остаётся в git.
+
+Все отслеживаемые пути в репозитории — ASCII: `rule/`, `data/`, `RULE.md`, `SPEC.md`,
+`QUESTIONS.md`, `installer/INSTALL.md`, `MARKUP_51.md`, `MARKUP_52.md`, `LIST_150.md`.
+Не-ASCII имена файлов и каталогов больше не используются: при распаковке архивов
+они искажались, и установщик не находил `config.json`.
 
 ## Как запустить
 
@@ -87,29 +92,29 @@ snippet → [precheck report] → doctor → [acceptance] → [final report]`.
 
 ```bash
 # нарезать одно предложение
-python правило/segment.py --text "Ich habe bei der Firma gearbeitet."
+python rule/segment.py --text "Ich habe bei der Firma gearbeitet."
 
 # нарезать страницу целиком (битый текст чистится сам: NBSP, мягкие переносы, лигатуры, кавычки)
-python правило/segment.py --file страница.txt
+python rule/segment.py --file страница.txt
 
 # что именно почистилось в тексте
-python правило/normalize.py --file страница.txt --show
+python rule/normalize.py --file страница.txt --show
 
 # нарезать из чата: segment_german("текст")  — MCP-инструмент сервера
 
 # проверить мою разбивку
-python правило/validator.py \
+python rule/validator.py \
    --text "Ich habe bei der Firma gearbeitet." --blocks "Ich habe|bei der Firma gearbeitet."
 
 # проверить целую разметку (52/51)
-python правило/validator.py --set bench/sets/heldout_51.jsonl
+python rule/validator.py --set bench/sets/heldout_51.jsonl
 
 # пересчитать машинные наборы из markdown-разметки (после правок заказчика)
 python bench/build_sets.py
 
 # гейт целостности (быстро / с проверкой живого кода)
-python правило/smoke_test.py
-python правило/smoke_test.py --full
+python rule/smoke_test.py
+python rule/smoke_test.py --full
 
 # MCP-сервер: handshake, инструменты, гейт, судья — без запущенного клиента
 python scripts/mcp_probe.py
@@ -119,8 +124,8 @@ python scripts/mcp_probe.py
 
 ## Как пополнять разметку
 
-1. Открываете `данные/СПИСОК_150.md`, размечаете очередную часть слэшами: `… фраза / фраза …`.
-2. Кладёте файл в `данные/РАЗМЕТКА_<N>.md` (как `РАЗМЕТКА_51.md`).
+1. Открываете `data/LIST_150.md`, размечаете очередную часть слэшами: `… фраза / фраза …`.
+2. Кладёте файл в `data/MARKUP_<N>.md` (как `MARKUP_51.md`).
 3. Я собираю машинный набор (`bench/build_sets.py`), прогоняю аудит и валидатор,
    показываю, где правило с вами не согласно.
 
@@ -132,13 +137,13 @@ python scripts/mcp_probe.py
 | F1 на 52 (настройка) | **0.777** |
 | F1 на 51 (проверка) | **0.686** |
 | валидатор на разметке 52 | **52/52 compliant** |
-| валидатор на разметке 51 | 45/51 compliant (6 нарушений — список в `ПРАВИЛО.md` §5) |
+| валидатор на разметке 51 | 45/51 compliant (6 нарушений — список в `RULE.md` §5) |
 
-Подробности и пути вверх — `ПРАВИЛО.md` §4, открытые вопросы — `ВОПРОСЫ.md`.
+Подробности и пути вверх — `RULE.md` §4, открытые вопросы — `QUESTIONS.md`.
 
 ## Лицензия
 
 MIT, полный текст — `LICENSE` (© 2026 ppogrebnoj). Код, тексты документации и разметка
-(`данные/`, `bench/sets/`) под теми же условиями: использовать, изменять и распространять
+(`data/`, `bench/sets/`) под теми же условиями: использовать, изменять и распространять
 можно со сохранением уведомления об авторстве. Модели Stanza лицензию не переносят: их качает
 Stanza от Stanford (USC-лицензия), в этом репозитории их нет.

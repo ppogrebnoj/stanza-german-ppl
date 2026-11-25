@@ -46,7 +46,7 @@ def tools_from_ast() -> list[str]:
 
 
 def rule_status() -> tuple[bool, str]:
-    root = Path(os.environ.get("RULE_ROOT") or str(ROOT / "правило"))
+    root = Path(os.environ.get("RULE_ROOT") or str(ROOT / "rule"))
     cfg = root / "config.json"
     validator = root / "validator.py"
     if not validator.exists():
@@ -96,7 +96,7 @@ def main() -> int:
         problems.append("нет пакета mcp в этом python")
     result = {
         "ok": not problems, "server": str(SERVER), "tools": tools,
-        "rule_status": status, "rule_root": str(Path(os.environ.get("RULE_ROOT") or (ROOT / "правило"))),
+        "rule_status": status, "rule_root": str(Path(os.environ.get("RULE_ROOT") or (ROOT / "rule"))),
         "stanza_resources": str(models), "models_dir_exists": models.exists(),
         "mcp_import": mcp_ok, "problems": problems,
     }

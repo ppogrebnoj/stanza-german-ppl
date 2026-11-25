@@ -41,7 +41,7 @@ function Get-BootstrapChecksumPath { param([string]$Root = (Get-ProjectRoot))
     return (Join-Path $Root 'bootstrap.ps1.sha256')
 }
 function Get-InstallDocPath { param([string]$Root = (Get-ProjectRoot))
-    return (Join-Path (Get-InstallerDir $Root) 'УСТАНОВКА.md')
+    return (Join-Path (Get-InstallerDir $Root) 'INSTALL.md')
 }
 function Get-DefaultModelsDir { param([string]$Root = (Get-ProjectRoot))
     return (Join-Path $Root '.stanza\models')

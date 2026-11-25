@@ -22,11 +22,11 @@ import json
 import os
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))   # <корень проекта>\правило
+HERE = os.path.dirname(os.path.abspath(__file__))   # <корень проекта>\rule
 WORK = os.path.dirname(HERE)                        # <корень проекта>
 CONFIG = os.path.join(HERE, "config.json")
 SETS = os.path.join(WORK, "bench", "sets")
-DATA = os.path.join(WORK, "данные")
+DATA = os.path.join(WORK, "data")
 
 REQUIRED_SEG = {
     "algorithm": str, "objective": str, "min_lex": int, "ideal_lex": (int, float),
@@ -120,11 +120,11 @@ def check_data():
             continue
         rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
         add("OK", "data_files", f"{fname}: {len(rows)}")
-    for fname in ("РАЗМЕТКА_52.md", "РАЗМЕТКА_51.md", "СПИСОК_150.md"):
+    for fname in ("MARKUP_52.md", "MARKUP_51.md", "LIST_150.md"):
         if not os.path.exists(os.path.join(DATA, fname)):
-            add("FAIL", "data_md", f"нет данные/{fname}")
+            add("FAIL", "data_md", f"нет data/{fname}")
     if all(os.path.exists(os.path.join(DATA, f)) for f in
-           ("РАЗМЕТКА_52.md", "РАЗМЕТКА_51.md", "СПИСОК_150.md")):
+           ("MARKUP_52.md", "MARKUP_51.md", "LIST_150.md")):
         add("OK", "data_md", "markdown-файлы разметки на месте")
 
 

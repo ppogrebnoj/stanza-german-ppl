@@ -13,9 +13,9 @@
 раздел "segment", если он есть).
 
 CLI:
-  python правило/validator.py --text "Ich habe bei der Firma gearbeitet." --blocks "Ich habe|bei der Firma gearbeitet."
-  python правило/validator.py --set bench/sets/heldout_51.jsonl
-  python правило/validator.py --self-test
+  python rule/validator.py --text "Ich habe bei der Firma gearbeitet." --blocks "Ich habe|bei der Firma gearbeitet."
+  python rule/validator.py --set bench/sets/heldout_51.jsonl
+  python rule/validator.py --self-test
 """
 import argparse
 import io
@@ -329,7 +329,7 @@ def check(text, blocks, cfg=None, pipeline=None):
             warnings.append({"code": "NORM",
                              "message": "в тексте технический мусор: " + _N.describe(_fixes),
                              "at": 0,
-                             "suggestion": "нарезчик чистит его сам (правило/normalize.py)"})
+                             "suggestion": "нарезчик чистит его сам (rule/normalize.py)"})
     except Exception:  # noqa: BLE001 — нормализация не должна ломать судью
         pass
 

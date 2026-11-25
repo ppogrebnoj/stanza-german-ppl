@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SERVER = ROOT / "MCP-stanza-german" / "server.py"
 LOG = ROOT / "MCP-stanza-german" / "server.log"
 # Таймаут на ОДИН вызов инструмента. pipeline_info поднимает пайплайн Stanza (torch + stanza +
-# HF-кэш), и на сетевой/VMware-шаре это 65–135 с вместо ~6 с на локальном диске (installer/УСТАНОВКА.md §4).
+# HF-кэш), и на сетевой/VMware-шаре это 65–135 с вместо ~6 с на локальном диске (installer/INSTALL.md §4).
 # Дефолт MCP-клиента для such вызова — секунды, поэтому проба падала с ExceptionGroup именно на
 # pipeline_info: «сервер не ответил», хотя сервер был жив (замер 20.11: шаг стартовал, но не уложился).
 READ_TIMEOUT_S = float(os.environ.get("MCP_PROBE_TIMEOUT", "300"))
@@ -47,7 +47,7 @@ async def _checks(s, report: dict, bad: list[str]) -> None:
     report["pipeline"]["torch"] = d.get("versions", {}).get("torch")
     report["pipeline"]["updates"] = d.get("updates", {}).get("available")
     if not d.get("rule_registered"):
-        bad.append("правило не подключено: проверь RULE_ROOT в конфиге клиента (installer/УСТАНОВКА.md §5)")
+        bad.append("правило не подключено: проверь RULE_ROOT в конфиге клиента (installer/INSTALL.md §5)")
     if not d.get("offline"):
         bad.append("pipeline не офлайн: модель берётся не из локального кэша")
 
@@ -73,7 +73,7 @@ async def _checks(s, report: dict, bad: list[str]) -> None:
 
 def _env() -> dict:
     env = dict(os.environ)
-    env.update({"RULE_ROOT": str(ROOT / "правило"), "PYTHONUTF8": "1"})
+    env.update({"RULE_ROOT": str(ROOT / "rule"), "PYTHONUTF8": "1"})
     env.pop("STANZA_RESOURCES_DIR", None)   # кэш Stanza стандартный: временный путь ломает depparse
     return env
 
@@ -109,7 +109,7 @@ def _probe() -> dict:
                 causes.append(f"{type(cur).__name__}: {cur}")
         detail = "; ".join(causes[:3]) if causes else str(e)
         bad.append(f"сервер не ответил ({type(e).__name__}) — {detail}; "
-                   f"ждали до {READ_TIMEOUT_S:.0f} с на вызов; смотри {LOG.name} и installer/УСТАНОВКА.md §5")
+                   f"ждали до {READ_TIMEOUT_S:.0f} с на вызов; смотри {LOG.name} и installer/INSTALL.md §5")
     report["ok"] = not bad
     report["problems"] = bad
     return report

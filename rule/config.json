@@ -1,6 +1,6 @@
 {
  "version": "v10",
- "rule_file": "ПРАВИЛО.md",
+ "rule_file": "RULE.md",
  "segment_version": "V4",
  "note": "Единственный источник чисел для нарезки и валидатора. Код чисел не знает.",
  "segment": {
