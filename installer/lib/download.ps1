@@ -92,8 +92,8 @@ function Invoke-Download {
             $rc = -1
             try {
                 if ($curl) {
-                    $args = @('-fL', '--retry', '2', '--retry-delay', '3', '--connect-timeout', '20',
-                              '--max-time', '3600', '-4', '--http1.1')
+                    $args = @('-fL', '--retry', '2', '--retry-all-errors', '--retry-delay', '3',
+                              '--connect-timeout', '20', '--max-time', '3600', '-4', '--http1.1')
                     if (Test-Path -LiteralPath $partial) { $args += @('-C', '-') }
                     $args += @('-o', $partial, "$u")
                     if ($OnProgress) { & $OnProgress @{ ev = 'progress'; pct = 0; url = $u; attempt = $attempt } }

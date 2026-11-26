@@ -37,11 +37,32 @@ function Invoke-Step_models {
                 return New-StepResult -Id 'models' -Status SKIP -Detail "models already present: $resources ($wanted)" -Warnings $warn
             }
         }
-        $code = "import stanza; stanza.download('de', processors='$wanted', verbose=False)"
-        $null = & $py -c $code 2>&1
-        $rc = $LASTEXITCODE
+
+        # stanza 1.15 берёт resources.json с raw.githubusercontent.com через requests;
+        # в VM этот хост иногда отдаёт TLS reset 10054. Качаем манифест curl'ом с
+        # ретраями и запрещаем stanza сетевой запрос за ним (download_json=False).
+        $manifest = Join-Path $resources 'resources.json'
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            if (-not (Test-Path -LiteralPath $resources)) { New-Item -ItemType Directory -Force -Path $resources | Out-Null }
+            $dl = Invoke-Download -Url 'https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main/resources_1.15.0.json' `
+                                  -Dest $manifest -Retries ([math]::Max(3, [int]$Ctx.Retries))
+            if (-not $dl.ok) {
+                return New-StepResult -Id 'models' -Status DELIVERY -Rc 5 -Retryable $true -Detail "resources.json download failed: $($dl.detail)" -NextCmd 'bootstrap.ps1 -Resume -Steps models' -Warnings $warn
+            }
+        }
+
+        $code = "import stanza; stanza.download('de', processors='$wanted', verbose=False, download_json=False)"
+        $out = @()
+        $rc = -1
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            $out = @(& $py -c $code 2>&1)
+            $rc = $LASTEXITCODE
+            if ($rc -eq 0) { break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds (3 * $attempt) }
+        }
         if ($rc -ne 0) {
-            return New-StepResult -Id 'models' -Status FAIL -Rc 3 -Retryable $true -Detail "stanza.download rc=$rc ($wanted)" -NextCmd 'bootstrap.ps1 -Resume -Steps models' -Warnings $warn
+            $tail = (@($out | Select-Object -Last 8) -join ' | ')
+            return New-StepResult -Id 'models' -Status FAIL -Rc 3 -Retryable $true -Detail "stanza.download rc=$rc ($wanted): $tail" -NextCmd 'bootstrap.ps1 -Resume -Steps models' -Warnings $warn
         }
         if (Test-Path -LiteralPath $runner) {
             $null = & $py $runner --check models --json -- --processors $wanted --load 2>&1

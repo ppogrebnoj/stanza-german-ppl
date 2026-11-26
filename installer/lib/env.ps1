@@ -8,6 +8,14 @@
     Ничего не пишет: библиотека пригодна для -Check (режим только чтение).
 #>
 
+# Инсталляторы (Git/Python) пишут PATH в User/Machine, но уже запущенный процесс
+# видит старый $env:Path. Пересобираем его из реестра после установки компонентов.
+function Refresh-ProcessPath {
+    $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $up = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = (@($mp, $up) | Where-Object { $_ }) -join ';'
+}
+
 function Get-MachineArch {
     $a = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     if (-not $a) { $a = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture }
