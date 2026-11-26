@@ -23,15 +23,20 @@ function Invoke-Step_git {
         return New-StepResult -Id 'git' -Status DELIVERY -Rc 5 -Retryable $true -Detail "git installer download failed: $($dl.detail)" -NextCmd 'bootstrap.ps1 -Resume -Steps git'
     }
     & $exe /VERYSILENT /NORESTART
-    if ($LASTEXITCODE -ne 0) {
-        return New-StepResult -Id 'git' -Status FAIL -Rc 3 -Retryable $true -Detail "git installer rc=$LASTEXITCODE" -NextCmd 'bootstrap.ps1 -Resume -Steps git'
-    }
-    # Следующие шаги в том же процессе должны видеть git: /VERYSILENT не гарантирует
-    # запись в PATH, поэтому подмешиваем каталог найденного git.exe явно.
-    Refresh-ProcessPath
-    $gitPath = Ensure-GitOnPath
+    $installerRc = $LASTEXITCODE
+    # Inno Setup /VERYSILENT возвращается раньше, чем git.exe появится на диске.
+    # Ждём появления бинарника, затем подмешиваем его каталог в PATH процесса.
+    $gitPath = ''
+    $deadline = [DateTime]::UtcNow.AddSeconds(180)
+    do {
+        Refresh-ProcessPath
+        $gitPath = Ensure-GitOnPath
+        if ($gitPath) { break }
+        Start-Sleep -Seconds 3
+    } while ([DateTime]::UtcNow -lt $deadline)
     if (-not $gitPath) {
-        return New-StepResult -Id 'git' -Status FAIL -Rc 3 -Retryable $true -Detail 'git installed but git.exe not found in PATH or known locations' -NextCmd 'bootstrap.ps1 -Resume -Steps git,workspace'
+        $detail = if ($installerRc -ne 0) { "git installer rc=$installerRc and git.exe not found after 180s" } else { 'git.exe not found after 180s (installer rc=0)' }
+        return New-StepResult -Id 'git' -Status FAIL -Rc 3 -Retryable $true -Detail $detail -NextCmd 'bootstrap.ps1 -Resume -Steps git,workspace'
     }
     return New-StepResult -Id 'git' -Status OK -Detail "git installed from official installer: $gitPath"
 }
