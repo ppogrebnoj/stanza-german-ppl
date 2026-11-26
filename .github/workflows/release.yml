@@ -30,7 +30,7 @@ jobs:
       - name: Build release assets
         shell: powershell
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag "${{ steps.version.outputs.tag }}"
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\install_tools\release.ps1 -Tag "${{ steps.version.outputs.tag }}"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Publish release assets
