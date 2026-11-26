@@ -12,9 +12,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -121,13 +125,89 @@ def resolve_repo(explicit: str | None, timeout: float = 30.0) -> str:
     return parse_repo_from_url(_run(["git", "-C", str(ROOT), "remote", "get-url", "origin"], timeout))
 
 
+def _rest_get(path: str, timeout: float) -> dict:
+    """Один GET публичного REST API; токен из GH_TOKEN/GITHUB_TOKEN, но не обязателен."""
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "stanza-merge-gate"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request("https://api.github.com" + path, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise GateError(f"REST {path}: HTTP {exc.code}", "gh_error") from exc
+    except (OSError, ValueError) as exc:
+        raise GateError(f"REST {path}: {exc}", "gh_error") from exc
+
+
+def fetch_pr_rest(pr_number: int, repo: str, timeout: float = 30.0) -> dict:
+    """Тот же контракт PR, что и GraphQL, но через REST (gh не нужен)."""
+    owner, name = repo.split("/", 1)
+    base = f"/repos/{owner}/{name}"
+    pr = _rest_get(f"{base}/pulls/{pr_number}", timeout)
+    sha = _get(pr, "head", "sha") or ""
+    runs = _rest_get(f"{base}/commits/{sha}/check-runs?per_page=100", timeout)
+    statuses = _rest_get(f"{base}/commits/{sha}/statuses?per_page=100", timeout)
+    nodes: list[dict] = []
+    for run in runs.get("check_runs", []):
+        status = str(run.get("status") or "").upper()
+        nodes.append({
+            "__typename": "CheckRun",
+            "name": run.get("name") or "(без имени)",
+            "status": status,
+            "conclusion": str(run.get("conclusion") or "").upper() if status == "COMPLETED" else "",
+            "startedAt": run.get("started_at"),
+            "completedAt": run.get("completed_at") if status == "COMPLETED" else None,
+            "detailsUrl": run.get("details_url") or "",
+            "checkSuite": {
+                "commit": {"oid": sha},
+                "app": {"slug": _get(run, "app", "slug") or ""},
+                "workflowRun": None,
+            },
+        })
+    for st in statuses:
+        state = str(st.get("state") or "").upper()
+        nodes.append({
+            "__typename": "StatusContext",
+            "context": st.get("context") or "(без имени)",
+            "state": state,
+            "createdAt": st.get("created_at"),
+            "updatedAt": st.get("updated_at"),
+            "targetUrl": st.get("target_url") or "",
+            "commit": {"oid": sha},
+        })
+    return {
+        "number": pr.get("number"), "url": pr.get("html_url") or "",
+        "state": str(pr.get("state") or "").upper(), "isDraft": bool(pr.get("draft")),
+        "merged": bool(pr.get("merged")),
+        "mergeable": str(pr.get("mergeable") or "").upper(),
+        "mergeStateStatus": str(pr.get("mergeable_state") or "").upper(),
+        "reviewDecision": "", "headRefOid": sha,
+        "baseRefName": _get(pr, "base", "ref") or "",
+        "statusCheckRollup": {"contexts": {
+            "nodes": nodes,
+            "pageInfo": {"hasPreviousPage": int(runs.get("total_count") or 0) > 100},
+        }},
+    }
+
+
 def fetch_pr(pr_number: int, repo: str, timeout: float = 30.0) -> dict:
     owner, name = repo.split("/", 1)
-    raw = _run([
-        "gh", "api", "graphql",
-        "-f", f"owner={owner}", "-f", f"repo={name}", "-F", f"number={pr_number}",
-        "-f", f"query={QUERY}",
-    ], timeout)
+    if not shutil.which("gh"):
+        _log("gh не найден — REST-fallback (публичный API, токен из GH_TOKEN/GITHUB_TOKEN)")
+        return fetch_pr_rest(pr_number, repo, timeout)
+    try:
+        raw = _run([
+            "gh", "api", "graphql",
+            "-f", f"owner={owner}", "-f", f"repo={name}", "-F", f"number={pr_number}",
+            "-f", f"query={QUERY}",
+        ], timeout)
+    except GateError as exc:
+        if exc.code != "gh_error":
+            raise
+        _log(f"gh недоступен ({exc}); REST-fallback")
+        return fetch_pr_rest(pr_number, repo, timeout)
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:

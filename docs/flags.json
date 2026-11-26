@@ -44,7 +44,6 @@
     ".tmp\\install-report-precheck.json",
     ".tmp\\install-report.json",
     ".tmp\\progress.ndjson",
-    ".tmp\\mutex",
     "mcp-snippet.json (+ root copy)"
   ],
   "default_step_rules": {

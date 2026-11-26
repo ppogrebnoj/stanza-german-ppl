@@ -7,13 +7,15 @@
 `bootstrap.ps1.sha256` лежит рядом с `bootstrap.ps1` в корне; в релизе он публикуется
 плоским ассетом рядом с установщиком.
 
-## 0. PowerShell 7.7
+## 0. PowerShell: что реально нужно
 
-Требования: Windows x64 и **PowerShell 7.7+** (`pwsh`). На PowerShell 5.1 скрипты работают,
-но добавляют лишние отказы при разборе путей и многострочных аргументов, поэтому 7.7 —
-рекомендуемый режим; в CI используется `pwsh`.
+Требования: Windows x64 и **Windows PowerShell 5.1** — он есть на любой Windows и его
+достаточно для чистого прогона. `bootstrap.ps1` намеренно запускается через `powershell`, а не
+через `pwsh`: иначе получается замкнутый круг «pwsh ставит pwsh». Шаг `powershell` при отсутствии
+7.7 даёт `SKIP`, а не `FAIL`; рекомендованный режим для интерактивной работы и CI — PowerShell
+7.7+ (`pwsh`).
 
-Ставится из Windows PowerShell 5.1 (он есть на любой Windows), без администратора и без
+Если нужен PowerShell 7.7, ставится из Windows PowerShell 5.1 без администратора и без
 перезагрузки:
 
 ```powershell
@@ -41,7 +43,8 @@ Expand-Archive "$env:TEMP\ps77.zip" -DestinationPath $d -Force
 Проверка окружения перед установкой проекта:
 
 ```powershell
-pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'   # 7.7.0
+powershell -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'   # 5.1.xxxx (достаточно)
+pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'         # 7.7.0, если установлен
 ```
 
 ## 1. Установка одной командой
@@ -54,18 +57,22 @@ pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'   # 7.7.0
 curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
 curl.exe -L -o bootstrap.ps1.sha256 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1.sha256
 (Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash      # сверить с bootstrap.ps1.sha256 из того же релиза
-pwsh -ExecutionPolicy Bypass -File .\bootstrap.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 -Yes -Json -ArtifactDir .tmp
 ```
+
+`-Yes` разрешает установку компонентов; без него шаги с системными изменениями дают `BLOCK`.
+Команда из issue #12 использует `pwsh` — это устаревшая формулировка: на чистой машине
+применяйте вариант выше (или явно установите 7.7 по §0).
 
 Бутстрап:
 
 1. проверяет `AMD64` и 64-битный PowerShell (иначе код `4`, загрузки не начинаются);
-2. поднимает winget: `Install-Module Microsoft.WinGet.Client -Force -Repository PSGallery` →
-   `Repair-WinGetPackageManager -AllUsers`; при недоступности winget установка идёт прямыми
-   ссылками;
-3. скачивает `stanza-german-ppl-source.zip` из `releases/latest/download` и проверяет его
-   `SHA256` по соседнему `.sha256`;
-4. вызывает `install.ps1`, передавая параметры вызова без изменений (для полного прогона сам
+2. standalone-ветка (нет локального `installer\`) берёт `flags.ps1`/`flags.json` из **своего тега**
+   релиза, а не из `master`, с `--retry-all-errors`; неудачная доскачка парсера — код `5/DELIVERY`;
+3. скачивает `stanza-german-ppl-source.zip` из `releases/latest/download`, проверяет `SHA256`
+   и распаковывает каталог с `installer\install.ps1` (`-Path` с `*`; `-LiteralPath` тут не работает);
+4. winget опционален: нет App Installer → шаг даёт `SKIP`, а не `FAIL rc=3`;
+5. вызывает `install.ps1`, передавая параметры вызова без изменений (для полного прогона сам
    добавляет `-Yes`, если не задан `-Check`).
 
 Если репозиторий уже есть, можно вызвать `install.ps1` напрямую:
@@ -93,11 +100,11 @@ pwsh -ExecutionPolicy Bypass -File .\install.ps1 -Yes
 
 | Компонент | Источник | Версия / configuration |
 |---|---|---|
-| winget (App Installer) | PSGallery, `Microsoft.WinGet.Client` | `Repair-WinGetPackageManager -AllUsers` |
+| winget (App Installer) | опционально; установщик не требует | нет → `SKIP`, прямых загрузок достаточно |
 | Python | официальный `python-3.15.2-amd64.exe` | 3.15.2 x64, per-user: реестр `PythonCore\3.15`, `py launcher`, `PATH`, «Установка и удаление программ» |
 | Git | winget `Git.Git` или git-scm.com | последний стабильный |
 | Пакеты | PyPI, `installer/requirements.lock` | `--only-binary=:all:`, компилятор не нужен; `pip check` + сверка версий через `importlib.metadata` |
-| Модели Stanza | StanfordNLP / Hugging Face | `tokenize,mwt,pos,lemma,depparse`, ≈315 МБ, каталог `<root>\.stanza\models`, переопределяется `STANZA_RESOURCES_DIR` |
+| Модели Stanza | StanfordNLP / Hugging Face | `tokenize,mwt,pos,lemma,depparse` (5 процессоров, 8 каталогов в `de`), ≈315 МБ, **без `de/default.zip`**; каталог `<root>\.stanza\models`, переопределяется `STANZA_RESOURCES_DIR`; `-Models` добавляет `ner`/`sentiment`/`all` |
 | MCP-клиент | клиент человека | запись в конфиг (`mcp.json` и аналоги) выполняет человек; установщик его не трогает |
 
 Проверка достаточности колёс одной командой:
@@ -172,6 +179,7 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 | 2 | Нужен компонент, автоматического пути нет | выполнить `blockers[].fix_cmd` |
 | 3 | Шаг упал, `retryable: true` | выполнить `next_action.command` |
 | 4 | Ошибка скрипта/среды, не-x64, неизвестный параметр | эскалация |
+| 5 | DELIVERY: исходник/ассет недоставлен до `installer\install.ps1` | повторить загрузку релиза |
 | 6 | Установщику ОС нужна перезагрузка/перелогин | перезагрузиться, продолжить `-Resume` |
 
 Каждый шаг автономен: падение одного не прерывает независимые шаги.
@@ -179,9 +187,20 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 ### Артефакты и отчёт
 
 Всё создаваемое лежит в `-ArtifactDir` (по умолчанию `<проект>\.tmp`) под фиксированными
-именами: `install.log`, `progress.ndjson`, `downloads\`, `install-report.json`,
-`install-report-<UTC>.json`, `mcp-snippet.json` (копия — в корне проекта). Параллельные
+именами: `install.log`, `progress.ndjson`, `install-report-precheck.json`,
+`install-report.json`, `mcp-snippet.json` (копия — в корне проекта). Параллельные
 прогоны разделяет mutex.
+
+Честный чистый прогон (без `-Resume` и без ручных действий) должен удовлетворить чек-листу:
+
+- 11 шагов из `docs/flags.json` (`winget,powershell,python,git,workspace,venv,deps,models,snippet,doctor,acceptance`) присутствуют в отчёте, каждый `OK` или `SKIP`, итог `code=0`;
+- `stderr` пуст, `progress.ndjson` построчно парсится, `mcp-snippet.json` есть и в артефактах, и в корне;
+- `doctor` — 18 OK / 0 WARN / 0 FAIL, `acceptance` — `PASS`, F1 `0.777 / 0.686`;
+- `inventory` не даёт ложных required-провалов (`project_venv=OK`);
+- хеш `bootstrap.ps1` из релиза совпадает с посчитанным локально; артефакты копируются вместе с хешами.
+
+`-Resume` — только продолжение после сбоя; отчёт с шагами `resume: already done` **не является
+доказательством чистого прогона**.
 
 На каждый шаг пишутся три файла: `<шаг>.log` (сводный — команда и весь вывод),
 `<шаг>.stdout.log` и `<шаг>.stderr.log` (потоки процесса по отдельности, наполняются
@@ -251,7 +270,19 @@ Range GET по фактическим ассетам. Обрывы TLS (`10054`,
 ```
 
 Шаг `venv` создаёт `.venv`, шаг `deps` ставит пакеты туда (`mode: "venv"`).
-`-Force` разрешает перезапись, `git reset --hard` и удаление моделей.
+`-Force` включает только потенциально разрушительные/сетевые операции: `git fetch` с таймаутом
+90 с и `git reset --mixed`, удаление моделей, uninstall. Для ZIP-копии без `.git` он **не нужен**:
+`workspace` сам делает `git init`, добавляет `origin` и ставит хук
+`rule\git-hooks\pre-commit` (только LF). Повторный `models` при на месте даёт `SKIP`.
+
+Финальный gate по PR можно запускать без `gh`: `scripts\merge_gate.py` при отсутствии `gh`
+переключается на публичный REST API (`GH_TOKEN`/`GITHUB_TOKEN` — опционально):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\merge_gate.py --pr <номер> --repo ppogrebnoj/stanza-german-ppl --explain
+```
+
+Вердикт `MERGE:all_checks_success` / `BLOCK` / `WAIT`; скрипт ничего не мержит.
 
 ## 7. Проверки в CI
 
