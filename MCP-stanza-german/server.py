@@ -3,7 +3,7 @@
 
 Локальный MCP-сервер для синтаксического анализа немецкого языка на базе
 Stanford Stanza 1.15.0 (CPU). Работает полностью офлайн: модели берутся из
-локального кэша %LOCALAPPDATA%\\StanfordNLP\\stanza\\Cache\\1.15.0\\resources
+контрактного каталога проекта <root>\\.stanza\\models
 (переопределяется STANZA_RESOURCES_DIR), download_method=None — сеть не используется
 и повторная загрузка не требуется.
 

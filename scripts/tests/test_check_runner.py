@@ -34,7 +34,7 @@ class RunnerTest(unittest.TestCase):
     def test_old_check_paths_are_gone(self):
         for rel in ("scripts/doctor.py", "scripts/check_models.py",
                     "scripts/acceptance.py", "scripts/mcp_probe.py",
-                    "scripts/install_status.py"):
+                    "scripts/server_check.py"):
             with self.subTest(rel=rel):
                 self.assertFalse((R.ROOT / rel).exists())
 
@@ -42,6 +42,7 @@ class RunnerTest(unittest.TestCase):
         names = R.list_names()
         self.assertEqual(len(names), len(set(names)))
         self.assertIn("mcp_probe", names)
+        self.assertIn("server_check", names)
         self.assertIn("mcp", json.loads((R.ROOT / "docs" / "flags.json").read_text(
             encoding="utf-8"))["checks"])
 
@@ -68,7 +69,7 @@ class RunnerTest(unittest.TestCase):
                 rc = R.main(["--list", "--json"])
         self.assertEqual(rc, 0)
         self.assertEqual(set(json.loads(out.getvalue())),
-                         {"doctor", "models", "acceptance", "mcp_probe"})
+                         {"doctor", "models", "acceptance", "mcp_probe", "server_check"})
 
     def test_python_guard_blocks_run(self):
         with mock.patch.object(R, "python_ok", return_value=False):
@@ -119,6 +120,23 @@ class RunnerTest(unittest.TestCase):
         entry = {"name": "doctor", "path": "installer/lib/checks/nope.py", "timeout_s": 5}
         report = R.run_check(entry, [])
         self.assertEqual(report["exit_code"], 5)
+
+    def test_server_check_sees_all_tools(self):
+        sys.path.insert(0, str(R.CHECKS_DIR))
+        import server_check  # noqa: E402
+        self.assertEqual(set(server_check.tools_from_ast()), server_check.NEED)
+
+    def test_workflows_compileall_include_checks(self):
+        for rel in (".github/workflows/smoke.yml", ".github/workflows/contract.yml"):
+            with self.subTest(rel=rel):
+                text = (R.ROOT / rel).read_text(encoding="utf-8-sig")
+                lines = [ln for ln in text.splitlines() if "compileall" in ln]
+                self.assertTrue(lines, rel)
+                self.assertTrue(any("installer/lib/checks" in ln for ln in lines), rel)
+
+    def test_install_dispatch_has_server_check(self):
+        text = (R.ROOT / "installer" / "install.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("'server_check' { Invoke-CheckRunner 'server_check' }", text)
 
 
 if __name__ == "__main__":

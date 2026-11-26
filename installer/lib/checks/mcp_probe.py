@@ -73,8 +73,10 @@ async def _checks(s, report: dict, bad: list[str]) -> None:
 
 def _env() -> dict:
     env = dict(os.environ)
-    env.update({"RULE_ROOT": str(ROOT / "rule"), "PYTHONUTF8": "1"})
-    env.pop("STANZA_RESOURCES_DIR", None)   # кэш Stanza стандартный: временный путь ломает depparse
+    # Зонд всегда работает с контрактным каталогом, независимо от env вызывающего:
+    # временный/чужой путь ломает depparse, а старый дефолт Stanza не является контрактом.
+    env.update({"RULE_ROOT": str(ROOT / "rule"), "PYTHONUTF8": "1",
+                "STANZA_RESOURCES_DIR": str(ROOT / ".stanza" / "models")})
     return env
 
 

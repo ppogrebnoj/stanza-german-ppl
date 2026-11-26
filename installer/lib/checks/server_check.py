@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """server_check.py — диагностика MCP-сервера без запуска MCP-клиента.
 
+    python scripts/run_checks.py --check server_check --json
+
 Проверяет: файл сервера, набор инструментов (AST, без импорта torch), доступность
 правила по RULE_ROOT (сервер сам определяет путь), каталог моделей и пакет mcp.
 В ответе всегда есть rule_status — та же строка, что сервер пишет в журнал при старте.
@@ -14,11 +16,25 @@ import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]   # installer/lib/checks -> корень проекта
 SERVER = ROOT / "MCP-stanza-german" / "server.py"
 NEED = {"parse_german", "pipeline_info", "segment_german", "check_segmentation",
         "rule_self_test", "rule_info"}
 LOG = ROOT / "MCP-stanza-german" / "server.log"
+
+
+def _tool_call_name(node: ast.AST) -> str | None:
+    """Имя инструмента из `_async_tool("name", ...)` / `@tool("name", ...)`."""
+    if not isinstance(node, ast.Call):
+        return None
+    fn = node.func
+    label = fn.attr if isinstance(fn, ast.Attribute) else (fn.id if isinstance(fn, ast.Name) else "")
+    if label not in ("_async_tool", "tool"):
+        return None
+    arg = node.args[0] if node.args else None
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+        return arg.value
+    return None
 
 
 def tools_from_ast() -> list[str]:
@@ -30,18 +46,15 @@ def tools_from_ast() -> list[str]:
         return []
     names = []
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for dec in node.decorator_list:
-            if not isinstance(dec, ast.Call):
-                continue
-            fn = dec.func
-            label = fn.attr if isinstance(fn, ast.Attribute) else (fn.id if isinstance(fn, ast.Name) else "")
-            if label not in ("_async_tool", "tool"):
-                continue
-            arg = dec.args[0] if dec.args else None
-            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                names.append(arg.value)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for dec in node.decorator_list:
+                name = _tool_call_name(dec)
+                if name:
+                    names.append(name)
+        # часть инструментов регистрируется динамически в main(), а не декоратором
+        name = _tool_call_name(node)
+        if name:
+            names.append(name)
     return sorted(set(names))
 
 

@@ -3,7 +3,7 @@
     release.ps1 — сборка ассетов релиза установки (вызывается CI по тегу v*).
 
     Версия берётся из MCP-stanza-german/version.json (единственный источник):
-        "server_version": "4.0.4"  ->  тег v4.0.4
+        "server_version": "4.0.5"  ->  тег v4.0.5
     Ассеты: bootstrap.ps1(.sha256) и stanza-german-ppl-source.zip(.sha256).
     Хеш bootstrap.ps1 НЕ пишется в README: он публикуется рядом с установщиком
     и проверяется человеком/агентом из того же релиза.

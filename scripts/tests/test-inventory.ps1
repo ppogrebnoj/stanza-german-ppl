@@ -135,6 +135,13 @@ $namesOk = ($names.Count -eq $expectedNames.Count)
 if ($namesOk) { for ($i = 0; $i -lt $expectedNames.Count; $i++) { if ($names[$i] -ne $expectedNames[$i]) { $namesOk = $false } } }
 Check "имена и порядок совпадают с контрактом" $namesOk ($names -join ", ")
 
+$stan = @($items | Where-Object { $_.name -eq "stanza_cache" })
+$stanPathOk = $false
+if ($stan.Count -eq 1) {
+    $stanPathOk = ("$($stan[0].path)" -like "*\.stanza\models") -or ("$($stan[0].note)" -like "*\.stanza\models*")
+}
+Check "stanza_cache: optional и контрактный путь" (($stan.Count -eq 1) -and ($stan[0].need -eq "optional") -and $stanPathOk) ("need={0} path={1} note={2}" -f $stan[0].need, $stan[0].path, $stan[0].note)
+
 $needOk = $true
 foreach ($it in $items) { if (@("required", "optional") -notcontains $it.need) { $needOk = $false } }
 Check "need только required|optional" $needOk ""

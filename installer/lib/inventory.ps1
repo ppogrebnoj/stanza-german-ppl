@@ -673,17 +673,19 @@ function Get-Inventory {
         Add-InvItem "project_venv" "required" $pvStatus $pvVer $pvPath "all.ps1 -Steps venv,deps" $pvNote
 
         # ---------------------------------------------------------------- кэши моделей / pip
-        $stanPath = "$env:LOCALAPPDATA\StanfordNLP"
+        $stanPath = Get-StanzaResourcesDir
+        $stanExists = Test-Path -LiteralPath $stanPath
         $stanMB = Get-InvDirSizeMB $stanPath
-        if ($null -eq $stanMB) {
-            if (Test-Path -LiteralPath $stanPath) {
-                Add-InvItem "stanza_cache" "optional" "UNKNOWN" "" $stanPath "проверить руками: правый клик по $stanPath → Свойства (размер)" "размер не измерен: обход каталога не уложился в 1.5 с"
-            } else {
-                Add-InvItem "stanza_cache" "optional" "MISSING" "" "" "all.ps1 -Steps models  |  офлайн: -Zip stanza-models-de-*.zip" ("каталога нет ($stanPath) — stanza скачает модели при первом запуске (~1.6 ГБ)")
-            }
+        $stanFix = "all.ps1 -Steps models  |  офлайн: -Zip stanza-models-de-*.zip"
+        if ($null -eq $stanMB -and $stanExists) {
+            Add-InvItem "stanza_cache" "optional" "UNKNOWN" "" $stanPath "проверить руками: правый клик по $stanPath → Свойства (размер)" "размер не измерен: обход каталога не уложился в 1.5 с"
+        } elseif (-not $stanExists) {
+            Add-InvItem "stanza_cache" "optional" "MISSING" "" "" $stanFix ("каталога нет ($stanPath) — stanza скачает модели при первом запуске (~1.6 ГБ)")
+        } elseif ($stanMB -eq 0) {
+            Add-InvItem "stanza_cache" "optional" "MISSING" "" $stanPath $stanFix "каталог есть, но пуст ($stanPath)"
         } else {
-            $st = "MISSING"; if ($stanMB -ge 800) { $st = "OK" } elseif ($stanMB -gt 0) { $st = "PARTIAL" }
-            Add-InvItem "stanza_cache" "optional" $st ("$stanMB MB") $stanPath "all.ps1 -Steps models  |  офлайн: -Zip stanza-models-de-*.zip" "норма ~1.6 ГБ (de, tokenize/mwt/pos/lemma/dep)"
+            $st = "PARTIAL"; if ($stanMB -ge 800) { $st = "OK" }
+            Add-InvItem "stanza_cache" "optional" $st ("$stanMB MB") $stanPath $(if ($st -eq "OK") { "" } else { $stanFix }) "норма ~1.6 ГБ (de, tokenize/mwt/pos/lemma/dep)"
         }
 
         $hfPath = "$env:USERPROFILE\.cache\huggingface"

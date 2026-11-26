@@ -4,7 +4,7 @@
     python scripts/run_checks.py --check models --json
     python scripts/run_checks.py --check models --json -- --processors ... --load
 
-Каталог берётся из STANZA_RESOURCES_DIR (единственный источник — scripts/_env.ps1).
+Каталог: STANZA_RESOURCES_DIR, иначе контрактный <root>\\.stanza\\models.
 Ничего не скачивает и не меняет: код 0 = ресурсы готовы, 1 = чего-то нет.
 """
 from __future__ import annotations
@@ -23,11 +23,7 @@ def resource_dir() -> Path:
     env = os.environ.get("STANZA_RESOURCES_DIR")
     if env:
         return Path(env)
-    try:
-        from stanza.resources.common import DEFAULT_MODEL_DIR
-        return Path(DEFAULT_MODEL_DIR)
-    except Exception:
-        return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "StanfordNLP" / "stanza" / "Cache" / "1.15.0" / "resources"
+    return BASE / ".stanza" / "models"
 
 
 def manifest_processors(root: Path) -> list[str]:

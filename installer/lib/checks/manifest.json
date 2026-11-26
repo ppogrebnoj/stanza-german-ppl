@@ -58,6 +58,20 @@
       "status_map": {"0": "OK", "1": "FAIL", "2": "BLOCK"},
       "callers": ["manual CLI", "acceptance.py"],
       "notes": "iz smoke.yml убран; release-шаг — отдельная задача"
+    },
+    {
+      "name": "server_check",
+      "path": "server_check.py",
+      "stage": "manual",
+      "cost": {"warm_s": 2.0, "cold_s": 2.0},
+      "timeout_s": 120,
+      "flags": ["--json"],
+      "env": ["RULE_ROOT", "STANZA_RESOURCES_DIR"],
+      "side_effects": ["server_log"],
+      "requires": ["python315_x64", "venv", "models"],
+      "status_map": {"0": "OK", "1": "FAIL"},
+      "callers": ["install.ps1 -Check server_check", "manual CLI", "installer/INSTALL.md"],
+      "notes": "статический AST-разбор инструментов + RULE_ROOT + каталог моделей; импорт mcp проверяется внутри"
     }
   ]
 }

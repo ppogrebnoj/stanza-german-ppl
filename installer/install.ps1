@@ -86,6 +86,7 @@ if ($Check) {
         'models' { Invoke-CheckRunner 'models' }
         'acceptance' { Invoke-CheckRunner 'acceptance' }
         'mcp_probe' { Invoke-CheckRunner 'mcp_probe' }
+        'server_check' { Invoke-CheckRunner 'server_check' }
         'mcp' {
             $snippet = Join-Path $Root 'mcp-snippet.json'
             $ok = $false

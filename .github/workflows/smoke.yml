@@ -29,7 +29,7 @@ jobs:
           python-version: "3.15"
 
       - name: Синтаксис всех файлов (только stdlib)
-        run: python -m compileall -q rule bench scripts MCP-stanza-german
+        run: python -m compileall -q rule bench scripts installer/lib/checks MCP-stanza-german
 
       - name: Гейт целостности (fast, без Stanza)
         env:
@@ -61,6 +61,9 @@ jobs:
     name: полный прогон ${{ matrix.python-version }} (installer/requirements.txt + модели от Stanford)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+      STANZA_RESOURCES_DIR: ${{ github.workspace }}/.stanza/models
     strategy:
       fail-fast: false
       matrix:
