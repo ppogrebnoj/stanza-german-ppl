@@ -16,6 +16,32 @@ function Refresh-ProcessPath {
     $env:Path = (@($mp, $up) | Where-Object { $_ }) -join ';'
 }
 
+# Git для Windows при /VERYSILENT не обязательно дописывает себя в PATH.
+# Ищем бинарник по известным местам и подмешиваем его каталог в процесс.
+function Find-GitPath {
+    $cmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) { return $cmd.Source }
+    $cands = @(
+        (Join-Path $env:ProgramFiles 'Git\cmd\git.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Git\cmd\git.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Git\cmd\git.exe')
+    )
+    foreach ($p in $cands) {
+        if ($p -and (Test-Path -LiteralPath $p -PathType Leaf)) { return $p }
+    }
+    return ''
+}
+
+function Ensure-GitOnPath {
+    $p = Find-GitPath
+    if ($p) {
+        $dir = Split-Path -Parent $p
+        if (($env:Path -split ';') -notcontains $dir) { $env:Path = $dir + ';' + $env:Path }
+    }
+    return $p
+}
+
 function Get-MachineArch {
     $a = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     if (-not $a) { $a = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture }
