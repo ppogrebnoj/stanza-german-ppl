@@ -299,3 +299,36 @@ python -m compileall -q scripts rule bench MCP-stanza-german
 Версию релиза задаёт `scripts/release.ps1` из первого заголовка
 `MCP-stanza-german/version.json`: тег `v<версия>`, ассеты `bootstrap.ps1`,
 `bootstrap.ps1.sha256`, `stanza-german-ppl-source.zip(.sha256)`.
+
+## 8. Регулярная проверка обновлений (deps-watch)
+
+Workflow `.github/workflows/deps-watch.yml` раз в неделю (пн 06:00 UTC) или по кнопке
+`workflow_dispatch` собирает отчёт по **всем 62 позициям** `installer/requirements.lock`:
+`current` ↔ `latest` с PyPI и отдельный блок колёс под Python 3.15 `win_amd64`.
+Никаких триггеров `push`/`pull_request`, коммитов и авто-PR: это info-прогон.
+
+Где смотреть:
+
+- постоянный issue **«📦 Обновления зависимостей — только информация»** — таблица между
+  маркерами `<!-- deps-report:start -->` / `<!-- deps-report:end -->`; если набор обновлений
+  не изменился (hash отчёта тот же), issue и коммент не трогаются;
+- `$GITHUB_STEP_SUMMARY` и artifact `deps-update-report` (`deps-update.md`, `deps-update.json`).
+
+PyPI недоступен → строка «нет данных», `::warning::` и `exit 0`; реальная проблема
+с колёсами под 3.15 остаётся failure. GitHub может задерживать scheduled-запуски и
+отключать их после 60 дней без активности — используйте `workflow_dispatch`.
+
+Обновлять зависимости **вручную**: правится `installer/requirements.txt` и
+`installer/requirements.lock`, затем локально проверяются колёса и контракт:
+
+```powershell
+python installer/install_tools/pins.py
+python installer/install_tools/pins.py --report --out-md .tmp\deps-update.md --out-json .tmp\deps-update.json
+python -m unittest discover -s scripts/tests -p 'test_pins*.py'
+powershell -NoProfile -File scripts\tests\test-contract.ps1
+```
+
+`bench/results/deps.json` — ручной снимок для MCP-сервера, его обновляет разработчик
+командой `python installer/install_tools/pins.py --write bench/results/deps.json` вместе
+с решением об апдейте. В `pipeline_info().updates` сервер показывает `as_of` и поле
+`stale: true`, если снимок старше 14 дней.

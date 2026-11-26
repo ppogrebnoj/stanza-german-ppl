@@ -1,0 +1,89 @@
+name: deps-watch
+
+# Сторож зависимостей: раз в неделю (и по кнопке) сообщает о новых версиях на PyPI.
+# Ничего не коммитит и не блокирует PR: это info-прогон, а не часть CI.
+# См. issue #11. Scheduled-запуски могут задерживаться; при долгой неактивности
+# репозитория GitHub их отключает — тогда используется workflow_dispatch.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"      # каждый понедельник, 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: deps-watch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    name: отчёт об обновлениях (только чтение)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+
+      - name: Отчёт по всем 62 позициям requirements.lock
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python installer/install_tools/pins.py --report \
+            --out-md "$RUNNER_TEMP/deps-update.md" \
+            --out-json "$RUNNER_TEMP/deps-update.json" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Step summary
+        run: cat "$RUNNER_TEMP/deps-update.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deps-update-report
+          path: |
+            ${{ runner.temp }}/deps-update.md
+            ${{ runner.temp }}/deps-update.json
+          if-no-files-found: error
+
+      - name: Постоянный issue с отчётом (hash-gating)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_TITLE: "📦 Обновления зависимостей — только информация"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          ISSUE=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number // empty')
+          if [ -z "$ISSUE" ]; then
+            ISSUE=$(gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" \
+              --body "Постоянный отчёт dependency-watch. Тело обновляется workflow \`deps-watch\` между маркерами. Решение об обновлении зависимостей принимается вручную; коммиты от workflow запрещены." \
+              --json number --jq .number)
+          fi
+          BODY_FILE="$RUNNER_TEMP/issue-body.md"
+          (gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""' || echo "") > "$BODY_FILE"
+          FP=$(jq -r .fingerprint "$RUNNER_TEMP/deps-update.json")
+          if python scripts/deps_watch_issue.py \
+                --body-file "$BODY_FILE" \
+                --md-file "$RUNNER_TEMP/deps-update.md" \
+                --fingerprint "$FP" --check | grep -qx 'unchanged'; then
+            echo "Набор обновлений не изменился — issue и коммент не трогаем"
+            exit 0
+          fi
+          python scripts/deps_watch_issue.py \
+            --body-file "$BODY_FILE" \
+            --md-file "$RUNNER_TEMP/deps-update.md" \
+            --fingerprint "$FP" > "$RUNNER_TEMP/issue-new-body.md"
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue-new-body.md"
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body \
+            "@ppogrebnoj набор обновлений зависимостей изменился (${FP}). Отчёт в теле issue и в артефакте \`deps-update-report\`: $RUN_URL"
+
+      - name: Рабочее дерево осталось чистым
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"

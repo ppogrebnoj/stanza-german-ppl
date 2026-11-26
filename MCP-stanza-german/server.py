@@ -269,10 +269,15 @@ def _parse_german_impl(text) -> dict:
 def parse_german(text: str | list[str]) -> dict:
     return _run_tool("parse_german", lambda: _parse_german_impl(text))
 
-def _updates_info() -> dict:
-    """Обновления зависимостей — по снимку, без сети и без оценок.
+_UPDATES_STALE_DAYS = 14
 
-    bench/results/deps.json пишет `python installer/install_tools/pins.py --latest --write` (CI раз в неделю).
+
+def _updates_info() -> dict:
+    """Обновления зависимостей — по ручному снимку, без сети и без оценок.
+
+    bench/results/deps.json пишет разработчик вручную:
+    `python installer/install_tools/pins.py --write bench/results/deps.json`.
+    Workflow deps-watch только сообщает о новых версиях в issue и ничего не коммитит.
     Файла нет или он битый -> {"available": false}: сервер не падает и ничего не выдумывает.
     """
     try:
@@ -290,7 +295,10 @@ def _updates_info() -> dict:
                     for n, v in (data.get("packages") or {}).items()
                     if (v or {}).get("latest") and v.get("latest") != v.get("current")]
         m = data.get("models") or {}
-        return {"available": True, "as_of": as_of, "stale_days": stale, "python": data.get("python"),
+        return {"available": True, "as_of": as_of,
+                "stale": stale is not None and stale >= _UPDATES_STALE_DAYS,
+                "stale_days": stale, "stale_after_days": _UPDATES_STALE_DAYS,
+                "python": data.get("python"),
                 "outdated": sorted(outdated, key=lambda x: x["name"]),
                 "models_stanza": m.get("stanza"), "models_ok": m.get("pack_ok")}
     except Exception:  # noqa: BLE001
