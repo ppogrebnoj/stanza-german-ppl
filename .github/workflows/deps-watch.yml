@@ -60,11 +60,12 @@ jobs:
           ISSUE=$(gh issue list --repo "$GITHUB_REPOSITORY" \
             --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number // empty')
           if [ -z "$ISSUE" ]; then
-            ISSUE=$(gh issue create --repo "$GITHUB_REPOSITORY" \
+            CREATED=$(gh issue create --repo "$GITHUB_REPOSITORY" \
               --title "$ISSUE_TITLE" \
-              --body "Постоянный отчёт dependency-watch. Тело обновляется workflow \`deps-watch\` между маркерами. Решение об обновлении зависимостей принимается вручную; коммиты от workflow запрещены." \
-              --json number --jq .number)
+              --body "Постоянный отчёт dependency-watch. Тело обновляется workflow \`deps-watch\` между маркерами. Решение об обновлении зависимостей принимается вручную; коммиты от workflow запрещены.")
+            ISSUE=$(printf '%s' "$CREATED" | sed -n 's#.*/issues/\([0-9][0-9]*\).*#\1#p')
           fi
+          test -n "$ISSUE" || { echo "не удалось определить номер issue"; exit 1; }
           BODY_FILE="$RUNNER_TEMP/issue-body.md"
           (gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""' || echo "") > "$BODY_FILE"
           FP=$(jq -r .fingerprint "$RUNNER_TEMP/deps-update.json")
