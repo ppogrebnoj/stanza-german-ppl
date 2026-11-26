@@ -591,7 +591,10 @@ function Get-Inventory {
         }
         $msvcFix = "winget install -e --id Microsoft.VisualStudio.BuildTools  ;  & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe' modify --channelId VisualStudio.18.Release --productId Microsoft.VisualStudio.Product.BuildTools --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart  (без --wait; затем проверить VC\Tools\MSVC\* или повторить -Inventory)"
         if ($msvcStatus -eq "UNKNOWN") { $msvcFix = "проверить руками: & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe' → Modify → «Разработка на C++»" }
-        Add-InvItem "msvc_vctools" "required" $msvcStatus $msvcVer $msvcPath $(if ($msvcStatus -eq "OK") { $null } else { $msvcFix }) $msvcNote
+        # Компилятор не нужен: deps ставятся --only-binary=:all:. Это справка,
+        # а не блокер чистой установки (иначе inventory ложно даёт code=2).
+        $msvcNeed = if ($msvcStatus -eq "OK") { "required" } else { "optional" }
+        Add-InvItem "msvc_vctools" $msvcNeed $msvcStatus $msvcVer $msvcPath $(if ($msvcStatus -eq "OK") { $null } else { $msvcFix }) ($msvcNote + '; нужен только для сборки из исходников, установщик использует готовые колёса')
 
         # ---------------------------------------------------------------- свободное место
         $cleanFix = 'python -m pip cache purge; Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\huggingface","$env:LOCALAPPDATA\StanfordNLP" -ErrorAction SilentlyContinue'

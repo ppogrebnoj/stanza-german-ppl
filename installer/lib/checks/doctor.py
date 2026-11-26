@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -152,13 +153,30 @@ def check_rule_root():
         (fail if env else warn)("rule_root", f"{root} — {src}: нет validator.py")
 
 
+def find_git() -> str:
+    """git для Windows при /VERYSILENT не всегда пишет себя в PATH processes."""
+    found = shutil.which("git")
+    if found:
+        return found
+    candidates = [
+        os.path.join(os.environ.get("ProgramFiles", ""), "Git", "cmd", "git.exe"),
+        os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Git", "cmd", "git.exe"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Git", "cmd", "git.exe"),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return ""
+
+
 def check_git():
     git_dir = P.ROOT / ".git"
     if not git_dir.exists():
         warn("git", "проект не под git — история не защищена")
         return
+    git = find_git()
     try:
-        url = subprocess.run(["git", "-C", str(P.ROOT), "remote", "get-url", "origin"],
+        url = subprocess.run([git or "git", "-C", str(P.ROOT), "remote", "get-url", "origin"],
                              capture_output=True, text=True, timeout=20).stdout.strip()
     except Exception:
         url = ""
