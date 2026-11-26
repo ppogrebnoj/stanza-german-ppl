@@ -6,9 +6,10 @@
 после скачивания гигабайтов. Скрипт отвечает на два вопроса заранее и без установки:
 
     python installer/install_tools/pins.py             # матрица колёс по версиям Python
-    python installer/install_tools/pins.py --latest    # обновления на PyPI
-    python installer/install_tools/pins.py --latest --write bench/results/deps.json
-    python installer/install_tools/pins.py --json      # машинно (для CI)
+    python installer/install_tools/pins.py --latest    # обновления на PyPI (для человека)
+    python installer/install_tools/pins.py --write bench/results/deps.json   # ТОЛЬКО вручную
+    python installer/install_tools/pins.py --report --out-md /tmp/a.md --out-json /tmp/a.json
+                                                       # info-режим: ничего не пишет в репозиторий
 
 Что проверяется:
   * для каждого пина (requirements.txt) — наличие wheel под Python 3.15..3.17
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import re
 import sys
@@ -45,6 +47,9 @@ _PYPI_DEAD = {"until": 0.0}    # после первого сбоя: не пол
 
 FILES = [(str(P.REQS.relative_to(P.ROOT)), (P.REQUIRED_MINOR,), "пины проекта")]
 SNAPSHOT_DEFAULT = P.ROOT / "bench" / "results" / "deps.json"
+LOCK_NAME = str(P.LOCK.relative_to(P.ROOT))
+REPORT_ISSUE_TITLE = "📦 Обновления зависимостей — только информация"
+STALE_DAYS = 14
 
 
 # ------------------------------------------------------------------ PyPI
@@ -103,7 +108,7 @@ def wheel_info(files: list[str]) -> dict:
     for f in files:
         m = WHEEL_RE.match(f)
         if m:
-            wheels.append((m.group("py"), m.group("plat")))
+            wheels.append((m.group("py"), m.group("abi"), m.group("plat")))
         elif f.endswith((".tar.gz", ".zip")):
             sdists += 1
     return {"wheels": wheels, "sdists": sdists}
@@ -112,12 +117,20 @@ def wheel_info(files: list[str]) -> dict:
 def supports(info: dict, py: str) -> str:
     """yes | no | sdist — есть ли установка под конкретный Python на нашей платформе."""
     tag = "cp" + py.replace(".", "")
-    for pytag, plat in info["wheels"]:
-        # free-threaded (cp315t) на обычном интерпретаторе не ставится
-        single = pytag.split(".")
+    minor = int(py.split(".")[1])
+    for pytag, abi, plat in info["wheels"]:
+        if plat not in (PLATFORM, "any", "win32"):
+            continue
+        # pure-python и cpXY-abi3 (stable ABI) ставятся на более новые версии;
+        # free-threaded cp314t/cp315t на обычном интерпретаторе не ставится.
         universal = pytag.startswith("py3") or pytag.startswith("py2.py3")
-        exact = any(t == tag for t in single)
-        if (universal or exact) and plat in (PLATFORM, "any", "win32"):
+        exact = pytag == tag and "t" not in abi
+        stable_abi = False
+        m = re.match(r"^cp(\d)(\d+)$", pytag)     # cp38 -> 3.8, cp311 -> 3.11
+        if (abi == "abi3" or abi.startswith("abi3.")) and m:
+            base_major, base_minor = int(m.group(1)), int(m.group(2))
+            stable_abi = base_major == 3 and 8 <= base_minor <= minor
+        if universal or exact or stable_abi:
             return "yes"
     if info["sdists"]:
         return "sdist"
@@ -174,9 +187,13 @@ def build_matrix(files, cache):
             info = wheel_info(data["files"])
             cells = {py: supports(info, py) for py in PY_TARGETS}
             rows.append({"package": pkg, "version": ver, "cells": cells,
-                         "pure": all(t.startswith("py") for t, _ in info["wheels"]) if info["wheels"] else False})
+                         "pure": all(t.startswith("py") for t, _, _ in info["wheels"]) if info["wheels"] else False})
+        known = [r for r in rows if r.get("cells")]   # пустые cells = нет данных PyPI
         good = [py for py in PY_TARGETS
-                if rows and all(r["cells"].get(py) == "yes" for r in rows if "cells" in r)]
+                if known and all(r["cells"].get(py) == "yes" for r in known)]
+        # Нет данных PyPI — это НЕ провал контракта колёс, а состояние «нет данных».
+        status = "unknown" if not known else (
+            "ok" if bool(good) and all(f"3.{m}" in good for m in declared) else "fail")
         # строка без cells = нет данных PyPI: покрытие не считается «зелёным»
         # непрерывный диапазон (сравниваем минорные версии как целые)
         def minor(py: str) -> int:
@@ -194,7 +211,8 @@ def build_matrix(files, cache):
             "file": fname, "kind": kind, "pins": rows,
             "declared": [f"3.{m}" for m in declared],
             "supported": supported,
-            "ok": bool(supported) and all(f"3.{m}" in good for m in declared),
+            "status": status,
+            "ok": True if status == "unknown" else (status == "ok"),
         })
     return out
 
@@ -221,7 +239,9 @@ def render(matrix) -> None:
         sup = block["supported"]
         sup_txt = f"{sup[0]}-{sup[1]}" if sup else "нет"
         decl = ", ".join(block["declared"])
-        flag = "OK" if block["ok"] else "ПРОБЛЕМА: заявлено " + decl
+        status = block.get("status", "ok" if block["ok"] else "fail")
+        flag = {"ok": "OK", "unknown": "НЕТ ДАННЫХ PyPI",
+                "fail": "ПРОБЛЕМА: заявлено " + decl}[status]
         print(f"  => покрытие колёсами: {sup_txt}   заявлено: {decl}   {flag}")
     print("\nобозначения: да — есть wheel под win_amd64/universal, "
           "src — только исходники (нужен компилятор), — нет ничего")
@@ -246,16 +266,122 @@ def render_latest(matrix, cache) -> None:
         print(f"{pkg:<12} {ver:<12} {str(latest):<12} {status}")
 
 
-def main() -> int:
+# ------------------------------------------------------------------ отчёт (только чтение)
+
+def report_fingerprint(rows: list[dict]) -> str:
+    """Хеш набора обновлений: as_of и ссылка на run НЕ влияют на хеш."""
+    payload = [{"package": r["package"], "current": r["current"],
+                "latest": r.get("latest"), "wheel": r.get("wheel_315")}
+               for r in sorted(rows, key=lambda x: x["package"])]
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
+    ).hexdigest()[:12]
+
+
+def build_report(cache: dict, run_url: str = "") -> dict:
+    """Report-only: все 62 позиций lock, PyPI latest и отдельный wheel-контракт 3.15."""
+    lock = P.parse_pins(P.LOCK)              # 62 позиции
+    direct = P.parse_pins()                  # прямые пины requirements.txt
+    matrix = build_matrix(
+        FILES + [(LOCK_NAME, (P.REQUIRED_MINOR,), "замок зависимостей")], cache)
+    lock_block = next((b for b in matrix if b["file"] == LOCK_NAME), {"pins": []})
+    wheel_by_pkg = {
+        r["package"]: (r["cells"].get(f"3.{P.REQUIRED_MINOR}", "unknown")
+                        if "cells" in r else "unknown")
+        for r in lock_block.get("pins", [])
+    }
+    rows = []
+    for pkg, ver in sorted(lock.items()):
+        data = fetch_release(pkg, None, cache)
+        latest = data.get("version") if "error" not in data else None
+        status = "нет данных" if latest is None else ("актуально" if latest == ver else "есть новее")
+        rows.append({"package": pkg, "current": ver, "latest": latest,
+                     "wheel_315": wheel_by_pkg.get(pkg, "unknown"), "status": status})
+    return {
+        "as_of": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "run_url": run_url,
+        "pypi_available": any(r["latest"] for r in rows),
+        "lock": LOCK_NAME, "direct_pins": direct,
+        "packages": rows, "fingerprint": report_fingerprint(rows),
+        "wheel_contract": {
+            "status": lock_block.get("status", "unknown"),
+            "python": f"3.{P.REQUIRED_MINOR}", "platform": PLATFORM,
+        },
+        "schedule_note": ("Scheduled-запуски GitHub могут задерживаться и отключаться после "
+                          "60 дней без активности репозитория; выход — workflow_dispatch."),
+    }
+
+
+def report_markdown(report: dict) -> str:
+    wc = report["wheel_contract"]
+    status = {"ok": "OK", "unknown": "нет данных", "fail": "ПРОБЛЕМА"}.get(wc["status"], wc["status"])
+    head = [
+        "### 📦 Обновления зависимостей — только информация",
+        "",
+        f"as_of: `{report['as_of']}` · позиций lock: **{len(report['packages'])}** · "
+        f"wheel-контракт Python {wc['python']} {wc['platform']}: **{status}**",
+    ]
+    if report.get("run_url"):
+        head.append(f"источник: [run {report['run_url']}]({report['run_url']})")
+    if not report["pypi_available"]:
+        head.append("")
+        head.append("**PyPI недоступен** — данные о новых версиях отсутствуют (нет данных); job не провален.")
+    head += [
+        "",
+        "| пакет | current | latest | wheel 3.15 | статус |",
+        "|---|---|---|---|---|",
+    ]
+    for r in report["packages"]:
+        head.append("| {package} | {current} | {latest} | {wheel} | {status} |".format(
+            package=r["package"], current=r["current"],
+            latest=r["latest"] or "нет данных", wheel=r["wheel_315"], status=r["status"]))
+    head += [
+        "",
+        f"Прямые пины: {', '.join(sorted(report['direct_pins']))}.",
+        "",
+        "> " + report["schedule_note"],
+        "> Решение об обновлении принимается вручную: отчёт не меняет `requirements.lock`, ",
+        "> `requirements.txt` и `bench/results/deps.json`.",
+    ]
+    return "\n".join(head)
+
+
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Проверка поддержки версий зависимостей и обновлений")
     ap.add_argument("--latest", action="store_true", help="показать, вышли ли новые версии пинов")
     ap.add_argument("--json", action="store_true", help="машинный вывод")
     ap.add_argument("--no-cache", action="store_true", help="не использовать кэш PyPI")
     ap.add_argument("--write", metavar="ФАЙЛ", nargs="?", const=str(SNAPSHOT_DEFAULT), default="",
-                    help="записать снимок обновлений (по умолчанию bench/results/deps.json)")
-    a = ap.parse_args()
+                    help="ВРУЧНУЮ записать снимок обновлений (по умолчанию bench/results/deps.json)")
+    ap.add_argument("--report", action="store_true",
+                    help="report-only: Markdown + JSON, без записи в репозиторий")
+    ap.add_argument("--out-md", default="", help="куда записать Markdown (вне репозитория)")
+    ap.add_argument("--out-json", default="", help="куда записать JSON (вне репозитория)")
+    ap.add_argument("--run-url", default="", help="ссылка на run для отчёта")
+    a = ap.parse_args(argv)
+    if a.report and a.write:
+        ap.error("--report и --write несовместимы: отчёт ничего не пишет в репозиторий")
 
     cache = {} if a.no_cache else _load_cache()
+
+    if a.report:
+        report = build_report(cache, a.run_url)
+        md = report_markdown(report)
+        as_json = json.dumps(report, ensure_ascii=False, indent=1) + "\n"
+        # Только явные пути ВНЕ репозитория; кэш PyPI и снимок в info-режиме не пишутся.
+        if a.out_md:
+            Path(a.out_md).write_text(md, encoding="utf-8", newline="\n")
+        if a.out_json:
+            Path(a.out_json).write_text(as_json, encoding="utf-8", newline="\n")
+        if not a.out_md:
+            print(md)
+        if a.json and not a.out_json:
+            print(as_json)
+        if not report["pypi_available"]:
+            print("::warning::PyPI недоступен — в отчёте 'нет данных'; job не провален",
+                  file=sys.stderr)
+        return 1 if report["wheel_contract"]["status"] == "fail" else 0
+
     matrix = build_matrix(FILES, cache)
     _save_cache(cache)
     snap_rc = 0
@@ -283,8 +409,10 @@ def main() -> int:
         if a.latest:
             render_latest(matrix, cache)
 
-    if any(not b.get("ok") for b in matrix if not b.get("missing")):
+    if any(b.get("ok") is False for b in matrix if not b.get("missing")):
         return 1
+    if any(b.get("status") == "unknown" for b in matrix if not b.get("missing")):
+        print("::warning::PyPI недоступен — покрытие колёсами не проверено", file=sys.stderr)
     return snap_rc
 
 
