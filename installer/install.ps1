@@ -105,7 +105,10 @@ if ($Check) {
             exit 0
         }
         'inventory' {
-            $null = & pwsh -NoProfile -File (Join-Path $Lib 'inventory.ps1') -Json 2>$null
+            # pwsh — рекомендуемый, но не обязательный режим: entry point работает и на 5.1.
+            $shell = 'powershell'
+            if (Get-Command pwsh -ErrorAction SilentlyContinue) { $shell = 'pwsh' }
+            $null = & $shell -NoProfile -File (Join-Path $Lib 'inventory.ps1') -Json 2>$null
             exit $LASTEXITCODE
         }
         default { Emit ([pscustomobject]@{ code = 4; ok = $false; detail = "unknown check $check" }); exit 4 }
