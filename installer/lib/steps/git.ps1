@@ -22,5 +22,10 @@ function Invoke-Step_git {
     if ($LASTEXITCODE -ne 0) {
         return New-StepResult -Id 'git' -Status FAIL -Rc 3 -Retryable $true -Detail "git installer rc=$LASTEXITCODE" -NextCmd 'bootstrap.ps1 -Resume -Steps git'
     }
+    # Следующие шаги в том же процессе должны видеть свежий PATH из реестра.
+    Refresh-ProcessPath
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        return New-StepResult -Id 'git' -Status FAIL -Rc 3 -Retryable $true -Detail 'git installed but not visible in PATH after refresh' -NextCmd 'bootstrap.ps1 -Resume -Steps git,workspace'
+    }
     return New-StepResult -Id 'git' -Status OK -Detail 'git installed from official installer'
 }

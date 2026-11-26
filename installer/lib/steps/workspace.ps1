@@ -7,6 +7,8 @@ function Invoke-Step_workspace {
     if ($missing.Count -gt 0) {
         return New-StepResult -Id 'workspace' -Status BLOCK -Rc 2 -Detail "missing project files: $($missing -join ', ')" -NextCmd 'clone or unpack the project first'
     }
+    # git мог быть поставлен предыдущим шагом: подхватываем User/Machine PATH.
+    Refresh-ProcessPath
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         return New-StepResult -Id 'workspace' -Status BLOCK -Rc 2 -Detail 'git missing' -NextCmd 'bootstrap.ps1 -Yes -Steps git'
     }
