@@ -17,7 +17,13 @@ param(
 )
 $ErrorActionPreference = 'Continue'
 $Repo = 'ppogrebnoj/stanza-german-ppl'
+# Тег, которому принадлежит этот bootstrap: standalone-ветка берёт парсер флагов
+# из своего тега, а не из master (иначе релиз берёт флаги будущей версии).
+$ReleaseTag = 'v4.0.5'
 $ReleaseBase = "https://github.com/$Repo/releases/latest/download"
+# --retry-all-errors закрывает TLS-reset/10054, которые --retry не ловит.
+$CurlRetry = @('--retry', '4', '--retry-all-errors', '--retry-delay', '2',
+               '--connect-timeout', '20', '-4', '--http1.1')
 $AppDir = Join-Path $env:LOCALAPPDATA 'stanza-german-ppl\app'
 $Work = Join-Path $env:TEMP 'stanza-german-bootstrap'
 
@@ -35,19 +41,20 @@ function Emit-Broken {
 
 $flagsLib = Join-Path $PSScriptRoot 'installer\lib\flags.ps1'
 if (-not (Test-Path -LiteralPath $flagsLib)) {
-    # Standalone one-liner: fetch the two minimal parser files from master.
+    # Standalone one-liner: fetch the two minimal parser files from the release tag.
     $libDir = Split-Path -Parent $flagsLib
     if (-not (Test-Path -LiteralPath $libDir)) { New-Item -ItemType Directory -Force -Path $libDir | Out-Null }
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'docs'))) { New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot 'docs') | Out-Null }
-    $raw = 'https://raw.githubusercontent.com/ppogrebnoj/stanza-german-ppl/master'
-    & curl.exe -fL --retry 3 --connect-timeout 20 -4 --http1.1 -o $flagsLib "$raw/installer/lib/flags.ps1" 2>$null
-    & curl.exe -fL --retry 3 --connect-timeout 20 -4 --http1.1 -o (Join-Path $PSScriptRoot 'docs\flags.json') "$raw/docs/flags.json" 2>$null
+    $raw = "https://raw.githubusercontent.com/$Repo/$ReleaseTag"
+    & curl.exe -fL @CurlRetry -o $flagsLib "$raw/installer/lib/flags.ps1" 2>$null
+    & curl.exe -fL @CurlRetry -o (Join-Path $PSScriptRoot 'docs\flags.json') "$raw/docs/flags.json" 2>$null
 }
-if (-not (Test-Path -LiteralPath $flagsLib)) { Emit-Broken 4 'no installer/lib/flags.ps1; run from project or release bundle' }
+# Парсер и реестр — это доставка, пока нет installer/install.ps1: код 5, а не 4.
+if (-not (Test-Path -LiteralPath $flagsLib)) { Emit-Broken 5 'flags parser not delivered' $true }
 . $flagsLib
 $regPath = Join-Path $PSScriptRoot 'docs\flags.json'
 if (-not (Test-Path -LiteralPath $regPath)) { $regPath = Join-Path $AppDir 'docs\flags.json' }
-try { $reg = Read-FlagsRegistry -Path $regPath } catch { Emit-Broken 4 "flags registry: $_" }
+try { $reg = Read-FlagsRegistry -Path $regPath } catch { Emit-Broken 5 "flags registry not delivered: $_" $true }
 $parsed = Convert-InstallerArgs -Rest $Rest -Registry $reg
 $script:wantsJson = $parsed.bound.ContainsKey('Json')
 if ($script:wantsJson) { try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { } }
@@ -73,9 +80,9 @@ if (-not (Test-Path -LiteralPath $entry)) {
     $zip = Join-Path $Work 'stanza-german-ppl-source.zip'
     $sha = Join-Path $Work 'stanza-german-ppl-source.zip.sha256'
     Say "downloading source: $ReleaseBase/stanza-german-ppl-source.zip" Cyan
-    & curl.exe -fL --retry 4 --retry-delay 3 --connect-timeout 20 -4 --http1.1 -o $zip "$ReleaseBase/stanza-german-ppl-source.zip" 2>$null
+    & curl.exe -fL @CurlRetry -o $zip "$ReleaseBase/stanza-german-ppl-source.zip" 2>$null
     if ($LASTEXITCODE -ne 0) { Emit-Broken 5 'source download failed' $true }
-    & curl.exe -fL --retry 3 --connect-timeout 20 -4 --http1.1 -o $sha "$ReleaseBase/stanza-german-ppl-source.zip.sha256" 2>$null
+    & curl.exe -fL @CurlRetry -o $sha "$ReleaseBase/stanza-german-ppl-source.zip.sha256" 2>$null
     if (Test-Path -LiteralPath $sha) {
         $want = ((Get-Content -LiteralPath $sha -Raw -Encoding ASCII) -split '\s+')[0].ToLowerInvariant()
         $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -85,10 +92,16 @@ if (-not (Test-Path -LiteralPath $entry)) {
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $stage, (New-Object System.Text.UTF8Encoding($false)))
-    $found = Get-ChildItem -LiteralPath $stage -Recurse -Filter 'install.ps1' -File | Select-Object -First 1
-    if (-not $found) { Emit-Broken 5 'no install.ps1 in source archive' }
+    # Ищем каталог, где есть installer/install.ps1: корневой install.ps1 — форвардер,
+    # копировать его родителя было бы недостаточно.
+    $found = @(Get-ChildItem -LiteralPath $stage -Recurse -Filter 'install.ps1' -File |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.Directory.FullName 'installer\install.ps1') } |
+        Select-Object -First 1)
+    if ($found.Count -eq 0) { Emit-Broken 5 'no install.ps1 in source archive' }
+    $srcRoot = $found[0].Directory.FullName
     if (-not (Test-Path -LiteralPath $AppDir)) { New-Item -ItemType Directory -Force -Path $AppDir | Out-Null }
-    Copy-Item -LiteralPath (Join-Path $found.Directory.FullName '*') -Destination $AppDir -Recurse -Force
+    # -LiteralPath НЕ раскрывает '*': копируем именно через -Path (иначе 0 файлов).
+    Copy-Item -Path (Join-Path $srcRoot '*') -Destination $AppDir -Recurse -Force
     $entry = Join-Path $AppDir 'installer\install.ps1'
     if (-not (Test-Path -LiteralPath $entry)) { Emit-Broken 5 'extracted source has no installer/install.ps1' }
 }
