@@ -239,8 +239,10 @@ function Get-Inventory {
     if (-not $script:KI_InvItems) { $script:KI_InvItems = New-Object System.Collections.Generic.List[object] }
     $script:KI_InvItems.Clear()
 
+    # Файл лежит в <app>\installer\lib: один Split-Path давал <app>\installer,
+    # откуда .venv′ не видно и project_venv ложно считался MISSING.
     $root = ""
-    try { if ($PSScriptRoot) { $root = Split-Path -Parent $PSScriptRoot } } catch { }
+    try { if ($PSScriptRoot) { $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) } } catch { }
     if (-not $root) { $root = (Get-Location).Path }
 
     $osOk = ($env:OS -eq "Windows_NT")
@@ -604,7 +606,7 @@ function Get-Inventory {
                 continue
             }
             $st = "OK"; if ($free -lt 12) { $st = "LOW" }
-            Add-InvItem ("freespace_" + $d) "required" $st ("$free GB") ("$d`:\") $(if ($st -eq "LOW") { $cleanFix } else { "" }) "норма ≥ 12 ГБ: venv+torch ~4, модели ~1.6, Build Tools 3–4, кэш"
+            Add-InvItem ("freespace_" + $d) "required" $st ("$free GB") ("$d`:\") $(if ($st -eq "LOW") { $cleanFix } else { "" }) "норма ≥ 12 ГБ: venv+torch ~4, модели ~0.4, Build Tools 3–4, кэш"
         }
 
         # ---------------------------------------------------------------- диск проекта (UNC/сеть = медленно)
@@ -680,12 +682,13 @@ function Get-Inventory {
         if ($null -eq $stanMB -and $stanExists) {
             Add-InvItem "stanza_cache" "optional" "UNKNOWN" "" $stanPath "проверить руками: правый клик по $stanPath → Свойства (размер)" "размер не измерен: обход каталога не уложился в 1.5 с"
         } elseif (-not $stanExists) {
-            Add-InvItem "stanza_cache" "optional" "MISSING" "" "" $stanFix ("каталога нет ($stanPath) — stanza скачает модели при первом запуске (~1.6 ГБ)")
+            Add-InvItem "stanza_cache" "optional" "MISSING" "" "" $stanFix ("каталога нет ($stanPath) — stanza скачает модели при первом запуске (~315 МБ)")
         } elseif ($stanMB -eq 0) {
             Add-InvItem "stanza_cache" "optional" "MISSING" "" $stanPath $stanFix "каталог есть, но пуст ($stanPath)"
         } else {
-            $st = "PARTIAL"; if ($stanMB -ge 800) { $st = "OK" }
-            Add-InvItem "stanza_cache" "optional" $st ("$stanMB MB") $stanPath $(if ($st -eq "OK") { "" } else { $stanFix }) "норма ~1.6 ГБ (de, tokenize/mwt/pos/lemma/dep)"
+            # Контракт: 5 процессоров, ~315 МБ, 8 каталогов в de, без de/default.zip.
+            $st = "PARTIAL"; if ($stanMB -ge 200) { $st = "OK" }
+            Add-InvItem "stanza_cache" "optional" $st ("$stanMB MB") $stanPath $(if ($st -eq "OK") { "" } else { $stanFix }) "норма ~315 МБ (de: tokenize/mwt/pos/lemma/depparse)"
         }
 
         $hfPath = "$env:USERPROFILE\.cache\huggingface"

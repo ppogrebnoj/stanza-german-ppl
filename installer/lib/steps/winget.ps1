@@ -1,18 +1,18 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 function Invoke-Step_winget {
     param([object]$Ctx)
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        return New-StepResult -Id 'winget' -Status SKIP -Detail 'winget already in PATH'
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        $alias = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'
+        if (Test-Path -LiteralPath $alias) { $winget = [pscustomobject]@{ Source = $alias } }
     }
-    if (-not $Ctx.Yes) {
-        return New-StepResult -Id 'winget' -Status BLOCK -Rc 2 -Detail 'winget missing; use -Yes to install components' -NextCmd 'bootstrap.ps1 -Yes'
+    if ($winget) {
+        return New-StepResult -Id 'winget' -Status SKIP -Detail "winget already in PATH: $($winget.Source)"
     }
-    try {
-        Install-Module Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser -ErrorAction Stop
-        Import-Module Microsoft.WinGet.Client -Force -ErrorAction Stop
-        Repair-WinGetPackageManager -AllUsers -ErrorAction Stop
-        return New-StepResult -Id 'winget' -Status OK -Detail 'winget bootstrap completed'
-    } catch {
-        return New-StepResult -Id 'winget' -Status FAIL -Rc 3 -Retryable $true -Detail "winget bootstrap failed: $_" -NextCmd 'bootstrap.ps1 -Resume -Steps winget'
-    }
+
+    # winget — необязательный компонент: все его шаги имеют прямые загрузки.
+    # Раньше Repair-WinGetPackageManager падал в headless-хосте без App Installer
+    # и отравлял итоговый код rc=3. Регистрация App Installer — ручная операция
+    # владельца машины, установщик её НЕ требует и НЕ выполняет.
+    return New-StepResult -Id 'winget' -Status SKIP -Detail 'winget unavailable; optional step skipped (direct downloads are used)' -Warnings @('App Installer (winget) не найден; шаг опционален, итоговый код не меняется')
 }

@@ -10,11 +10,14 @@ python scripts/merge_gate.py --pr 4 --explain
 python scripts/merge_gate.py --pr 4 --repo owner/repo --json
 ```
 
-`--repo` необязателен: по умолчанию берётся `git remote get-url origin`. Данные читаются
-одним вызовом `gh api graphql` через уже используемый в проекте `gh` CLI. `urllib` не нужен.
+`--repo` необязателен: по умолчанию берётся `git remote get-url origin`. Основной источник —
+один вызов `gh api graphql`. Если `gh` не установлен или недоступен, включается REST-fallback
+на публичный GitHub API (`/pulls`, `/check-runs`, `/statuses` для `head.sha`); токен берётся из
+`GH_TOKEN`/`GITHUB_TOKEN` и нужен только при лимите анонимных запросов. Fallback собирает те же
+контексты и использует то же правило вердикта; в stderr пишется причина переключения.
 
 **stdout** — только вердикт (текст или `--json`), **stderr** — логи. Поэтому `--json`
-можно безопасно пайпить. При ошибке `gh` вердикт `ERROR:...`, код выхода `3`.
+можно безопасно пайпить. При ошибке обоих каналов вердикт `ERROR:...`, код выхода `3`.
 
 ## Что считается проверкой HEAD
 

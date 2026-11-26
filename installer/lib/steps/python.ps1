@@ -19,9 +19,17 @@ function Invoke-Step_python {
     if ($rc -ne 0) {
         return New-StepResult -Id 'python' -Status FAIL -Rc 3 -Retryable $true -Detail "python installer rc=$rc" -NextCmd 'bootstrap.ps1 -Resume -Steps python'
     }
-    $again = Find-Python -Explicit $Ctx.Python -TargetDir $Ctx.TargetDir
+    # /quiet возвращается до того, как инсталлятор дописал реестр и PATH:
+    # опрашиваем Find-Python вместо однократной проверки в том же процессе.
+    $again = $null
+    $deadline = [DateTime]::UtcNow.AddSeconds(180)
+    do {
+        $again = Find-Python -Explicit $Ctx.Python -TargetDir $Ctx.TargetDir
+        if ($again -and $again.Usable) { break }
+        Start-Sleep -Seconds 3
+    } while ([DateTime]::UtcNow -lt $deadline)
     if (-not $again -or -not $again.Usable) {
-        return New-StepResult -Id 'python' -Status FAIL -Rc 1 -Detail 'installer finished but Python 3.15 x64 still not usable'
+        return New-StepResult -Id 'python' -Status FAIL -Rc 3 -Retryable $true -Detail 'installer finished but Python 3.15 x64 still not usable after 180s' -NextCmd 'bootstrap.ps1 -Resume -Steps python'
     }
     return New-StepResult -Id 'python' -Status OK -Detail "Python installed: $($again.Path)"
 }
