@@ -21,8 +21,8 @@ python scripts/merge_gate.py --pr 4 --repo owner/repo --json
 
 ## Что считается проверкой HEAD
 
-В v1 смотрятся **все GHA-контексты HEAD** (`state=OPEN`, `mergeable=MERGEABLE`).
-`required_status_checks` из branch protection не подтягиваются — отдельная задача.
+Сейчас смотрятся **все GHA-контексты HEAD** (`state=OPEN`, `mergeable=MERGEABLE`).
+`required_status_checks` из branch protection не подтягиваются (follow-up #5/#6).
 `mergeStateStatus` пишется в диагностику и **не является гейтом**: `UNSTABLE` сам по себе
 ничего не блокирует.
 
@@ -59,7 +59,7 @@ python scripts/merge_gate.py --pr 4 --repo owner/repo --json
 | Все актуальные проверки зелёные | `MERGE:all_checks_success` |
 
 `mergeStateStatus=BEHIND`, `reviewDecision != APPROVED` и прочие незелёные `mergeStateStatus`
-идут **только в диагностику**. Флаг `--require-approval` — на будущее.
+идут **только в диагностику**. Флаг `--require-approval` не реализован (follow-up #5/#6).
 
 ## Коды выхода
 

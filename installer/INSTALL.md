@@ -78,7 +78,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 -Yes -Json -
 Если репозиторий уже есть, можно вызвать `install.ps1` напрямую:
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File .\install.ps1 -Yes
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Yes
 ```
 
 Минимальный набор шагов (без winget, приёмки и doctor) — быстрее и без лишних сетевых
@@ -93,8 +93,7 @@ pwsh -ExecutionPolicy Bypass -File .\install.ps1 -Yes
 Шаг `git` для ZIP-копии выполняет `git init`/`fetch`/`reset --mixed` в каталоге проекта
 и ставит `pre-commit` hook, поэтому запускать установщик можно из любого каталога.
 
-`install.ps1` — публичный интерфейс; `scripts/all.ps1` — внутренний оркестратор с тем же
-набором параметров. Неизвестный параметр даёт код `4`.
+`install.ps1` — публичный интерфейс; `scripts/all.ps1` удалён, используйте `install.ps1`. Неизвестный параметр даёт код `4`.
 
 ## 2. Что ставится
 
@@ -180,7 +179,6 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 | 3 | Шаг упал, `retryable: true` | выполнить `next_action.command` |
 | 4 | Ошибка скрипта/среды, не-x64, неизвестный параметр | эскалация |
 | 5 | DELIVERY: исходник/ассет недоставлен до `installer\install.ps1` | повторить загрузку релиза |
-| 6 | Установщику ОС нужна перезагрузка/перелогин | перезагрузиться, продолжить `-Resume` |
 
 Каждый шаг автономен: падение одного не прерывает независимые шаги.
 
@@ -198,6 +196,9 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 - `doctor` — 18 OK / 0 WARN / 0 FAIL, `acceptance` — `PASS`, F1 `0.777 / 0.686`;
 - `inventory` не даёт ложных required-провалов (`project_venv=OK`);
 - хеш `bootstrap.ps1` из релиза совпадает с посчитанным локально; артефакты копируются вместе с хешами.
+
+Доказательство чистого прогона v4.0.5+fixes — issue #14 и PR #15–#24 (артефакты, хеши
+и история исправлений там); отдельный отчёт в репозитории не хранится.
 
 `-Resume` — только продолжение после сбоя; отчёт с шагами `resume: already done` **не является
 доказательством чистого прогона**.
@@ -292,11 +293,10 @@ python -m compileall -q scripts rule bench MCP-stanza-german
 ```
 
 Контрактный тест проверяет: неизвестный параметр → код `4`, `-Check` не пишет файлы,
-`-Check capabilities` совпадает с `docs/flags.json`, вывод `install.ps1` и `scripts/all.ps1`
-идентичен, отчёт имеет обязательные поля, NDJSON построчно парсится, `-Resume` даёт
+`-Check capabilities` совпадает с `docs/flags.json`, отчёт имеет обязательные поля, NDJSON построчно парсится, `-Resume` даёт
 `SKIP`, нормализация архитектуры работает.
 
-Версию релиза задаёт `scripts/release.ps1` из первого заголовка
+Версию релиза задаёт `installer/install_tools/release.ps1` из первого заголовка
 `MCP-stanza-german/version.json`: тег `v<версия>`, ассеты `bootstrap.ps1`,
 `bootstrap.ps1.sha256`, `stanza-german-ppl-source.zip(.sha256)`.
 

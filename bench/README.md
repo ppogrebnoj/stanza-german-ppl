@@ -19,14 +19,14 @@ python bench/run_bench.py --set heldout --algo S1,S4,S12,S2,S6,B1 --constraints 
 # документ для просмотра глазами
 python bench/make_review.py --set heldout --algos S1:d,S1,S4,S11 --per-register 3
 
-# НОВОЕ (итерация 4): сборка наборов прямо из markdown-файлов заказчика
+# сборка наборов прямо из markdown-разметки заказчика
 python bench/build_sets.py                    # -> sets/corpus52.jsonl, sets/heldout_51.jsonl
 python bench/pcache.py                        # кэш разборов (один раз)
 python bench/audit.py                         # что нарушает сама разметка заказчика
 python bench/experiments.py --stage all       # все замеры (варианты запретов, cap, однословные блоки, штрафы, сетка)
 python rule/validator.py --set bench/sets/heldout_51.jsonl
 
-# новые наборы из ИТЕРАЦИИ_3 (новая разметка заказчика)
+# наборы после правки разметки заказчика
 python bench/run_bench.py --set file:bench/sets/corpus52.jsonl   --algo all --grid --constraints --syl --pen
 python bench/run_bench.py --set file:bench/sets/heldout_51.jsonl --algo S1,S2,S3,S4,S11,B1 --constraints --syl --pen --params-json bench/results/best_params.json
 
