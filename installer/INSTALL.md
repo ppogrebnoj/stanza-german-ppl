@@ -1,11 +1,22 @@
 # Установка и управление (Windows x64)
 
 Текущий контракт. Версия MCP-сервера и релиза берётся из
-`MCP-stanza-german/version.json` (сейчас `4.0.5`).
+`MCP-stanza-german/version.json` (сейчас `4.0.6`).
 
 Этот файл, `requirements.txt` и `requirements.lock` лежат в `installer/`.
 `bootstrap.ps1.sha256` лежит рядом с `bootstrap.ps1` в корне; в релизе он публикуется
 плоским ассетом рядом с установщиком.
+
+## Архитектура установки
+
+```text
+bootstrap.ps1            entry: доставить исходники, передать флаги, вернуть код
+installer/install.ps1    оркестратор: список шагов и вызовы Invoke-Step*
+installer/lib/*          библиотеки и шаги (env, download, state, progress, steps/*)
+```
+
+Корневой `install.ps1` — публичный forwarder на оркестратор; `scripts/all.ps1` удалён.
+Порядок шагов и реестр флагов — `docs/flags.json` (или `-Check capabilities`).
 
 ## 0. PowerShell: что реально нужно
 
@@ -53,22 +64,35 @@ pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'         # 7.7.0,
 `bootstrap.ps1.sha256`, который лежит **в том же релизе рядом с установщиком**; в README
 значение хеша не публикуется.
 
+Блок из README (копируется целиком; `-Json` намеренно нет):
+
 ```powershell
-curl.exe -L -o bootstrap.ps1 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1
-curl.exe -L -o bootstrap.ps1.sha256 https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download/bootstrap.ps1.sha256
-(Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash      # сверить с bootstrap.ps1.sha256 из того же релиза
-powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 -Yes -Json -ArtifactDir .tmp
+$base = "https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download"
+curl.exe -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1 "$base/bootstrap.ps1"
+curl.exe -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1.sha256 "$base/bootstrap.ps1.sha256"
+$want = ((Get-Content .\bootstrap.ps1.sha256 -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+$got = (Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($got -ne $want) { throw "SHA256 mismatch: $got != $want" }
+powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 -Yes
 ```
 
 `-Yes` разрешает установку компонентов; без него шаги с системными изменениями дают `BLOCK`.
 Команда из issue #12 использует `pwsh` — это устаревшая формулировка: на чистой машине
 применяйте вариант выше (или явно установите 7.7 по §0).
 
+`-ProjectDir "D:\stanza"` задаёт каталог разворачивания проекта (по умолчанию
+`%LOCALAPPDATA%\stanza-german-ppl\app`); относительный путь считается от текущего каталога.
+Флаг bootstrap-only: оркестратор определяет `Root` по своему расположению внутри этого каталога.
+
+Без `-Json` в консоли видны шаги `n/11`, имя и объём загрузки, ETA/curl-прогресс; после
+доставки — живые подшаги установщика. `-Json` оставляет stdout машинным (для агентов/CI).
+
 Бутстрап:
 
 1. проверяет `AMD64` и 64-битный PowerShell (иначе код `4`, загрузки не начинаются);
-2. standalone-ветка (нет локального `installer\`) берёт `flags.ps1`/`flags.json` из **своего тега**
-   релиза, а не из `master`, с `--retry-all-errors`; неудачная доскачка парсера — код `5/DELIVERY`;
+2. standalone-ветка (нет локального `installer\`) берёт `installer\lib\flags.ps1` **и** `docs\flags.json`
+   из **своего тега** релиза, а не из `master`, с `--retry-all-errors`; отказ любой загрузки —
+   `5/DELIVERY` с именем файла и причиной curl, повтор — той же командой;
 3. скачивает `stanza-german-ppl-source.zip` из `releases/latest/download`, проверяет `SHA256`
    и распаковывает каталог с `installer\install.ps1` (`-Path` с `*`; `-LiteralPath` тут не работает);
 4. winget опционален: нет App Installer → шаг даёт `SKIP`, а не `FAIL rc=3`;
@@ -128,6 +152,7 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 | `-Check <область>` | только чтение: `inventory`, `doctor`, `models`, `acceptance`, `mcp_probe`, `server_check`, `plan`, `mcp`, `status`, `capabilities` |
 | `-Acceptance` | приёмка с F1 |
 | `-Json`, `-ProgressJson` | финальный JSON и NDJSON-поток в stdout (в файл поток пишется всегда). Для работы руками лучше без `-Json`: в этом режиме на экране живая строка прогресса |
+| `-ProjectDir` | bootstrap-only: каталог разворачивания проекта, по умолчанию `%LOCALAPPDATA%\stanza-german-ppl\app` |
 | `-ArtifactDir`, `-Python`, `-TargetDir`, `-ModelsDir` | каталоги и явный интерпретатор |
 | `-Models`, `-OfflineKit`, `-Steps`, `-Resume`, `-Force` | дополнительные процессоры, офлайн-набор, выбор/продолжение шагов |
 | `-Repair`, `-Uninstall`, `-Update`, `-CheckUpdates`, `-RaisePython`, `-MakeOfflineKit` | жизненный контур |
@@ -197,7 +222,7 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 - `inventory` не даёт ложных required-провалов (`project_venv=OK`);
 - хеш `bootstrap.ps1` из релиза совпадает с посчитанным локально; артефакты копируются вместе с хешами.
 
-Доказательство чистого прогона v4.0.5+fixes — issue #14 и PR #15–#24 (артефакты, хеши
+Доказательство чистого прогона v4.0.6 — issue #14 и PR #15–#24 (артефакты, хеши
 и история исправлений там); отдельный отчёт в репозитории не хранится.
 Последняя проверка после чистки репозитория — attempt-6 (27.11.2026, `master @ b1e28fe`):
 `code=0`, 11/11 OK/SKIP, doctor 18/0/0, F1 `0.777 / 0.686`, `verify-run.py` 17/17
