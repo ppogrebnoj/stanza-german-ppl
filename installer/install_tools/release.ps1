@@ -92,8 +92,8 @@ SHA256 stanza-german-ppl-source.zip: __ZSUM__
 
 ```powershell
 $base = "https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download"
-curl.exe -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1 "$base/bootstrap.ps1"
-curl.exe -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1.sha256 "$base/bootstrap.ps1.sha256"
+curl.exe -sS -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1 "$base/bootstrap.ps1"
+curl.exe -sS -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1.sha256 "$base/bootstrap.ps1.sha256"
 $want = ((Get-Content .\bootstrap.ps1.sha256 -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
 $got = (Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($got -ne $want) { throw "SHA256 mismatch: $got != $want" }
