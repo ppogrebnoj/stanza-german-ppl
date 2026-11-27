@@ -3,7 +3,7 @@
   "contract": "Только канонические флаги; legacy-алиасы удалены. Unknown flag => code 4.",
   "readers": [
     "bootstrap.ps1 reads this file through installer/lib/flags.ps1 and forwards flags unchanged",
-    "install.ps1 and scripts/all.ps1 forwarders read it through installer/lib/flags.ps1",
+    "install.ps1 (public forwarder) reads it through installer/lib/flags.ps1",
     "installer/install.ps1 trusts the already-parsed flag set; it never re-implements validation"
   ],
   "exit_codes_note": "Code 5 / DELIVERY added; code 2 redefined as BLOCK (not delivery). Before installer/install.ps1 is available => 5; after it exists but the invocation is broken => 4.",

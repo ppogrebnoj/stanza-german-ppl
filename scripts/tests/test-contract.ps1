@@ -5,13 +5,12 @@
         powershell -NoProfile -ExecutionPolicy Bypass -File scripts\tests\test-contract.ps1
 
     Проверяет: неизвестный параметр = код 4, -Check только чтение, capabilities = docs/flags.json,
-    одинаковый вывод install.ps1 и scripts/all.ps1, поля отчёта, NDJSON в файле, Resume SKIP,
+    поля отчёта, NDJSON в файле, Resume SKIP,
     нормализацию архитектуры. Код выхода 0 = все тесты зелёные.
 #>
 $ErrorActionPreference = 'Continue'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $entry = Join-Path $root 'install.ps1'
-$inner = Join-Path $root 'scripts\all.ps1'
 $failures = @()
 $total = 0
 
@@ -45,12 +44,10 @@ Check-Ok ($r.rc -eq 4 -and $r.json -and $r.json.code -eq 4) 'unknown flag => cod
 
 # 2. capabilities == docs/flags.json
 $r1 = Invoke-Ki $entry @('-Check','capabilities','-Json')
-$r2 = Invoke-Ki $inner @('-Check','capabilities','-Json')
 $reg = Get-Content -LiteralPath (Join-Path $root 'docs\flags.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $namesReg = @($reg.flags | ForEach-Object { $_.name }) -join ','
 $namesOut = @($r1.json.capabilities.flags | ForEach-Object { $_.name }) -join ','
 Check-Ok ($r1.rc -eq 0 -and $namesReg -eq $namesOut) 'capabilities == docs/flags.json' ("reg=$namesReg out=$namesOut")
-Check-Ok (($r1.json | ConvertTo-Json -Depth 8) -eq ($r2.json | ConvertTo-Json -Depth 8)) 'install.ps1 == all.ps1 output'
 
 # 2b. bootstrap.ps1 delegates argument parsing to installer/lib/flags.ps1
 $bootText = [IO.File]::ReadAllText((Join-Path $root 'bootstrap.ps1'))
@@ -92,7 +89,7 @@ Check-Ok ($r.rc -eq 0 -and $r.json.steps[0].status -eq 'SKIP') 'Resume skips rea
 # 7. нормализация архитектуры
 $env:_KI_SAVED_ARCH = $env:PROCESSOR_ARCHITECTURE
 $env:_KI_SAVED_WOW = $env:PROCESSOR_ARCHITEW6432
-. (Join-Path $root 'scripts\_env.ps1')
+. (Join-Path $root 'installer\lib\env.ps1')
 $env:PROCESSOR_ARCHITECTURE = 'x86'; $env:PROCESSOR_ARCHITEW6432 = 'AMD64'
 $a1 = Get-MachineArch
 $env:PROCESSOR_ARCHITECTURE = 'x86_64'; $env:PROCESSOR_ARCHITEW6432 = ''

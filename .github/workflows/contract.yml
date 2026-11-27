@@ -21,10 +21,8 @@ jobs:
         shell: powershell
         run: |
           $a = powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check capabilities -Json | ConvertFrom-Json
-          $b = powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\all.ps1 -Check capabilities -Json | ConvertFrom-Json
           $reg = Get-Content .\docs\flags.json -Raw -Encoding UTF8 | ConvertFrom-Json
           if (($a.capabilities.flags.name -join ',') -ne ($reg.flags.name -join ',')) { throw 'capabilities != docs/flags.json' }
-          if (($a | ConvertTo-Json -Depth 8) -ne ($b | ConvertTo-Json -Depth 8)) { throw 'install.ps1 output != all.ps1 output' }
 
       - name: ASCII tree contract
         run: python scripts/check_ascii_tree.py
