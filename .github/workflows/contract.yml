@@ -58,3 +58,22 @@ jobs:
         run: |
           python -m compileall -q scripts rule bench installer/lib/checks MCP-stanza-german
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  release-assets:
+    name: release assets match master (README one-liner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+
+      # Ловит баг 27.11.2026: README ведёт на releases/latest, а ассеты там
+      # собраны до PR #15-#30. Красный здесь = пора публиковать новый релиз.
+      - name: Check release assets
+        run: python scripts/check_release_assets.py
