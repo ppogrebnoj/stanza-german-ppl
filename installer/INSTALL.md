@@ -202,7 +202,10 @@ python -m pip install --dry-run --only-binary=:all: -r installer/requirements.lo
 Последняя проверка после чистки репозитория — attempt-6 (27.11.2026, `master @ b1e28fe`):
 `code=0`, 11/11 OK/SKIP, doctor 18/0/0, F1 `0.777 / 0.686`, `verify-run.py` 17/17
 (merge_gate не применялся: нет открытого PR); хеши и детали — комментарий в issue #14.
-Локальный runbook чистого прогона — `D:\common\PROMPT-clean-install.md` (вне репозитория).
+Локальный runbook чистого прогона — `D:\common\PROMPT-clean-install.md` (вне репозитория):
+откат VM к `Snapshot 1`, bootstrap на чистой машине, сбор артефактов и `verify-run.py`.
+Проверка выполняется по запросу; результат фиксируется в issue #14. Доступы к VM хранятся
+только в локальном runbook, в репозиторий не переносятся.
 
 `-Resume` — только продолжение после сбоя; отчёт с шагами `resume: already done` **не является
 доказательством чистого прогона**.
