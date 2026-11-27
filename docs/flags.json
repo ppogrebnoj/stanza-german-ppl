@@ -59,6 +59,7 @@
     {"name": "Acceptance", "kind": "switch", "description": "добавить шаг acceptance с приёмкой F1"},
     {"name": "Json", "kind": "switch", "description": "финальный JSON в stdout"},
     {"name": "ProgressJson", "kind": "switch", "description": "NDJSON-события в stdout; в -Check файл не пишется; несовместим с -Json (code 4)"},
+    {"name": "ProjectDir", "kind": "value", "default": "%LOCALAPPDATA%\\stanza-german-ppl\\app", "description": "каталог разворачивания проекта в standalone-режиме (bootstrap); оркестратор берёт Root из своего расположения"},
     {"name": "ArtifactDir", "kind": "value", "default": ".tmp", "description": "каталог install.log, progress.ndjson, отчётов и mcp-snippet"},
     {"name": "Python", "kind": "value", "description": "явный интерпретатор 3.15 x64"},
     {"name": "TargetDir", "kind": "value", "default": "%LOCALAPPDATA%\\Programs\\Python\\Python315", "description": "каталог установки Python"},

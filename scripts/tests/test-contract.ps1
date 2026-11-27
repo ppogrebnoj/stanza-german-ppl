@@ -150,6 +150,61 @@ $depsText = [IO.File]::ReadAllText((Join-Path $root 'installer\lib\steps\deps.ps
 $resumeOk = $depsText.Contains('$state.ok -and -not $Ctx.Resume') -and $depsText.Contains('Remove-LockInstalledMarker') -and $depsText.Contains('Set-LockInstalledMarker')
 Check-Ok $resumeOk 'resume deps always reinstalls from lock' ("source_contract=$resumeOk")
 
+# 14-15. standalone-доставка: подменяем curl.exe функцией в дочернем powershell,
+# чтобы симулировать отказ без сети и без записи в репозиторий.
+$stand = Join-Path $tmp 'standalone'
+New-Item -ItemType Directory -Force -Path $stand | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'bootstrap.ps1') -Destination $stand -Force
+$runnerText = @'
+param([string]$Bootstrap = '', [string]$FixtureFlags = '', [string]$FixtureReg = '',
+      [string]$ProjectDir = '', [switch]$FailRegistry, [switch]$FailSource, [switch]$Human)
+$ErrorActionPreference = 'Continue'
+function curl.exe {
+  $a = @($args)
+  $url = $a[$a.Count - 1]
+  $out = ''
+  for ($i = 0; $i -lt $a.Count; $i++) {
+    if ($a[$i] -eq '-o' -and $i + 1 -lt $a.Count) { $out = $a[$i + 1] }
+  }
+  if ($FailRegistry -and $url -like '*docs/flags.json') {
+    Write-Output 'curl: (22) simulated failure for docs/flags.json'
+    $global:LASTEXITCODE = 22; return
+  }
+  if ($FailSource -and $url -like '*stanza-german-ppl-source.zip') {
+    Write-Output 'curl: (35) simulated failure for source.zip'
+    $global:LASTEXITCODE = 35; return
+  }
+  $src = if ($url -like '*flags.ps1') { $FixtureFlags } elseif ($url -like '*flags.json') { $FixtureReg } else { '' }
+  if ($src -and $out) { Copy-Item -LiteralPath $src -Destination $out -Force }
+  $global:LASTEXITCODE = 0
+}
+if ($Human) { & $Bootstrap -ProjectDir $ProjectDir } else { & $Bootstrap -Json -ProjectDir $ProjectDir }
+exit $LASTEXITCODE
+'@
+$runner = Join-Path $stand 'curl-runner.ps1'
+[IO.File]::WriteAllText($runner, $runnerText, (New-Object System.Text.UTF8Encoding($false)))
+$runnerArgs = @(
+  '-Bootstrap', (Join-Path $stand 'bootstrap.ps1'),
+  '-FixtureFlags', (Join-Path $root 'installer\lib\flags.ps1'),
+  '-FixtureReg', (Join-Path $root 'docs\flags.json'),
+  '-ProjectDir', (Join-Path $stand 'project')
+)
+
+$r14 = Invoke-Ki $runner ($runnerArgs + @('-FailRegistry'))
+$d14 = if ($r14.json -and $r14.json.failures) { "$($r14.json.failures[0].detail)" } else { '' }
+$retry14 = if ($r14.json -and $r14.json.failures) { $r14.json.failures[0].retryable } else { $null }
+Check-Ok ($r14.rc -eq 5 -and $r14.json.code -eq 5 -and $d14 -match 'docs.flags\.json' -and
+          $d14 -match 'simulated failure' -and $retry14 -eq $true) `
+  'flags.json delivery failure => 5/DELIVERY with file name' ("rc=$($r14.rc) detail=$d14 retryable=$retry14")
+
+$r15 = Invoke-Ki $runner ($runnerArgs + @('-FailSource', '-Human'))
+$out15 = ($r15.lines -join "`n")
+Check-Ok ($r15.rc -eq 5 -and
+          $out15 -match '\[bootstrap 3/11\] project directory:' -and
+          $out15 -match '\[bootstrap 4/11\] download stanza-german-ppl-source\.zip' -and
+          $out15 -match 'simulated failure for source\.zip') `
+  'human progress shows step n/11, target dir and curl reason' ("rc=$($r15.rc) out=" + ($out15 -replace "`n", ' | '))
+
 Write-Host "`nитого: $total проверок, ошибок $($failures.Count)" $(if ($failures.Count) { 'Red' } else { 'Green' })
 if ($failures.Count) { exit 1 }
 exit 0

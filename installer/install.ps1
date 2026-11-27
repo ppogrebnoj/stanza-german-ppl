@@ -11,6 +11,9 @@ param(
     [switch]$Json,
     [switch]$ProgressJson,
     [string]$ArtifactDir = '',
+    # Канонический флаг из docs/flags.json. Каталог проекта задаёт bootstrap
+    # до распаковки; здесь он принимается для совместимости с forwarder'ом.
+    [string]$ProjectDir = '',
     [string]$Python = '',
     [string]$TargetDir = '',
     [string]$ModelsDir = '',
