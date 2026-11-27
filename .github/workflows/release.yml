@@ -44,7 +44,8 @@ jobs:
             (Join-Path $dir 'bootstrap.ps1'),
             (Join-Path $dir 'bootstrap.ps1.sha256'),
             (Join-Path $dir 'stanza-german-ppl-source.zip'),
-            (Join-Path $dir 'stanza-german-ppl-source.zip.sha256')
+            (Join-Path $dir 'stanza-german-ppl-source.zip.sha256'),
+            (Join-Path $dir 'RELEASE_BODY.md')
           )
           gh release create $tag --title "Installer $tag" --notes-file (Join-Path $dir 'RELEASE_BODY.md') $assets
           if ($LASTEXITCODE -ne 0) { gh release upload $tag $assets --clobber }

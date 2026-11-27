@@ -10,7 +10,11 @@ source.zip собран до PR #15-#30. Проверяет через GitHub AP
 3. ассет `bootstrap.ps1` в релизе имеет тот же SHA256, что и в master;
 4. digest ассета `bootstrap.ps1.sha256` совпадает с локальным файлом;
 5. `bootstrap.ps1` в теге релиза совпадает с master;
-6. ассет `stanza-german-ppl-source.zip` присутствует.
+6. ассет `stanza-german-ppl-source.zip` присутствует;
+7. `RELEASE_BODY.md` опубликован ассетом;
+8. хеш bootstrap в теле релиза == digest ассета (без захардкоженного старого хеша);
+9. тело релиза не содержит удалённый код `6`, коды совпадают с docs/flags.json;
+10. сниппет в теле релиза копируем: `$base`, две загрузки, проверка SHA256.
 
 Выход: 0 -- всё совпадает, 1 -- рассинхрон (нужно опубликовать
 новый релиз из master), 2 -- нет gh/сети/ошибка API.
@@ -99,9 +103,11 @@ def main() -> int:
     repo = args.repo or repo_slug()
     try:
         release = gh_json([f"repos/{repo}/releases/latest",
-                           "--jq", "{tag:.tag_name, assets:[.assets[]|{name,digest,id}]}"])
+                           "--jq", "{tag:.tag_name, body:.body, "
+                           "assets:[.assets[]|{name,digest,id}]}"])
         tag = release.get("tag", "")
         assets = {a["name"]: a for a in release.get("assets", [])}
+        body = release.get("body") or ""
     except Exception as exc:  # gh/сеть
         print(f"ERROR: gh api: {exc}", file=sys.stderr)
         return 2
@@ -125,6 +131,38 @@ def main() -> int:
         check(False, "release bootstrap.ps1.sha256 asset exists", "ассет отсутствует")
 
     check("stanza-german-ppl-source.zip" in assets, "source.zip asset exists")
+    check("RELEASE_BODY.md" in assets, "RELEASE_BODY.md asset exists")
+
+    # Тело релиза обязано быть сгенерировано из фактов, а не из старого шаблона.
+    body_match = re.search(r"SHA256 bootstrap\.ps1:\s*([0-9a-f]{64})", body, re.I)
+    body_hash = body_match.group(1).lower() if body_match else ""
+    check(body_hash == local_hash,
+          "release body bootstrap hash == asset digest",
+          f"body={body_hash or 'н/д'} asset=sha256:{local_hash}")
+
+    stale6 = any(re.search(p, body) for p in (
+        r"(?i)\b(?:code|код)\s*6\b",
+        r"(?<!([\d.]))6\s*:",
+        r"0\s*/\s*2\s*/\s*3\s*/\s*4\s*/\s*6",
+    ))
+    check(not stale6, "release body has no removed exit code 6")
+
+    registry = json.loads((ROOT / "docs" / "flags.json").read_text(encoding="utf-8"))
+    expected_codes = [f"{k}: {v}" for k, v in
+                      sorted(registry.get("exit_codes", {}).items(), key=lambda kv: int(kv[0]))]
+    missing_codes = [c for c in expected_codes if c not in body]
+    check(bool(expected_codes) and not missing_codes,
+          "release body exit codes == docs/flags.json",
+          f"missing={missing_codes}")
+
+    snippet_ok = (
+        "$base = " in body
+        and re.search(r"curl\.exe[^\n]*-o bootstrap\.ps1\b", body) is not None
+        and re.search(r"curl\.exe[^\n]*-o bootstrap\.ps1\.sha256", body) is not None
+        and "Get-FileHash" in body
+        and "-File .\\bootstrap.ps1" in body
+    )
+    check(snippet_ok, "release body snippet is copy-paste runnable")
 
     try:
         encoded = gh_text([f"repos/{repo}/contents/bootstrap.ps1?ref={tag}", "--jq", ".content"])

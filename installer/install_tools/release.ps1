@@ -3,10 +3,11 @@
     release.ps1 — сборка ассетов релиза установки (вызывается CI по тегу v*).
 
     Версия берётся из MCP-stanza-german/version.json (единственный источник):
-        "server_version": "4.0.5"  ->  тег v4.0.5
-    Ассеты: bootstrap.ps1(.sha256) и stanza-german-ppl-source.zip(.sha256).
-    Хеш bootstrap.ps1 НЕ пишется в README: он публикуется рядом с установщиком
-    и проверяется человеком/агентом из того же релиза.
+        "server_version": "4.0.6"  ->  тег v4.0.6
+    Ассеты: bootstrap.ps1(.sha256), stanza-german-ppl-source.zip(.sha256)
+    и RELEASE_BODY.md (одновременно --notes-file и плоский ассет).
+    Хеши и коды выхода в теле релиза НЕ захардкожены: они читаются из
+    .sha256-файлов и docs/flags.json. Хеш в README не публикуется.
 #>
 [CmdletBinding()]
 param(
@@ -39,9 +40,13 @@ if ($Tag -ne "v$version") {
 
 $bootstrap = Join-Path $Root 'bootstrap.ps1'
 if (-not (Test-Path -LiteralPath $bootstrap)) { throw 'нет bootstrap.ps1' }
-$sum = Get-Sha $bootstrap
+$sumComputed = Get-Sha $bootstrap
 # Контрольная сумма лежит рядом с bootstrap.ps1 в корне и публикуется плоским ассетом.
-[IO.File]::WriteAllText((Join-Path $Root 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
+$sumFile = Join-Path $Root 'bootstrap.ps1.sha256'
+[IO.File]::WriteAllText($sumFile, "$sumComputed  bootstrap.ps1`n", $utf8)
+# Тело релиза берёт хеш из .sha256-файла, а не из захардкоженной строки.
+$sum = (((Get-Content -LiteralPath $sumFile -Raw -Encoding ASCII) -split '\s+')[0]).ToLowerInvariant()
+if ($sum -ne $sumComputed) { throw "bootstrap.ps1.sha256 не совпадает с файлом: $sum != $sumComputed" }
 Copy-Item -LiteralPath $bootstrap -Destination (Join-Path $OutDir 'bootstrap.ps1') -Force
 [IO.File]::WriteAllText((Join-Path $OutDir 'bootstrap.ps1.sha256'), "$sum  bootstrap.ps1`n", $utf8)
 
@@ -63,28 +68,44 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.CompressionLevel]::Optimal,
     $false,
     (New-Object System.Text.UTF8Encoding($false)))
-$zsum = Get-Sha $zip
-[IO.File]::WriteAllText("$zip.sha256", "$zsum  stanza-german-ppl-source.zip`n", $utf8)
+$zsumComputed = Get-Sha $zip
+[IO.File]::WriteAllText("$zip.sha256", "$zsumComputed  stanza-german-ppl-source.zip`n", $utf8)
+$zsum = (((Get-Content -LiteralPath "$zip.sha256" -Raw -Encoding ASCII) -split '\s+')[0]).ToLowerInvariant()
+if ($zsum -ne $zsumComputed) { throw "source.zip.sha256 не совпадает с архивом: $zsum != $zsumComputed" }
 
-$body = @"
-# stanza-german-ppl $version — установка (тег $Tag)
+# Единственный источник кодов выхода — реестр флагов; код 6 больше не существует.
+$regPath = Join-Path $Root 'docs\flags.json'
+if (-not (Test-Path -LiteralPath $regPath)) { throw 'нет docs/flags.json' }
+$reg = Get-Content -LiteralPath $regPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$codes = @($reg.exit_codes.PSObject.Properties | Sort-Object { [int]$_.Name } |
+    ForEach-Object { "$($_.Name): $($_.Value)" }) -join '; '
+if (-not $codes) { throw 'docs/flags.json: пустые exit_codes' }
 
-Версия взята из MCP-stanza-german/version.json.
+# Одинарный here-string: $base/$want/$got остаются буквальными в сниппете.
+$template = @'
+# stanza-german-ppl __VERSION__ — установка (тег __TAG__)
 
-SHA256 bootstrap.ps1: $sum
-SHA256 stanza-german-ppl-source.zip: $zsum
+Версия взята из MCP-stanza-german/version.json. Хеши ниже прочитаны из ассетов этого релиза.
 
-``````powershell
-$base = https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download
-curl.exe -L -o bootstrap.ps1 $base/bootstrap.ps1
-curl.exe -L -o bootstrap.ps1.sha256 $base/bootstrap.ps1.sha256
-# verify SHA256 from bootstrap.ps1.sha256, then:
-powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
-``````
+SHA256 bootstrap.ps1: __SUM__
+SHA256 stanza-german-ppl-source.zip: __ZSUM__
 
-Хеш установщика лежит рядом с ним в релизе: bootstrap.ps1.sha256.
-Агент: -Json, -ProgressJson, install-report.json, коды 0/2/3/4/6.
-"@
+```powershell
+$base = "https://github.com/ppogrebnoj/stanza-german-ppl/releases/latest/download"
+curl.exe -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1 "$base/bootstrap.ps1"
+curl.exe -L --retry 4 --retry-all-errors --retry-delay 2 -o bootstrap.ps1.sha256 "$base/bootstrap.ps1.sha256"
+$want = ((Get-Content .\bootstrap.ps1.sha256 -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+$got = (Get-FileHash .\bootstrap.ps1 -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($got -ne $want) { throw "SHA256 mismatch: $got != $want" }
+powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 -Yes
+```
+
+Коды выхода (docs/flags.json): __CODES__.
+Агент: -Json, -ProgressJson, install-report.json, progress.ndjson.
+Без -Json в консоли видны шаги n/11, объём загрузки и ETA.
+'@
+$body = $template.Replace('__VERSION__', $version).Replace('__TAG__', $Tag).
+    Replace('__SUM__', $sum).Replace('__ZSUM__', $zsum).Replace('__CODES__', $codes)
 [IO.File]::WriteAllText((Join-Path $OutDir 'RELEASE_BODY.md'), $body, $utf8)
 Write-Host "version=$version tag=$Tag"
 Write-Host "bootstrap.ps1 SHA256=$sum"
