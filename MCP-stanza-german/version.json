@@ -1,4 +1,4 @@
 {
-  "server_version": "4.0.5",
-  "note": "4.0.5: каталог моделей зафиксирован как <root>\\.stanza\\models (STANZA_RESOURCES_DIR в PI и сниппете); server_check перенесён в installer/lib/checks/ и видит все 6 инструментов; PyYAML 6.0.4 / platformdirs 4.14.8 (актуальные версии) по lock; managed PI обновлён до 1.6.1."
+  "server_version": "4.0.6",
+  "note": "4.0.6: standalone-доставка флагов проверяет оба файла и показывает причину отказа (5/DELIVERY), добавлен -ProjectDir и человеческий прогресс; тело релиза генерируется из ассетов и docs/flags.json. Сервер и контракт установки без изменений."
 }

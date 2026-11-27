@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Continue'
 $Repo = 'ppogrebnoj/stanza-german-ppl'
 # Тег, которому принадлежит этот bootstrap: standalone-ветка берёт парсер флагов
 # из своего тега, а не из master (иначе релиз берёт флаги будущей версии).
-$ReleaseTag = 'v4.0.5'
+$ReleaseTag = 'v4.0.6'
 $ReleaseBase = "https://github.com/$Repo/releases/latest/download"
 # --retry-all-errors закрывает TLS-reset/10054, которые --retry не ловит.
 $CurlRetry = @('--retry', '4', '--retry-all-errors', '--retry-delay', '2',
